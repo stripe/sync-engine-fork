@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeResourceOrder } from './computeResourceOrder'
+import { computeResourceOrder } from '../../utils/computeResourceOrder'
 
 describe('computeResourceOrder', () => {
   it('returns empty map for empty input', () => {
