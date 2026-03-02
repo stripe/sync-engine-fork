@@ -86,7 +86,7 @@ describe('Account Management E2E', () => {
 
   describe('dangerouslyDeleteSyncedAccountData()', () => {
     beforeAll(async () => {
-      runCliCommand('backfill', ['product'], {
+      runCliCommand('sync', ['product'], {
         cwd,
         env: { DATABASE_URL: container.databaseUrl },
       })

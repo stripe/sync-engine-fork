@@ -292,19 +292,18 @@ The Supabase access token must have the following Management API permissions:
 # Run database migrations
 npx stripe-experiment-sync migrate --database-url $DATABASE_URL
 
-# Start local sync with ngrok tunnel
-npx stripe-experiment-sync start \
-  --stripe-key $STRIPE_API_KEY \
-  --ngrok-token $NGROK_AUTH_TOKEN \
-  --database-url $DATABASE_URL
-
-# Backfill specific entity type
-npx stripe-experiment-sync backfill customer \
+# Sync all Stripe data
+npx stripe-experiment-sync sync \
   --stripe-key $STRIPE_API_KEY \
   --database-url $DATABASE_URL
 
-# Enable Sigma data syncing
-npx stripe-experiment-sync start \
+# Sync a specific entity type
+npx stripe-experiment-sync sync customer \
+  --stripe-key $STRIPE_API_KEY \
+  --database-url $DATABASE_URL
+
+# Sync with Sigma tables enabled
+npx stripe-experiment-sync sync \
   --stripe-key $STRIPE_API_KEY \
   --database-url $DATABASE_URL \
   --sigma

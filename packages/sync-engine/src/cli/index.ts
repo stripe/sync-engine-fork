@@ -3,13 +3,11 @@
 import { Command } from 'commander'
 import pkg from '../../package.json' with { type: 'json' }
 import {
-  syncCommand,
   migrateCommand,
-  backfillCommand,
-  fullSyncCommand,
   monitorCommand,
   installCommand,
   uninstallCommand,
+  fullSyncCommand,
 } from './commands'
 
 const program = new Command()
@@ -32,49 +30,11 @@ program
     })
   })
 
-// Start command (main sync command)
+// Sync command
 program
-  .command('start')
-  .description('Start Stripe sync')
-  .option('--stripe-key <key>', 'Stripe API key (or STRIPE_API_KEY env)')
-  .option('--ngrok-token <token>', 'ngrok auth token (or NGROK_AUTH_TOKEN env)')
-  .option('--database-url <url>', 'Postgres DATABASE_URL (or DATABASE_URL env)')
-  .option('--sigma', 'Sync Sigma data (requires Sigma access in Stripe API key)')
-  .action(async (options) => {
-    await syncCommand({
-      stripeKey: options.stripeKey,
-      ngrokToken: options.ngrokToken,
-      databaseUrl: options.databaseUrl,
-      enableSigma: options.sigma,
-    })
-  })
-
-// Backfill command
-program
-  .command('backfill <entityName>')
-  .description('Backfill a specific entity type from Stripe (e.g., customer, invoice, product)')
-  .option('--stripe-key <key>', 'Stripe API key (or STRIPE_API_KEY env)')
-  .option('--database-url <url>', 'Postgres DATABASE_URL (or DATABASE_URL env)')
-  .option(
-    '--sigma',
-    'Enable Sigma tables (required for sigma table names like exchange_rates_from_usd)'
-  )
-  .action(async (entityName, options) => {
-    await backfillCommand(
-      {
-        stripeKey: options.stripeKey,
-        databaseUrl: options.databaseUrl,
-        enableSigma: options.sigma,
-      },
-      entityName
-    )
-  })
-
-// Full sync command
-program
-  .command('full-sync')
+  .command('sync [entityName]')
   .description(
-    'Re-sync everything from Stripe, skipping if a successful run completed within --interval'
+    'Re-sync from Stripe, optionally for a specific entity (e.g., customer, invoice), skipping if a successful run completed within --interval'
   )
   .option('--stripe-key <key>', 'Stripe API key (or STRIPE_API_KEY env)')
   .option('--database-url <url>', 'Postgres DATABASE_URL (or DATABASE_URL env)')
@@ -90,15 +50,24 @@ program
   .option('--rate-limit <limit>', 'Max requests per second (default: 50)', (val) =>
     parseInt(val, 10)
   )
-  .action(async (options) => {
-    await fullSyncCommand({
-      stripeKey: options.stripeKey,
-      databaseUrl: options.databaseUrl,
-      enableSigma: options.sigma,
-      interval: options.interval,
-      workerCount: options.workerCount,
-      rateLimit: options.rateLimit,
-    })
+  .option(
+    '--listen-mode <mode>',
+    'Event listener mode: websocket, webhook, or disabled (default: websocket)',
+    'disabled'
+  )
+  .action(async (entityName, options) => {
+    await fullSyncCommand(
+      {
+        stripeKey: options.stripeKey,
+        databaseUrl: options.databaseUrl,
+        enableSigma: options.sigma,
+        interval: options.interval,
+        workerCount: options.workerCount,
+        rateLimit: options.rateLimit,
+        listenMode: options.listenMode,
+      },
+      entityName
+    )
   })
 
 // Monitor command

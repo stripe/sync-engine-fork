@@ -90,14 +90,13 @@ npx stripe-experiment-sync supabase install \
 # Run database migrations
 npx stripe-experiment-sync migrate --database-url $DATABASE_URL
 
-# Start local sync with ngrok tunnel
-npx stripe-experiment-sync start \
+# Sync all Stripe data
+npx stripe-experiment-sync sync \
   --stripe-key $STRIPE_API_KEY \
-  --ngrok-token $NGROK_AUTH_TOKEN \
   --database-url $DATABASE_URL
 
-# Backfill historical data
-npx stripe-experiment-sync backfill customer \
+# Sync a specific entity type
+npx stripe-experiment-sync sync customer \
   --stripe-key $STRIPE_API_KEY \
   --database-url $DATABASE_URL
 ```

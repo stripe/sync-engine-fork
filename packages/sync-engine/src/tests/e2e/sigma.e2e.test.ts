@@ -55,8 +55,8 @@ describe('Sigma E2E', () => {
     await container?.stop()
   }, 30000)
 
-  it('should backfill products (non-sigma)', async () => {
-    runCliCommand('backfill', ['product'], {
+  it('should sync products (non-sigma)', async () => {
+    runCliCommand('sync', ['product'], {
       cwd,
       env: {
         DATABASE_URL: container.databaseUrl,
@@ -71,8 +71,8 @@ describe('Sigma E2E', () => {
     expect(productCount).toBe(1)
   }, 60000)
 
-  it('should backfill subscription_item_change_events_v2_beta (sigma)', async () => {
-    runCliCommand('backfill', ['--sigma', 'subscription_item_change_events_v2_beta'], {
+  it('should sync subscription_item_change_events_v2_beta (sigma)', async () => {
+    runCliCommand('sync', ['--sigma', 'subscription_item_change_events_v2_beta'], {
       cwd,
       env: {
         DATABASE_URL: container.databaseUrl,
@@ -87,8 +87,8 @@ describe('Sigma E2E', () => {
     expect(count).toBeGreaterThan(0)
   }, 60000)
 
-  it('should backfill exchange_rates_from_usd (sigma)', async () => {
-    runCliCommand('backfill', ['--sigma', 'exchange_rates_from_usd'], {
+  it('should sync exchange_rates_from_usd (sigma)', async () => {
+    runCliCommand('sync', ['--sigma', 'exchange_rates_from_usd'], {
       cwd,
       env: {
         DATABASE_URL: container.databaseUrl,
