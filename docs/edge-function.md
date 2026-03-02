@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
 
   const stripeSignature = req.headers.get('stripe-signature')
 
-  await stripeSync.processWebhook(rawBody, stripeSignature)
+  await stripeSync.webhook.processWebhook(rawBody, stripeSignature)
 
   return new Response(null, {
     status: 202,

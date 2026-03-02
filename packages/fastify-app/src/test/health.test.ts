@@ -10,6 +10,7 @@ describe('/health', () => {
   let server: FastifyInstance
 
   beforeAll(async () => {
+    process.env.STRIPE_ACCOUNT_ID = process.env.STRIPE_ACCOUNT_ID || 'acct_test_account'
     server = await createServer()
   })
 

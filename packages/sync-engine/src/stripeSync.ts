@@ -2,28 +2,21 @@ import Stripe from 'stripe'
 import { pg as sql } from 'yesql'
 import pkg from '../package.json' with { type: 'json' }
 import { PostgresClient } from './database/postgres'
-import {
-  StripeSyncConfig,
-  Sync,
-  SyncBackfill,
-  SyncParams,
-  ProcessNextResult,
-  ProcessNextParams,
-  SyncObject,
-  type RevalidateEntity,
-  type ResourceConfig,
-} from './types'
-import { managedWebhookSchema } from './schemas/managed_webhook'
+import { type Logger, StripeSyncConfig, Sync, SyncObject, type ResourceConfig } from './types'
 import { type PoolConfig } from 'pg'
 import { hashApiKey } from './utils/hashApiKey'
-import { parseCsvObjects, runSigmaQueryAndDownloadCsv } from './sigma/sigmaApi'
-import { SIGMA_INGESTION_CONFIGS } from './sigma/sigmaIngestionConfigs'
+import { expandEntity } from './utils/expandEntity'
+import { SigmaSyncProcessor } from './sigma/sigmaSyncProcessor'
+import { StripeSyncWebhook } from './stripeSyncWebhook'
 import {
-  buildSigmaQuery,
-  defaultSigmaRowToEntry,
-  sigmaCursorFromEntry,
-  type SigmaIngestionConfig,
-} from './sigma/sigmaIngestion'
+  buildResourceRegistry,
+  buildSigmaRegistry,
+  getResourceConfigFromId,
+  getTableName,
+  normalizeStripeObjectName,
+  StripeObject,
+} from './resourceRegistry'
+import { StripeSyncWorker } from './stripeSyncWorker'
 
 /**
  * Identifies a specific sync run.
@@ -33,11 +26,23 @@ export type RunKey = {
   runStartedAt: Date
 }
 
-function getUniqueIds<T>(entries: T[], key: string): string[] {
+function buildPoolConfig(config: StripeSyncConfig): PoolConfig {
+  const poolConfig = config.poolConfig ?? ({} as PoolConfig)
+  if (config.databaseUrl) poolConfig.connectionString = config.databaseUrl
+  if (config.maxPostgresConnections) poolConfig.max = config.maxPostgresConnections
+  poolConfig.max ??= 10
+  poolConfig.keepAlive ??= true
+  return poolConfig
+}
+
+function buildProgressBar(pct: number, width: number): string {
+  const filled = Math.round((pct / 100) * width)
+  return '[' + '█'.repeat(filled) + '░'.repeat(width - filled) + ']'
+}
+
+function getUniqueIds<T>(entries: T[], key: keyof T & string): string[] {
   const set = new Set(
-    entries
-      .map((subscription) => subscription?.[key as keyof T]?.toString())
-      .filter((it): it is string => Boolean(it))
+    entries.map((entry) => entry?.[key]?.toString()).filter((it): it is string => Boolean(it))
   )
 
   return Array.from(set)
@@ -47,20 +52,38 @@ export class StripeSync {
   stripe: Stripe
   postgresClient: PostgresClient
   config: StripeSyncConfig
-  readonly resourceRegistry: Record<string, ResourceConfig>
+  readonly resourceRegistry: Record<StripeObject, ResourceConfig>
+  readonly sigmaRegistry: Record<string, ResourceConfig>
+  webhook!: StripeSyncWebhook
+  readonly sigma: SigmaSyncProcessor
+  accountId!: string
+  private savedLogger: Logger | null = null
+  private previousLineCount = 0
 
   get sigmaSchemaName(): string {
-    return this.config.sigmaSchemaName ?? 'sigma'
+    return this.sigma.sigmaSchemaName
   }
 
-  constructor(config: StripeSyncConfig) {
+  private disableLogger() {
+    this.savedLogger = this.config.logger ?? null
+    this.config.logger = { info() {}, warn() {}, error() {} }
+  }
+
+  private enableLogger() {
+    if (this.savedLogger) {
+      this.config.logger = this.savedLogger
+      this.savedLogger = null
+    }
+  }
+
+  private constructor(config: StripeSyncConfig) {
     this.config = config
-    // Create base Stripe client
     this.stripe = new Stripe(config.stripeSecretKey, {
       // https://github.com/stripe/stripe-node#configuration
       // @ts-ignore
       apiVersion: config.stripeApiVersion,
-      maxNetworkRetries: 5,
+      telemetry: false,
+      maxNetworkRetries: 3,
       appInfo: {
         name: 'Stripe Sync Engine',
         version: pkg.version,
@@ -75,218 +98,59 @@ export class StripeSync {
       'StripeSync initialized'
     )
 
-    const poolConfig = config.poolConfig ?? ({} as PoolConfig)
-
-    if (config.databaseUrl) {
-      poolConfig.connectionString = config.databaseUrl
-    }
-
-    if (config.maxPostgresConnections) {
-      poolConfig.max = config.maxPostgresConnections
-    }
-
-    if (poolConfig.max === undefined) {
-      poolConfig.max = 10
-    }
-
-    if (poolConfig.keepAlive === undefined) {
-      poolConfig.keepAlive = true
-    }
+    const poolConfig = buildPoolConfig(config)
 
     this.postgresClient = new PostgresClient({
       schema: 'stripe',
       poolConfig,
     })
 
-    this.resourceRegistry = this.buildResourceRegistry()
-  }
+    this.sigma = new SigmaSyncProcessor(this.postgresClient, {
+      stripeSecretKey: config.stripeSecretKey,
+      enableSigma: config.enableSigma,
+      sigmaPageSizeOverride: config.sigmaPageSizeOverride,
+      sigmaSchemaName: config.sigmaSchemaName,
+      logger: this.config.logger,
+    })
 
-  // Resource registry - maps SyncObject → list/upsert operations for processNext()
-  // Complements eventHandlers which maps event types → handlers for webhooks
-  // Both registries share the same underlying upsert methods
-  // Order field determines backfill sequence - parents before children for FK dependencies
-  buildResourceRegistry(): Record<string, ResourceConfig> {
-    const core: Record<string, ResourceConfig> = {
-      product: {
-        order: 1, // No dependencies
-        listFn: (p) => this.stripe.products.list(p),
-        upsertFn: (items, id) => this.upsertProducts(items as Stripe.Product[], id),
-        supportsCreatedFilter: true,
-      },
-      price: {
-        order: 2, // Depends on product
-        listFn: (p) => this.stripe.prices.list(p),
-        upsertFn: (items, id, bf) => this.upsertPrices(items as Stripe.Price[], id, bf),
-        supportsCreatedFilter: true,
-      },
-      plan: {
-        order: 3, // Depends on product
-        listFn: (p) => this.stripe.plans.list(p),
-        upsertFn: (items, id, bf) => this.upsertPlans(items as Stripe.Plan[], id, bf),
-        supportsCreatedFilter: true,
-      },
-      customer: {
-        order: 4, // No dependencies
-        listFn: (p) => this.stripe.customers.list(p),
-        upsertFn: (items, id) => this.upsertCustomers(items as Stripe.Customer[], id),
-        supportsCreatedFilter: true,
-      },
-      subscription: {
-        order: 5, // Depends on customer, price
-        listFn: (p) => this.stripe.subscriptions.list(p),
-        upsertFn: (items, id, bf) =>
-          this.upsertSubscriptions(items as Stripe.Subscription[], id, bf),
-        supportsCreatedFilter: true,
-      },
-      subscription_schedules: {
-        order: 6, // Depends on customer
-        listFn: (p) => this.stripe.subscriptionSchedules.list(p),
-        upsertFn: (items, id, bf) =>
-          this.upsertSubscriptionSchedules(items as Stripe.SubscriptionSchedule[], id, bf),
-        supportsCreatedFilter: true,
-      },
-      invoice: {
-        order: 7, // Depends on customer, subscription
-        listFn: (p) => this.stripe.invoices.list(p),
-        upsertFn: (items, id, bf) => this.upsertInvoices(items as Stripe.Invoice[], id, bf),
-        supportsCreatedFilter: true,
-      },
-      charge: {
-        order: 8, // Depends on customer, invoice
-        listFn: (p) => this.stripe.charges.list(p),
-        upsertFn: (items, id, bf) => this.upsertCharges(items as Stripe.Charge[], id, bf),
-        supportsCreatedFilter: true,
-      },
-      setup_intent: {
-        order: 9, // Depends on customer
-        listFn: (p) => this.stripe.setupIntents.list(p),
-        upsertFn: (items, id, bf) => this.upsertSetupIntents(items as Stripe.SetupIntent[], id, bf),
-        supportsCreatedFilter: true,
-      },
-      payment_method: {
-        order: 10, // Depends on customer (special: iterates customers)
-        listFn: (p) => this.stripe.paymentMethods.list(p),
-        upsertFn: (items, id, bf) =>
-          this.upsertPaymentMethods(items as Stripe.PaymentMethod[], id, bf),
-        supportsCreatedFilter: false, // Requires customer param, can't filter by created
-      },
-      payment_intent: {
-        order: 11, // Depends on customer
-        listFn: (p) => this.stripe.paymentIntents.list(p),
-        upsertFn: (items, id, bf) =>
-          this.upsertPaymentIntents(items as Stripe.PaymentIntent[], id, bf),
-        supportsCreatedFilter: true,
-      },
-      tax_id: {
-        order: 12, // Depends on customer
-        listFn: (p) => this.stripe.taxIds.list(p),
-        upsertFn: (items, id, bf) => this.upsertTaxIds(items as Stripe.TaxId[], id, bf),
-        supportsCreatedFilter: false, // taxIds don't support created filter
-      },
-      credit_note: {
-        order: 13, // Depends on invoice
-        listFn: (p) => this.stripe.creditNotes.list(p),
-        upsertFn: (items, id, bf) => this.upsertCreditNotes(items as Stripe.CreditNote[], id, bf),
-        supportsCreatedFilter: true, // credit_notes support created filter
-      },
-      dispute: {
-        order: 14, // Depends on charge
-        listFn: (p) => this.stripe.disputes.list(p),
-        upsertFn: (items, id, bf) => this.upsertDisputes(items as Stripe.Dispute[], id, bf),
-        supportsCreatedFilter: true,
-      },
-      early_fraud_warning: {
-        order: 15, // Depends on charge
-        listFn: (p) => this.stripe.radar.earlyFraudWarnings.list(p),
-        upsertFn: (items, id) =>
-          this.upsertEarlyFraudWarning(items as Stripe.Radar.EarlyFraudWarning[], id),
-        supportsCreatedFilter: true,
-      },
-      refund: {
-        order: 16, // Depends on charge
-        listFn: (p) => this.stripe.refunds.list(p),
-        upsertFn: (items, id, bf) => this.upsertRefunds(items as Stripe.Refund[], id, bf),
-        supportsCreatedFilter: true,
-      },
-      checkout_sessions: {
-        order: 17, // Depends on customer (optional)
-        listFn: (p) => this.stripe.checkout.sessions.list(p),
-        upsertFn: (items, id) =>
-          this.upsertCheckoutSessions(items as Stripe.Checkout.Session[], id),
-        supportsCreatedFilter: true,
-      },
-    }
-
-    const maxOrder = Math.max(...Object.values(core).map((cfg) => cfg.order))
-    const sigmaOverrideRaw = this.config.sigmaPageSizeOverride
-    const sigmaOverride =
-      typeof sigmaOverrideRaw === 'number' &&
-      Number.isFinite(sigmaOverrideRaw) &&
-      sigmaOverrideRaw > 0
-        ? Math.floor(sigmaOverrideRaw)
-        : undefined
-
-    // TODO: Dedupe sigma tables that overlap with core Stripe objects (e.g. subscription_schedules).
-    // Currently we just let core take precedence, but ideally sigma configs should exclude
-    // tables that are already handled by the core Stripe API integration.
-    const sigmaEntries: Record<string, ResourceConfig> = Object.fromEntries(
-      Object.entries(SIGMA_INGESTION_CONFIGS).map(([key, sigmaConfig], idx) => {
-        const pageSize = sigmaOverride
-          ? Math.min(sigmaConfig.pageSize, sigmaOverride)
-          : sigmaConfig.pageSize
-        return [
-          key,
-          {
-            order: maxOrder + 1 + idx,
-            supportsCreatedFilter: false,
-            sigma: { ...sigmaConfig, pageSize },
-          },
-        ]
-      })
-    )
-
-    // Core configs take precedence over sigma to preserve supportsCreatedFilter and other settings
-    return { ...sigmaEntries, ...core }
-  }
-
-  isSigmaResource(object: string): boolean {
-    return Boolean(this.resourceRegistry[object]?.sigma)
-  }
-
-  sigmaResultKey(tableName: string): string {
-    return tableName.replace(/_([a-z0-9])/g, (_, ch: string) => ch.toUpperCase())
+    this.resourceRegistry = buildResourceRegistry(this.stripe)
+    this.sigmaRegistry = buildSigmaRegistry(this.sigma, this.resourceRegistry)
   }
 
   /**
-   * Get the Stripe account ID. Delegates to getCurrentAccount() for the actual lookup.
+   * Create a new StripeSync instance. Resolves the default Stripe account,
+   * stores it in the database, and makes the account ID available immediately.
+   */
+  static async create(config: StripeSyncConfig): Promise<StripeSync> {
+    const instance = new StripeSync(config)
+    if (config.stripeAccountId) {
+      instance.accountId = config.stripeAccountId
+    } else {
+      const account = await instance.getCurrentAccount()
+      instance.accountId = account.id
+    }
+    instance.webhook = new StripeSyncWebhook({
+      stripe: instance.stripe,
+      postgresClient: instance.postgresClient,
+      config: instance.config,
+      accountId: instance.accountId,
+      getAccountId: instance.getAccountId.bind(instance),
+      upsertAny: instance.upsertAny.bind(instance),
+      resourceRegistry: instance.resourceRegistry,
+    })
+    return instance
+  }
+
+  /**
+   * Get the Stripe account ID. Returns the default account ID, or resolves
+   * a Connect sub-account ID when provided (Connect scenarios).
    */
   async getAccountId(objectAccountId?: string): Promise<string> {
+    if (!objectAccountId) {
+      return this.accountId
+    }
     const account = await this.getCurrentAccount(objectAccountId)
-    if (!account) {
-      throw new Error('Failed to retrieve Stripe account. Please ensure API key is valid.')
-    }
     return account.id
-  }
-
-  /**
-   * Upsert Stripe account information to the database
-   * @param account - Stripe account object
-   * @param apiKeyHash - SHA-256 hash of API key to store for fast lookups
-   */
-  async upsertAccount(account: Stripe.Account, apiKeyHash: string): Promise<void> {
-    try {
-      await this.postgresClient.upsertAccount(
-        {
-          id: account.id,
-          raw_data: account,
-        },
-        apiKeyHash
-      )
-    } catch (error) {
-      this.config.logger?.error(error, 'Failed to upsert account to database')
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      throw new Error(`Failed to upsert account to database: ${errorMessage}`)
-    }
   }
 
   /**
@@ -294,7 +158,7 @@ export class StripeSync {
    * with fallback to Stripe API if not found (first-time setup or new API key).
    * @param objectAccountId - Optional account ID from event data (Connect scenarios)
    */
-  async getCurrentAccount(objectAccountId?: string): Promise<Stripe.Account | null> {
+  async getCurrentAccount(objectAccountId?: string): Promise<Stripe.Account> {
     const apiKeyHash = hashApiKey(this.config.stripeSecretKey)
 
     // Try to lookup account from database using API key hash (fast path)
@@ -317,1831 +181,391 @@ export class StripeSync {
         ? await this.stripe.accounts.retrieve(accountIdParam)
         : await this.stripe.accounts.retrieve()
 
-      await this.upsertAccount(account, apiKeyHash)
+      await this.postgresClient.upsertAccount({ id: account.id, raw_data: account }, apiKeyHash)
       return account
     } catch (error) {
       this.config.logger?.error(error, 'Failed to retrieve account from Stripe API')
-      return null
+      const message =
+        error instanceof Error ? error.message : typeof error === 'string' ? error : String(error)
+      throw new Error(`Failed to retrieve Stripe account: ${message}`)
     }
   }
 
   /**
-   * Get all accounts that have been synced to the database
-   */
-  async getAllSyncedAccounts(): Promise<Stripe.Account[]> {
-    try {
-      const accountsData = await this.postgresClient.getAllAccounts()
-      return accountsData as Stripe.Account[]
-    } catch (error) {
-      this.config.logger?.error(error, 'Failed to retrieve accounts from database')
-      throw new Error('Failed to retrieve synced accounts from database')
-    }
-  }
-
-  /**
-   * DANGEROUS: Delete an account and all associated data from the database
-   * This operation cannot be undone!
-   *
-   * @param accountId - The Stripe account ID to delete
-   * @param options - Options for deletion behavior
-   * @param options.dryRun - If true, only count records without deleting (default: false)
-   * @param options.useTransaction - If true, use transaction for atomic deletion (default: true)
-   * @returns Deletion summary with counts and warnings
-   */
-  async dangerouslyDeleteSyncedAccountData(
-    accountId: string,
-    options?: {
-      dryRun?: boolean
-      useTransaction?: boolean
-    }
-  ): Promise<{
-    deletedAccountId: string
-    deletedRecordCounts: { [tableName: string]: number }
-    warnings: string[]
-  }> {
-    const dryRun = options?.dryRun ?? false
-    const useTransaction = options?.useTransaction ?? true
-
-    this.config.logger?.info(
-      `${dryRun ? 'Preview' : 'Deleting'} account ${accountId} (transaction: ${useTransaction})`
-    )
-
-    try {
-      // Get record counts
-      const counts = await this.postgresClient.getAccountRecordCounts(accountId)
-
-      // Generate warnings
-      const warnings: string[] = []
-      let totalRecords = 0
-
-      for (const [table, count] of Object.entries(counts)) {
-        if (count > 0) {
-          totalRecords += count
-          warnings.push(`Will delete ${count} ${table} record${count !== 1 ? 's' : ''}`)
-        }
-      }
-
-      if (totalRecords > 100000) {
-        warnings.push(
-          `Large dataset detected (${totalRecords} total records). Consider using useTransaction: false for better performance.`
-        )
-      }
-
-      // Dry-run mode: just return counts
-      if (dryRun) {
-        this.config.logger?.info(`Dry-run complete: ${totalRecords} total records would be deleted`)
-        return {
-          deletedAccountId: accountId,
-          deletedRecordCounts: counts,
-          warnings,
-        }
-      }
-
-      // Actual deletion
-      const deletionCounts = await this.postgresClient.deleteAccountWithCascade(
-        accountId,
-        useTransaction
-      )
-
-      this.config.logger?.info(
-        `Successfully deleted account ${accountId} with ${totalRecords} total records`
-      )
-
-      return {
-        deletedAccountId: accountId,
-        deletedRecordCounts: deletionCounts,
-        warnings,
-      }
-    } catch (error) {
-      this.config.logger?.error(error, `Failed to delete account ${accountId}`)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      throw new Error(`Failed to delete account ${accountId}: ${errorMessage}`)
-    }
-  }
-
-  async processWebhook(payload: Buffer | string, signature: string | undefined) {
-    // Start with user-provided webhook secret if available (non-managed webhook)
-    let webhookSecret: string | undefined = this.config.stripeWebhookSecret
-
-    // If no user-provided secret, look up managed webhook secret from database
-    if (!webhookSecret) {
-      // Get account ID for this API key to find the correct webhook secret
-      const accountId = await this.getAccountId()
-
-      // Check if we have a managed webhook in the database for this specific account
-      const result = await this.postgresClient.query(
-        `SELECT secret FROM "stripe"."_managed_webhooks" WHERE account_id = $1 LIMIT 1`,
-        [accountId]
-      )
-
-      if (result.rows.length > 0) {
-        // Use secret from managed webhook for this specific account
-        webhookSecret = result.rows[0].secret
-      }
-    }
-
-    if (!webhookSecret) {
-      throw new Error(
-        'No webhook secret provided. Either create a managed webhook or configure stripeWebhookSecret.'
-      )
-    }
-
-    // Verify webhook signature using the correct secret
-    const event = await this.stripe.webhooks.constructEventAsync(payload, signature!, webhookSecret)
-
-    return this.processEvent(event)
-  }
-
-  // Event handler registry - maps event types to handler functions
-  // Note: Uses 'any' for event parameter to allow handlers with specific Stripe event types
-  // (e.g., CustomerDeletedEvent, ProductDeletedEvent) which TypeScript won't accept
-  // as contravariant parameters when using the base Stripe.Event type
-  readonly eventHandlers: Record<
-    string,
-    (event: any, accountId: string) => Promise<void> // eslint-disable-line @typescript-eslint/no-explicit-any
-  > = {
-    'charge.captured': this.handleChargeEvent.bind(this),
-    'charge.expired': this.handleChargeEvent.bind(this),
-    'charge.failed': this.handleChargeEvent.bind(this),
-    'charge.pending': this.handleChargeEvent.bind(this),
-    'charge.refunded': this.handleChargeEvent.bind(this),
-    'charge.succeeded': this.handleChargeEvent.bind(this),
-    'charge.updated': this.handleChargeEvent.bind(this),
-    'customer.deleted': this.handleCustomerDeletedEvent.bind(this),
-    'customer.created': this.handleCustomerEvent.bind(this),
-    'customer.updated': this.handleCustomerEvent.bind(this),
-    'checkout.session.async_payment_failed': this.handleCheckoutSessionEvent.bind(this),
-    'checkout.session.async_payment_succeeded': this.handleCheckoutSessionEvent.bind(this),
-    'checkout.session.completed': this.handleCheckoutSessionEvent.bind(this),
-    'checkout.session.expired': this.handleCheckoutSessionEvent.bind(this),
-    'customer.subscription.created': this.handleSubscriptionEvent.bind(this),
-    'customer.subscription.deleted': this.handleSubscriptionEvent.bind(this),
-    'customer.subscription.paused': this.handleSubscriptionEvent.bind(this),
-    'customer.subscription.pending_update_applied': this.handleSubscriptionEvent.bind(this),
-    'customer.subscription.pending_update_expired': this.handleSubscriptionEvent.bind(this),
-    'customer.subscription.trial_will_end': this.handleSubscriptionEvent.bind(this),
-    'customer.subscription.resumed': this.handleSubscriptionEvent.bind(this),
-    'customer.subscription.updated': this.handleSubscriptionEvent.bind(this),
-    'customer.tax_id.updated': this.handleTaxIdEvent.bind(this),
-    'customer.tax_id.created': this.handleTaxIdEvent.bind(this),
-    'customer.tax_id.deleted': this.handleTaxIdDeletedEvent.bind(this),
-    'invoice.created': this.handleInvoiceEvent.bind(this),
-    'invoice.deleted': this.handleInvoiceEvent.bind(this),
-    'invoice.finalized': this.handleInvoiceEvent.bind(this),
-    'invoice.finalization_failed': this.handleInvoiceEvent.bind(this),
-    'invoice.paid': this.handleInvoiceEvent.bind(this),
-    'invoice.payment_action_required': this.handleInvoiceEvent.bind(this),
-    'invoice.payment_failed': this.handleInvoiceEvent.bind(this),
-    'invoice.payment_succeeded': this.handleInvoiceEvent.bind(this),
-    'invoice.upcoming': this.handleInvoiceEvent.bind(this),
-    'invoice.sent': this.handleInvoiceEvent.bind(this),
-    'invoice.voided': this.handleInvoiceEvent.bind(this),
-    'invoice.marked_uncollectible': this.handleInvoiceEvent.bind(this),
-    'invoice.updated': this.handleInvoiceEvent.bind(this),
-    'product.created': this.handleProductEvent.bind(this),
-    'product.updated': this.handleProductEvent.bind(this),
-    'product.deleted': this.handleProductDeletedEvent.bind(this),
-    'price.created': this.handlePriceEvent.bind(this),
-    'price.updated': this.handlePriceEvent.bind(this),
-    'price.deleted': this.handlePriceDeletedEvent.bind(this),
-    'plan.created': this.handlePlanEvent.bind(this),
-    'plan.updated': this.handlePlanEvent.bind(this),
-    'plan.deleted': this.handlePlanDeletedEvent.bind(this),
-    'setup_intent.canceled': this.handleSetupIntentEvent.bind(this),
-    'setup_intent.created': this.handleSetupIntentEvent.bind(this),
-    'setup_intent.requires_action': this.handleSetupIntentEvent.bind(this),
-    'setup_intent.setup_failed': this.handleSetupIntentEvent.bind(this),
-    'setup_intent.succeeded': this.handleSetupIntentEvent.bind(this),
-    'subscription_schedule.aborted': this.handleSubscriptionScheduleEvent.bind(this),
-    'subscription_schedule.canceled': this.handleSubscriptionScheduleEvent.bind(this),
-    'subscription_schedule.completed': this.handleSubscriptionScheduleEvent.bind(this),
-    'subscription_schedule.created': this.handleSubscriptionScheduleEvent.bind(this),
-    'subscription_schedule.expiring': this.handleSubscriptionScheduleEvent.bind(this),
-    'subscription_schedule.released': this.handleSubscriptionScheduleEvent.bind(this),
-    'subscription_schedule.updated': this.handleSubscriptionScheduleEvent.bind(this),
-    'payment_method.attached': this.handlePaymentMethodEvent.bind(this),
-    'payment_method.automatically_updated': this.handlePaymentMethodEvent.bind(this),
-    'payment_method.detached': this.handlePaymentMethodEvent.bind(this),
-    'payment_method.updated': this.handlePaymentMethodEvent.bind(this),
-    'charge.dispute.created': this.handleDisputeEvent.bind(this),
-    'charge.dispute.funds_reinstated': this.handleDisputeEvent.bind(this),
-    'charge.dispute.funds_withdrawn': this.handleDisputeEvent.bind(this),
-    'charge.dispute.updated': this.handleDisputeEvent.bind(this),
-    'charge.dispute.closed': this.handleDisputeEvent.bind(this),
-    'payment_intent.amount_capturable_updated': this.handlePaymentIntentEvent.bind(this),
-    'payment_intent.canceled': this.handlePaymentIntentEvent.bind(this),
-    'payment_intent.created': this.handlePaymentIntentEvent.bind(this),
-    'payment_intent.partially_funded': this.handlePaymentIntentEvent.bind(this),
-    'payment_intent.payment_failed': this.handlePaymentIntentEvent.bind(this),
-    'payment_intent.processing': this.handlePaymentIntentEvent.bind(this),
-    'payment_intent.requires_action': this.handlePaymentIntentEvent.bind(this),
-    'payment_intent.succeeded': this.handlePaymentIntentEvent.bind(this),
-    'credit_note.created': this.handleCreditNoteEvent.bind(this),
-    'credit_note.updated': this.handleCreditNoteEvent.bind(this),
-    'credit_note.voided': this.handleCreditNoteEvent.bind(this),
-    'radar.early_fraud_warning.created': this.handleEarlyFraudWarningEvent.bind(this),
-    'radar.early_fraud_warning.updated': this.handleEarlyFraudWarningEvent.bind(this),
-    'refund.created': this.handleRefundEvent.bind(this),
-    'refund.failed': this.handleRefundEvent.bind(this),
-    'refund.updated': this.handleRefundEvent.bind(this),
-    'charge.refund.updated': this.handleRefundEvent.bind(this),
-    'review.closed': this.handleReviewEvent.bind(this),
-    'review.opened': this.handleReviewEvent.bind(this),
-    'entitlements.active_entitlement_summary.updated':
-      this.handleEntitlementSummaryEvent.bind(this),
-  }
-
-  async processEvent(event: Stripe.Event) {
-    // Get account ID at start of event processing
-    // Try to extract from event data object if present (Connect scenarios)
-    const objectAccountId =
-      event.data?.object && typeof event.data.object === 'object' && 'account' in event.data.object
-        ? (event.data.object as { account?: string }).account
-        : undefined
-    const accountId = await this.getAccountId(objectAccountId)
-
-    // Ensure account exists before processing event (required for foreign key constraints)
-    await this.getCurrentAccount()
-
-    const handler = this.eventHandlers[event.type]
-    if (handler) {
-      // Extract entity ID from event data for logging
-      const entityId =
-        event.data?.object && typeof event.data.object === 'object' && 'id' in event.data.object
-          ? (event.data.object as { id: string }).id
-          : 'unknown'
-      this.config.logger?.info(`Received webhook ${event.id}: ${event.type} for ${entityId}`)
-
-      await handler(event, accountId)
-    } else {
-      this.config.logger?.warn(
-        `Received unhandled webhook event: ${event.type} (${event.id}). Ignoring.`
-      )
-    }
-  }
-
-  /**
-   * Returns an array of all webhook event types that this sync engine can handle.
-   * Useful for configuring webhook endpoints with specific event subscriptions.
-   */
-  public getSupportedEventTypes(): Stripe.WebhookEndpointCreateParams.EnabledEvent[] {
-    return Object.keys(
-      this.eventHandlers
-    ).sort() as Stripe.WebhookEndpointCreateParams.EnabledEvent[]
-  }
-
-  /**
-   * Returns an array of all object types that can be synced via processNext/processUntilDone.
    * Ordered for backfill: parents before children (products before prices, customers before subscriptions).
    * Order is determined by the `order` field in resourceRegistry.
    */
   public getSupportedSyncObjects(): Exclude<SyncObject, 'all' | 'customer_with_entitlements'>[] {
-    const all = Object.entries(this.resourceRegistry)
+    const coreObjects = Object.entries(this.resourceRegistry)
+      .filter(([, cfg]) => cfg.sync !== false)
       .sort(([, a], [, b]) => a.order - b.order)
       .map(([key]) => key) as Exclude<SyncObject, 'all' | 'customer_with_entitlements'>[]
 
-    // Only advertise Sigma-backed objects when explicitly enabled (opt-in).
     if (!this.config.enableSigma) {
-      return all.filter((o) => !this.isSigmaResource(o)) as Exclude<
-        SyncObject,
-        'all' | 'customer_with_entitlements'
-      >[]
+      return coreObjects
     }
 
-    return all
-  }
-
-  /**
-   * Get the list of Sigma-backed object types that can be synced.
-   * Only returns sigma objects when enableSigma is true.
-   *
-   * @returns Array of sigma object names (e.g. 'subscription_item_change_events_v2_beta')
-   */
-  public getSupportedSigmaObjects(): string[] {
-    if (!this.config.enableSigma) {
-      return []
-    }
-
-    return Object.entries(this.resourceRegistry)
-      .filter(([, config]) => Boolean(config.sigma))
+    const sigmaObjects = Object.entries(this.sigmaRegistry)
+      .filter(([, cfg]) => cfg.sync !== false)
       .sort(([, a], [, b]) => a.order - b.order)
-      .map(([key]) => key)
+      .map(([key]) => key) as Exclude<SyncObject, 'all' | 'customer_with_entitlements'>[]
+
+    return [...coreObjects, ...sigmaObjects]
   }
 
-  // Event handler methods
-  async handleChargeEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: charge, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.Charge,
-      (id) => this.stripe.charges.retrieve(id),
-      (charge) => charge.status === 'failed' || charge.status === 'succeeded'
-    )
-
-    await this.upsertCharges([charge], accountId, false, this.getSyncTimestamp(event, refetched))
-  }
-
-  async handleCustomerDeletedEvent(
-    event: Stripe.CustomerDeletedEvent,
-    accountId: string
-  ): Promise<void> {
-    const customer: Stripe.DeletedCustomer = {
-      id: event.data.object.id,
-      object: 'customer',
-      deleted: true,
-    }
-
-    await this.upsertCustomers([customer], accountId, this.getSyncTimestamp(event, false))
-  }
-
-  async handleCustomerEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: customer, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.Customer | Stripe.DeletedCustomer,
-      (id) => this.stripe.customers.retrieve(id),
-      (customer) => customer.deleted === true
-    )
-
-    await this.upsertCustomers([customer], accountId, this.getSyncTimestamp(event, refetched))
-  }
-
-  async handleCheckoutSessionEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: checkoutSession, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.Checkout.Session,
-      (id) => this.stripe.checkout.sessions.retrieve(id)
-    )
-
-    await this.upsertCheckoutSessions(
-      [checkoutSession],
-      accountId,
-      false,
-      this.getSyncTimestamp(event, refetched)
-    )
-  }
-
-  async handleSubscriptionEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: subscription, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.Subscription,
-      (id) => this.stripe.subscriptions.retrieve(id),
-      (subscription) =>
-        subscription.status === 'canceled' || subscription.status === 'incomplete_expired'
-    )
-
-    await this.upsertSubscriptions(
-      [subscription],
-      accountId,
-      false,
-      this.getSyncTimestamp(event, refetched)
-    )
-  }
-
-  async handleTaxIdEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: taxId, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.TaxId,
-      (id) => this.stripe.taxIds.retrieve(id)
-    )
-
-    await this.upsertTaxIds([taxId], accountId, false, this.getSyncTimestamp(event, refetched))
-  }
-
-  async handleTaxIdDeletedEvent(event: Stripe.Event, _accountId: string): Promise<void> {
-    const taxId = event.data.object as Stripe.TaxId
-
-    await this.postgresClient.deleteTaxId(taxId.id)
-  }
-
-  async handleInvoiceEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: invoice, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.Invoice,
-      (id) => this.stripe.invoices.retrieve(id),
-      (invoice) => invoice.status === 'void'
-    )
-
-    await this.upsertInvoices([invoice], accountId, false, this.getSyncTimestamp(event, refetched))
-  }
-
-  async handleProductEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    try {
-      const { entity: product, refetched } = await this.fetchOrUseWebhookData(
-        event.data.object as Stripe.Product,
-        (id) => this.stripe.products.retrieve(id)
-      )
-
-      await this.upsertProducts([product], accountId, this.getSyncTimestamp(event, refetched))
-    } catch (err) {
-      if (err instanceof Stripe.errors.StripeAPIError && err.code === 'resource_missing') {
-        const product = event.data.object as Stripe.Product
-        await this.postgresClient.deleteProduct(product.id)
-      } else {
-        throw err
-      }
-    }
-  }
-
-  async handleProductDeletedEvent(
-    event: Stripe.ProductDeletedEvent,
-    _accountId: string
-  ): Promise<void> {
-    const product = event.data.object
-
-    await this.postgresClient.deleteProduct(product.id)
-  }
-
-  async handlePriceEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    try {
-      const { entity: price, refetched } = await this.fetchOrUseWebhookData(
-        event.data.object as Stripe.Price,
-        (id) => this.stripe.prices.retrieve(id)
-      )
-
-      await this.upsertPrices([price], accountId, false, this.getSyncTimestamp(event, refetched))
-    } catch (err) {
-      if (err instanceof Stripe.errors.StripeAPIError && err.code === 'resource_missing') {
-        const price = event.data.object as Stripe.Price
-        await this.postgresClient.deletePrice(price.id)
-      } else {
-        throw err
-      }
-    }
-  }
-
-  async handlePriceDeletedEvent(
-    event: Stripe.PriceDeletedEvent,
-    _accountId: string
-  ): Promise<void> {
-    const price = event.data.object
-
-    await this.postgresClient.deletePrice(price.id)
-  }
-
-  async handlePlanEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    try {
-      const { entity: plan, refetched } = await this.fetchOrUseWebhookData(
-        event.data.object as Stripe.Plan,
-        (id) => this.stripe.plans.retrieve(id)
-      )
-
-      await this.upsertPlans([plan], accountId, false, this.getSyncTimestamp(event, refetched))
-    } catch (err) {
-      if (err instanceof Stripe.errors.StripeAPIError && err.code === 'resource_missing') {
-        const plan = event.data.object as Stripe.Plan
-        await this.postgresClient.deletePlan(plan.id)
-      } else {
-        throw err
-      }
-    }
-  }
-
-  async handlePlanDeletedEvent(event: Stripe.PlanDeletedEvent, _accountId: string): Promise<void> {
-    const plan = event.data.object
-
-    await this.postgresClient.deletePlan(plan.id)
-  }
-
-  async handleSetupIntentEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: setupIntent, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.SetupIntent,
-      (id) => this.stripe.setupIntents.retrieve(id),
-      (setupIntent) => setupIntent.status === 'canceled' || setupIntent.status === 'succeeded'
-    )
-
-    await this.upsertSetupIntents(
-      [setupIntent],
-      accountId,
-      false,
-      this.getSyncTimestamp(event, refetched)
-    )
-  }
-
-  async handleSubscriptionScheduleEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: subscriptionSchedule, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.SubscriptionSchedule,
-      (id) => this.stripe.subscriptionSchedules.retrieve(id),
-      (schedule) => schedule.status === 'canceled' || schedule.status === 'completed'
-    )
-
-    await this.upsertSubscriptionSchedules(
-      [subscriptionSchedule],
-      accountId,
-      false,
-      this.getSyncTimestamp(event, refetched)
-    )
-  }
-
-  async handlePaymentMethodEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: paymentMethod, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.PaymentMethod,
-      (id) => this.stripe.paymentMethods.retrieve(id)
-    )
-
-    await this.upsertPaymentMethods(
-      [paymentMethod],
-      accountId,
-      false,
-      this.getSyncTimestamp(event, refetched)
-    )
-  }
-
-  async handleDisputeEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: dispute, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.Dispute,
-      (id) => this.stripe.disputes.retrieve(id),
-      (dispute) => dispute.status === 'won' || dispute.status === 'lost'
-    )
-
-    await this.upsertDisputes([dispute], accountId, false, this.getSyncTimestamp(event, refetched))
-  }
-
-  async handlePaymentIntentEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: paymentIntent, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.PaymentIntent,
-      (id) => this.stripe.paymentIntents.retrieve(id),
-      // Final states - do not re-fetch from API
-      (entity) => entity.status === 'canceled' || entity.status === 'succeeded'
-    )
-
-    await this.upsertPaymentIntents(
-      [paymentIntent],
-      accountId,
-      false,
-      this.getSyncTimestamp(event, refetched)
-    )
-  }
-
-  async handleCreditNoteEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: creditNote, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.CreditNote,
-      (id) => this.stripe.creditNotes.retrieve(id),
-      (creditNote) => creditNote.status === 'void'
-    )
-
-    await this.upsertCreditNotes(
-      [creditNote],
-      accountId,
-      false,
-      this.getSyncTimestamp(event, refetched)
-    )
-  }
-
-  async handleEarlyFraudWarningEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: earlyFraudWarning, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.Radar.EarlyFraudWarning,
-      (id) => this.stripe.radar.earlyFraudWarnings.retrieve(id)
-    )
-
-    await this.upsertEarlyFraudWarning(
-      [earlyFraudWarning],
-      accountId,
-      false,
-      this.getSyncTimestamp(event, refetched)
-    )
-  }
-
-  async handleRefundEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: refund, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.Refund,
-      (id) => this.stripe.refunds.retrieve(id)
-    )
-
-    await this.upsertRefunds([refund], accountId, false, this.getSyncTimestamp(event, refetched))
-  }
-
-  async handleReviewEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const { entity: review, refetched } = await this.fetchOrUseWebhookData(
-      event.data.object as Stripe.Review,
-      (id) => this.stripe.reviews.retrieve(id)
-    )
-
-    await this.upsertReviews([review], accountId, false, this.getSyncTimestamp(event, refetched))
-  }
-
-  async handleEntitlementSummaryEvent(event: Stripe.Event, accountId: string): Promise<void> {
-    const activeEntitlementSummary = event.data
-      .object as Stripe.Entitlements.ActiveEntitlementSummary
-    let entitlements = activeEntitlementSummary.entitlements
-    let refetched = false
-    if (this.config.revalidateObjectsViaStripeApi?.includes('entitlements')) {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { lastResponse, ...rest } = await this.stripe.entitlements.activeEntitlements.list({
-        customer: activeEntitlementSummary.customer,
-      })
-      entitlements = rest
-      refetched = true
-    }
-
-    await this.postgresClient.deleteRemovedActiveEntitlements(
-      activeEntitlementSummary.customer,
-      entitlements.data.map((entitlement) => entitlement.id)
-    )
-    await this.upsertActiveEntitlements(
-      activeEntitlementSummary.customer,
-      entitlements.data,
-      accountId,
-      false,
-      this.getSyncTimestamp(event, refetched)
-    )
-  }
-
-  getSyncTimestamp(event: Stripe.Event, refetched: boolean) {
-    return refetched ? new Date().toISOString() : new Date(event.created * 1000).toISOString()
-  }
-
-  shouldRefetchEntity(entity: { object: string }) {
-    return this.config.revalidateObjectsViaStripeApi?.includes(entity.object as RevalidateEntity)
-  }
-
-  async fetchOrUseWebhookData<T extends { id?: string; object: string }>(
-    entity: T,
-    fetchFn: (id: string) => Promise<T>,
-    entityInFinalState?: (entity: T) => boolean
-  ): Promise<{ entity: T; refetched: boolean }> {
-    if (!entity.id) return { entity, refetched: false }
-
-    // This can be used as an optimization to avoid re-fetching unnecessarily
-    if (entityInFinalState?.(entity)) return { entity, refetched: false }
-
-    if (this.shouldRefetchEntity(entity)) {
-      const fetchedEntity = await fetchFn(entity.id!)
-      return { entity: fetchedEntity, refetched: true }
-    }
-
-    return { entity, refetched: false }
+  public getSupportedSigmaObjects(): string[] {
+    return this.sigma.getSupportedSigmaObjects(this.sigmaRegistry)
   }
 
   async syncSingleEntity(stripeId: string) {
-    const accountId = await this.getAccountId()
-    if (stripeId.startsWith('cus_')) {
-      return this.stripe.customers.retrieve(stripeId).then((it) => {
-        if (!it || it.deleted) return
+    const accountId = this.accountId
+    const resourceConfig = getResourceConfigFromId(stripeId, this.resourceRegistry)
+    if (!resourceConfig || !resourceConfig.retrieveFn) {
+      throw new Error(`Unsupported object type for syncSingleEntity: ${stripeId}`)
+    }
+    const item = await resourceConfig.retrieveFn(stripeId)
+    await this.upsertAny([item], accountId, false)
+  }
 
-        return this.upsertCustomers([it], accountId)
+  private getRegistryForObject(object: string): Record<string, ResourceConfig> {
+    if (object in this.resourceRegistry) return this.resourceRegistry
+    if (object in this.sigmaRegistry) return this.sigmaRegistry
+    return this.resourceRegistry
+  }
+
+  async findOldestItem(listfn: NonNullable<ResourceConfig['listFn']>) {
+    let lo = 0 // 1970
+    let hi = Math.floor(Date.now() / 1000) // now
+    let best: number | null = null
+
+    while (lo <= hi) {
+      const mid = Math.floor((lo + hi) / 2)
+
+      const page = await listfn({
+        limit: 1,
+        created: { lte: mid },
       })
-    } else if (stripeId.startsWith('in_')) {
-      return this.stripe.invoices
-        .retrieve(stripeId)
-        .then((it) => this.upsertInvoices([it], accountId))
-    } else if (stripeId.startsWith('price_')) {
-      return this.stripe.prices.retrieve(stripeId).then((it) => this.upsertPrices([it], accountId))
-    } else if (stripeId.startsWith('prod_')) {
-      return this.stripe.products
-        .retrieve(stripeId)
-        .then((it) => this.upsertProducts([it], accountId))
-    } else if (stripeId.startsWith('sub_')) {
-      return this.stripe.subscriptions
-        .retrieve(stripeId)
-        .then((it) => this.upsertSubscriptions([it], accountId))
-    } else if (stripeId.startsWith('seti_')) {
-      return this.stripe.setupIntents
-        .retrieve(stripeId)
-        .then((it) => this.upsertSetupIntents([it], accountId))
-    } else if (stripeId.startsWith('pm_')) {
-      return this.stripe.paymentMethods
-        .retrieve(stripeId)
-        .then((it) => this.upsertPaymentMethods([it], accountId))
-    } else if (stripeId.startsWith('dp_') || stripeId.startsWith('du_')) {
-      return this.stripe.disputes
-        .retrieve(stripeId)
-        .then((it) => this.upsertDisputes([it], accountId))
-    } else if (stripeId.startsWith('ch_')) {
-      return this.stripe.charges
-        .retrieve(stripeId)
-        .then((it) => this.upsertCharges([it], accountId, true))
-    } else if (stripeId.startsWith('pi_')) {
-      return this.stripe.paymentIntents
-        .retrieve(stripeId)
-        .then((it) => this.upsertPaymentIntents([it], accountId))
-    } else if (stripeId.startsWith('txi_')) {
-      return this.stripe.taxIds.retrieve(stripeId).then((it) => this.upsertTaxIds([it], accountId))
-    } else if (stripeId.startsWith('cn_')) {
-      return this.stripe.creditNotes
-        .retrieve(stripeId)
-        .then((it) => this.upsertCreditNotes([it], accountId))
-    } else if (stripeId.startsWith('issfr_')) {
-      return this.stripe.radar.earlyFraudWarnings
-        .retrieve(stripeId)
-        .then((it) => this.upsertEarlyFraudWarning([it], accountId))
-    } else if (stripeId.startsWith('prv_')) {
-      return this.stripe.reviews
-        .retrieve(stripeId)
-        .then((it) => this.upsertReviews([it], accountId))
-    } else if (stripeId.startsWith('re_')) {
-      return this.stripe.refunds
-        .retrieve(stripeId)
-        .then((it) => this.upsertRefunds([it], accountId))
-    } else if (stripeId.startsWith('feat_')) {
-      return this.stripe.entitlements.features
-        .retrieve(stripeId)
-        .then((it) => this.upsertFeatures([it], accountId))
-    } else if (stripeId.startsWith('cs_')) {
-      return this.stripe.checkout.sessions
-        .retrieve(stripeId)
-        .then((it) => this.upsertCheckoutSessions([it], accountId))
-    }
-  }
 
-  /**
-   * Process one page of items for the specified object type.
-   * Returns the number of items processed and whether there are more pages.
-   *
-   * This method is designed for queue-based consumption where each page
-   * is processed as a separate job. Uses the observable sync system for tracking.
-   *
-   * @param object - The Stripe object type to sync (e.g., 'customer', 'product')
-   * @param params - Optional parameters for filtering and run context
-   * @returns ProcessNextResult with processed count, hasMore flag, and runStartedAt
-   *
-   * @example
-   * ```typescript
-   * // Queue worker
-   * const { hasMore, runStartedAt } = await stripeSync.processNext('customer')
-   * if (hasMore) {
-   *   await queue.send({ object: 'customer', runStartedAt })
-   * }
-   * ```
-   */
-  async processNext(
-    object: Exclude<SyncObject, 'all' | 'customer_with_entitlements'>,
-    params?: ProcessNextParams
-  ): Promise<ProcessNextResult> {
-    try {
-      // Ensure account exists before syncing
-      await this.getCurrentAccount()
-      const accountId = await this.getAccountId()
-
-      // Map object type to resource name (database table)
-      const resourceName = this.getResourceName(object)
-
-      // Get or create sync run
-      let runStartedAt: Date
-      if (params?.runStartedAt) {
-        runStartedAt = params.runStartedAt
+      if (page.data.length > 0) {
+        // There exists a customer at/before mid; try earlier
+        best = mid
+        hi = mid - 1
       } else {
-        const { runKey } = await this.joinOrCreateSyncRun(params?.triggeredBy ?? 'processNext')
-        runStartedAt = runKey.runStartedAt
+        // No customers that early; try later
+        lo = mid + 1
       }
-
-      // Ensure object run exists
-      await this.postgresClient.createObjectRuns(accountId, runStartedAt, [resourceName])
-
-      // Check object status and try to claim if pending
-      const objRun = await this.postgresClient.getObjectRun(accountId, runStartedAt, resourceName)
-      if (objRun?.status === 'complete' || objRun?.status === 'error') {
-        // Object already finished - return early
-        return {
-          processed: 0,
-          hasMore: false,
-          runStartedAt,
-        }
-      }
-
-      // Try to start if pending (for first call on this object)
-      if (objRun?.status === 'pending') {
-        const started = await this.postgresClient.tryStartObjectSync(
-          accountId,
-          runStartedAt,
-          resourceName
-        )
-        if (!started) {
-          // At concurrency limit - return early
-          return {
-            processed: 0,
-            hasMore: true,
-            runStartedAt,
-          }
-        }
-      }
-      // If status is 'running', we continue processing (fetch next page)
-
-      // Look up config from registry (needed to decide cursor semantics).
-      const registryConfig = this.resourceRegistry[object]
-      if (!registryConfig) {
-        throw new Error(`Unsupported object type for processNext: ${object}`)
-      }
-
-      // Get cursor for incremental sync.
-      // If user provided explicit created filter, use it
-      // Otherwise, use the cursor from the last completed run.
-      //
-      // Note: Do not use the current run’s cursor as created.gte. That cursor while paging, and using it would keep jumping to newest-only, and can get stuck syncing ~100 rows forever.
-      let cursor: string | null = null
-      if (!params?.created) {
-        const lastCursor = await this.postgresClient.getLastCursorBeforeRun(
-          accountId,
-          resourceName,
-          runStartedAt
-        )
-        cursor = lastCursor ?? null
-      }
-
-      // Sigma paging uses the current run cursor to advance page-by-page.
-      if (registryConfig.sigma && objRun?.cursor) {
-        cursor = objRun.cursor
-      }
-
-      // Fetch one page and upsert
-      const result = await this.fetchOnePage(
-        object,
-        accountId,
-        resourceName,
-        runStartedAt,
-        cursor,
-        objRun?.pageCursor ?? null,
-        params
-      )
-
-      return result
-    } catch (error) {
-      throw this.appendMigrationHint(error)
     }
+
+    return best // earliest second where at least one customer exists
   }
 
-  appendMigrationHint(error: unknown): Error {
-    const hint =
-      'Error occurred. Make sure you are up to date with DB migrations which can sometimes help with this. Details:'
-    const withHint = (message: string) => (message.includes(hint) ? message : `${hint}\n${message}`)
+  async createChunks(
+    objects: StripeObject[],
+    workerCount: number = 100
+  ): Promise<{ chunkCursors: Record<string, number[]>; nonChunkTables: string[] }> {
+    const cursors = await Promise.all(
+      objects
+        .filter((obj) => this.resourceRegistry[obj]?.supportsCreatedFilter)
+        .map(async (obj) => {
+          const config = this.resourceRegistry[obj]
+          if (!config.listFn) return null
+          const oldest = await this.findOldestItem(config.listFn)
+          if (oldest === null) return null
+          return { object: obj, oldest }
+        })
+    )
 
-    if (error instanceof Error) {
-      const { stack } = error
-      error.message = withHint(error.message)
-      if (stack) error.stack = stack
-      return error
+    const chunkCount = 2 * workerCount
+    const validCursors = cursors.filter(
+      (c): c is { object: StripeObject; oldest: number } => c !== null
+    )
+    const chunkCursors: Record<string, number[]> = {}
+    const nonChunkCursors = objects.filter((obj) => !validCursors.some((c) => c.object === obj))
+    const nonChunkTables = nonChunkCursors.map((obj) =>
+      getTableName(obj, this.getRegistryForObject(obj))
+    )
+    const now = Math.floor(Date.now() / 1000)
+    for (const { object: obj, oldest } of validCursors) {
+      const tableName = getTableName(obj, this.getRegistryForObject(obj))
+      const range = now - oldest
+      const interval = Math.max(Math.floor(range / chunkCount), 3600)
+      const timestamps: number[] = []
+      let ts = oldest
+      while (ts < now) {
+        timestamps.push(ts)
+        ts += interval
+      }
+
+      chunkCursors[tableName] = timestamps
     }
 
-    return new Error(withHint(String(error)))
+    return { chunkCursors, nonChunkTables }
   }
 
   /**
-   * Get the database resource name for a SyncObject type
+   * Build a map of table name → priority (order from resourceRegistry).
+   * Used when creating sync object runs so workers process parents before children.
    */
-  getResourceName(object: SyncObject): string {
-    const mapping: Record<string, string> = {
-      customer: 'customers',
-      invoice: 'invoices',
-      price: 'prices',
-      product: 'products',
-      subscription: 'subscriptions',
-      subscription_schedules: 'subscription_schedules',
-      setup_intent: 'setup_intents',
-      payment_method: 'payment_methods',
-      dispute: 'disputes',
-      charge: 'charges',
-      payment_intent: 'payment_intents',
-      plan: 'plans',
-      tax_id: 'tax_ids',
-      credit_note: 'credit_notes',
-      early_fraud_warning: 'early_fraud_warnings',
-      refund: 'refunds',
-      checkout_sessions: 'checkout_sessions',
+  private buildPriorityMap(objects: StripeObject[]): Record<string, number> {
+    const priorities: Record<string, number> = {}
+    for (const obj of objects) {
+      const config = this.getRegistryForObject(obj)[obj]
+      if (config) {
+        priorities[config.tableName] = config.order
+      }
     }
-    return mapping[object] || object
+    return priorities
   }
 
-  /**
-   * Fetch one page of items from Stripe and upsert to database.
-   * Uses resourceRegistry for DRY list/upsert operations.
-   * Uses the observable sync system for tracking progress.
-   */
-  async fetchOnePage(
-    object: Exclude<SyncObject, 'all' | 'customer_with_entitlements'>,
-    accountId: string,
-    resourceName: string,
-    runStartedAt: Date,
-    cursor: string | null,
-    pageCursor: string | null,
-    params?: ProcessNextParams
-  ): Promise<ProcessNextResult> {
-    const limit = 100 // Stripe page size
-
-    // Handle special cases that require customer context
-    if (object === 'payment_method' || object === 'tax_id') {
-      this.config.logger?.warn(`processNext for ${object} requires customer context`)
-      await this.postgresClient.completeObjectSync(accountId, runStartedAt, resourceName)
-      return { processed: 0, hasMore: false, runStartedAt }
-    }
-
-    // Look up config from registry
-    const config = this.resourceRegistry[object]
-    if (!config) {
-      throw new Error(`Unsupported object type for processNext: ${object}`)
-    }
-
-    if (config.sigma && !this.config.enableSigma) {
-      throw new Error(`Sigma sync is disabled. Enable sigma to sync ${object}.`)
-    }
-
-    try {
-      if (config.sigma) {
-        return await this.fetchOneSigmaPage(
-          accountId,
-          resourceName,
-          runStartedAt,
-          cursor,
-          config.sigma
-        )
-      }
-
-      // Build list parameters
-      const listParams: Stripe.PaginationParams & { created?: Stripe.RangeQueryParam } = { limit }
-      if (config.supportsCreatedFilter) {
-        const created =
-          params?.created ??
-          (cursor && /^\d+$/.test(cursor)
-            ? ({ gte: Number.parseInt(cursor, 10) } as const)
-            : undefined)
-        if (created) {
-          listParams.created = created
-        }
-      }
-
-      // Add pagination cursor if present
-      if (pageCursor) {
-        listParams.starting_after = pageCursor
-      }
-
-      // Fetch from Stripe
-      const response = await config.listFn(listParams)
-
-      // Defensive: Stripe should not return has_more=true with empty data. Avoid infinite loops by failing this object run if it ever happens.
-      if (response.data.length === 0 && response.has_more) {
-        const message = `Stripe returned has_more=true with empty page for ${resourceName}. Aborting to avoid infinite loop.`
-        this.config.logger?.warn(message)
-
-        await this.postgresClient.failObjectSync(accountId, runStartedAt, resourceName, message)
-        return { processed: 0, hasMore: false, runStartedAt }
-      }
-
-      // Upsert the data
-      if (response.data.length > 0) {
-        this.config.logger?.info(`processNext: upserting ${response.data.length} ${resourceName}`)
-        await config.upsertFn(response.data, accountId, params?.backfillRelatedEntities)
-
-        // Update progress
-        await this.postgresClient.incrementObjectProgress(
-          accountId,
-          runStartedAt,
-          resourceName,
-          response.data.length
-        )
-
-        // Update cursor with max created from this batch
-        const maxCreated = Math.max(
-          ...response.data.map((i) => (i as { created?: number }).created || 0)
-        )
-        if (maxCreated > 0) {
-          await this.postgresClient.updateObjectCursor(
-            accountId,
-            runStartedAt,
-            resourceName,
-            String(maxCreated)
-          )
-        }
-
-        // Update pagination page_cursor with last item's ID
-        const lastId = (response.data[response.data.length - 1] as { id: string }).id
-        if (response.has_more) {
-          await this.postgresClient.updateObjectPageCursor(
-            accountId,
-            runStartedAt,
-            resourceName,
-            lastId
-          )
-        }
-      }
-
-      // Mark complete if no more pages
-      if (!response.has_more) {
-        await this.postgresClient.completeObjectSync(accountId, runStartedAt, resourceName)
-      }
-
-      return {
-        processed: response.data.length,
-        hasMore: response.has_more,
-        runStartedAt,
-      }
-    } catch (error) {
-      await this.postgresClient.failObjectSync(
-        accountId,
-        runStartedAt,
-        resourceName,
-        error instanceof Error ? error.message : 'Unknown error'
-      )
-      throw error
-    }
-  }
-
-  async getSigmaFallbackCursorFromDestination(
-    accountId: string,
-    sigmaConfig: SigmaIngestionConfig
-  ): Promise<string | null> {
-    const sigmaSchema = this.sigmaSchemaName
-    const cursorCols = sigmaConfig.cursor.columns
-    const selectCols = cursorCols.map((c) => `"${c.column}"`).join(', ')
-    const orderBy = cursorCols.map((c) => `"${c.column}" DESC`).join(', ')
-
-    const result = await this.postgresClient.query(
-      `SELECT ${selectCols}
-       FROM "${sigmaSchema}"."${sigmaConfig.destinationTable}"
-       WHERE "_account_id" = $1
-       ORDER BY ${orderBy}
-       LIMIT 1`,
-      [accountId]
+  async initializeSegment(
+    runKey: RunKey,
+    objects: StripeObject[],
+    workerCount: number
+  ): Promise<RunKey> {
+    const { chunkCursors, nonChunkTables } = await this.createChunks(objects, workerCount)
+    const priorities = this.buildPriorityMap(objects)
+    await this.postgresClient.createChunkedObjectRuns(
+      runKey.accountId,
+      runKey.runStartedAt,
+      chunkCursors,
+      priorities
     )
-
-    if (result.rows.length === 0) return null
-
-    const row = result.rows[0] as Record<string, unknown>
-    const entryForCursor: Record<string, unknown> = {}
-    for (const c of cursorCols) {
-      const v = row[c.column]
-      if (v == null) {
-        throw new Error(
-          `Sigma fallback cursor query returned null for ${sigmaConfig.destinationTable}.${c.column}`
-        )
-      }
-      if (c.type === 'timestamp') {
-        const d = v instanceof Date ? v : new Date(String(v))
-        if (Number.isNaN(d.getTime())) {
-          throw new Error(
-            `Sigma fallback cursor query returned invalid timestamp for ${sigmaConfig.destinationTable}.${c.column}: ${String(
-              v
-            )}`
-          )
-        }
-        entryForCursor[c.column] = d.toISOString()
-      } else {
-        entryForCursor[c.column] = String(v)
-      }
-    }
-
-    return sigmaCursorFromEntry(sigmaConfig, entryForCursor)
-  }
-
-  async fetchOneSigmaPage(
-    accountId: string,
-    resourceName: string,
-    runStartedAt: Date,
-    cursor: string | null,
-    sigmaConfig: SigmaIngestionConfig
-  ): Promise<ProcessNextResult> {
-    if (!this.config.stripeSecretKey) {
-      throw new Error('Sigma sync requested but stripeSecretKey is not configured.')
-    }
-    if (resourceName !== sigmaConfig.destinationTable) {
-      throw new Error(
-        `Sigma sync config mismatch: resourceName=${resourceName} destinationTable=${sigmaConfig.destinationTable}`
-      )
-    }
-
-    const effectiveCursor =
-      cursor ?? (await this.getSigmaFallbackCursorFromDestination(accountId, sigmaConfig))
-    const sigmaSql = buildSigmaQuery(sigmaConfig, effectiveCursor)
-
-    this.config.logger?.info(
-      { object: resourceName, pageSize: sigmaConfig.pageSize, hasCursor: Boolean(effectiveCursor) },
-      'Sigma sync: running query'
-    )
-
-    const { queryRunId, fileId, csv } = await runSigmaQueryAndDownloadCsv({
-      apiKey: this.config.stripeSecretKey,
-      sql: sigmaSql,
-      logger: this.config.logger,
-      partnerId: this.config.partnerId,
-    })
-
-    const rows = parseCsvObjects(csv)
-    if (rows.length === 0) {
-      await this.postgresClient.completeObjectSync(accountId, runStartedAt, resourceName)
-      return { processed: 0, hasMore: false, runStartedAt }
-    }
-
-    const entries: Array<Record<string, unknown>> = rows.map((row) =>
-      defaultSigmaRowToEntry(sigmaConfig, row)
-    )
-
-    this.config.logger?.info(
-      { object: resourceName, rows: entries.length, queryRunId, fileId },
-      'Sigma sync: upserting rows'
-    )
-
-    await this.postgresClient.upsertManyWithTimestampProtection(
-      entries,
-      resourceName,
-      accountId,
-      undefined,
-      sigmaConfig.upsert,
-      this.sigmaSchemaName
-    )
-
-    await this.postgresClient.incrementObjectProgress(
-      accountId,
-      runStartedAt,
-      resourceName,
-      entries.length
-    )
-
-    // Cursor: advance to the last row in the page (matches the ORDER BY in buildSigmaQuery()).
-    const newCursor = sigmaCursorFromEntry(sigmaConfig, entries[entries.length - 1]!)
-    await this.postgresClient.updateObjectCursor(accountId, runStartedAt, resourceName, newCursor)
-
-    const hasMore = rows.length === sigmaConfig.pageSize
-    if (!hasMore) {
-      await this.postgresClient.completeObjectSync(accountId, runStartedAt, resourceName)
-    }
-
-    return { processed: entries.length, hasMore, runStartedAt }
-  }
-
-  /**
-   * Process all pages for a single object type until complete.
-   * Loops processNext() internally until hasMore is false.
-   *
-   * @param object - The object type to sync
-   * @param runStartedAt - The sync run to use (for sharing across objects)
-   * @param params - Optional sync parameters
-   * @returns Sync result with count of synced items
-   */
-  async processObjectUntilDone(
-    object: Exclude<SyncObject, 'all' | 'customer_with_entitlements'>,
-    runStartedAt: Date,
-    params?: SyncParams
-  ): Promise<Sync> {
-    let totalSynced = 0
-
-    while (true) {
-      const result = await this.processNext(object, {
-        ...params,
-        runStartedAt,
-        triggeredBy: 'processUntilDone',
-      })
-      totalSynced += result.processed
-
-      if (!result.hasMore) {
-        break
-      }
-    }
-
-    return { synced: totalSynced }
-  }
-
-  /**
-   * Join existing sync run or create a new one.
-   * Returns sync run key and list of supported objects to sync.
-   *
-   * Cooperative behavior: If a sync run already exists, joins it instead of failing.
-   * This is used by workers and background processes that should cooperate.
-   *
-   * @param triggeredBy - What triggered this sync (for observability)
-   * @param objectFilter - Optional specific object to sync (e.g. 'payment_intent'). If 'all' or undefined, syncs all objects.
-   * @returns Run key and list of objects to sync
-   */
-  async joinOrCreateSyncRun(
-    triggeredBy: string = 'worker',
-    objectFilter?: SyncObject
-  ): Promise<{
-    runKey: RunKey
-    objects: Exclude<SyncObject, 'all' | 'customer_with_entitlements'>[]
-  }> {
-    await this.getCurrentAccount()
-    const accountId = await this.getAccountId()
-
-    const result = await this.postgresClient.getOrCreateSyncRun(accountId, triggeredBy)
-
-    // Determine which objects to create runs for
-    const objects =
-      objectFilter === 'all' || objectFilter === undefined
-        ? this.getSupportedSyncObjects()
-        : [objectFilter as Exclude<SyncObject, 'all' | 'customer_with_entitlements'>]
-
-    if (!result) {
-      const activeRun = await this.postgresClient.getActiveSyncRun(accountId)
-      if (!activeRun) {
-        throw new Error('Failed to get or create sync run')
-      }
-      // Create object runs upfront to prevent premature close
-      // Convert object types to resource names for database storage
+    if (nonChunkTables.length > 0) {
       await this.postgresClient.createObjectRuns(
-        activeRun.accountId,
-        activeRun.runStartedAt,
-        objects.map((obj) => this.getResourceName(obj))
+        runKey.accountId,
+        runKey.runStartedAt,
+        nonChunkTables,
+        priorities
       )
-      return {
-        runKey: { accountId: activeRun.accountId, runStartedAt: activeRun.runStartedAt },
-        objects,
+    }
+    return runKey
+  }
+
+  async reconciliationSync(
+    objects: StripeObject[],
+    tableNames: string[],
+    segmentedSync: boolean,
+    triggeredBy: string = 'fullSync',
+    interval?: number,
+    workerCount: number = 100
+  ): Promise<RunKey | null> {
+    const priorities = this.buildPriorityMap(objects)
+    let runKey: RunKey | null
+    if (segmentedSync) {
+      runKey = await this.postgresClient.reconciliationRun(
+        this.accountId,
+        triggeredBy,
+        [],
+        interval,
+        priorities
+      )
+    } else {
+      runKey = await this.postgresClient.reconciliationRun(
+        this.accountId,
+        triggeredBy,
+        tableNames,
+        interval,
+        priorities
+      )
+    }
+    if (runKey == null) {
+      return null
+    }
+    if (segmentedSync) {
+      const existingCount = await this.postgresClient.countObjectRuns(
+        runKey.accountId,
+        runKey.runStartedAt
+      )
+      if (existingCount === 0) {
+        await this.initializeSegment(runKey, objects, workerCount)
+      } else {
+        this.config.logger?.info(
+          { existingCount },
+          `Skipping segment initialization — ${existingCount} object run(s) already exist`
+        )
       }
     }
-
-    const { accountId: runAccountId, runStartedAt } = result
-    // Create object runs upfront to prevent premature close
-    // Convert object types to resource names for database storage
-    await this.postgresClient.createObjectRuns(
-      runAccountId,
-      runStartedAt,
-      objects.map((obj) => this.getResourceName(obj))
-    )
-    return {
-      runKey: { accountId: runAccountId, runStartedAt },
-      objects,
-    }
+    return runKey
   }
 
-  applySyncBackfillResult(
-    results: SyncBackfill,
-    object: Exclude<SyncObject, 'all' | 'customer_with_entitlements'>,
-    result: Sync
-  ): void {
-    if (this.isSigmaResource(object)) {
-      results.sigma = results.sigma ?? {}
-      results.sigma[object] = result
-      const camelKey = this.sigmaResultKey(object)
-      ;(results as Record<string, Sync>)[camelKey] = result
-      return
-    }
-
-    // TODO: obj === 'payment_methods' reqiores special handling
-
-    switch (object) {
-      case 'product':
-        results.products = result
-        break
-      case 'price':
-        results.prices = result
-        break
-      case 'plan':
-        results.plans = result
-        break
-      case 'customer':
-        results.customers = result
-        break
-      case 'subscription':
-        results.subscriptions = result
-        break
-      case 'subscription_schedules':
-        results.subscriptionSchedules = result
-        break
-      case 'invoice':
-        results.invoices = result
-        break
-      case 'charge':
-        results.charges = result
-        break
-      case 'setup_intent':
-        results.setupIntents = result
-        break
-      case 'payment_intent':
-        results.paymentIntents = result
-        break
-      case 'tax_id':
-        results.taxIds = result
-        break
-      case 'credit_note':
-        results.creditNotes = result
-        break
-      case 'dispute':
-        results.disputes = result
-        break
-      case 'early_fraud_warning':
-        results.earlyFraudWarnings = result
-        break
-      case 'refund':
-        results.refunds = result
-        break
-      case 'checkout_sessions':
-        results.checkoutSessions = result
-        break
-    }
-  }
-
-  async processUntilDoneParallel(
-    params?: SyncParams & {
-      maxParallel?: number
-      triggeredBy?: string
-      continueOnError?: boolean
-      skipInaccessibleSigmaTables?: boolean
-    }
+  async fullSync(
+    tables?: StripeObject[],
+    segmentedSync: boolean = true,
+    workerCount: number = 20,
+    rateLimit: number = 10,
+    monitorProgress: boolean = true,
+    interval?: number
   ): Promise<{
-    results: SyncBackfill
+    results: Record<string, Sync>
     totals: Record<string, number>
     totalSynced: number
     skipped: string[]
     errors: Array<{ object: string; message: string }>
   }> {
-    const {
-      object,
-      maxParallel,
-      triggeredBy = 'processUntilDoneParallel',
-      continueOnError = true,
-      skipInaccessibleSigmaTables = false,
-    } = params ?? {}
-
-    const { runKey, objects } = await this.joinOrCreateSyncRun(triggeredBy, object)
-    const runConfig = await this.postgresClient.getSyncRun(runKey.accountId, runKey.runStartedAt)
-    const maxConcurrent = runConfig?.maxConcurrent ?? 10
-    const workerCount = Math.max(
-      1,
-      Math.min(objects.length, maxParallel ?? maxConcurrent, maxConcurrent)
+    const objects = tables && tables.length > 0 ? tables : this.getSupportedSyncObjects()
+    const tableNames = objects.map((obj) => getTableName(obj, this.getRegistryForObject(obj)))
+    const runKey = await this.reconciliationSync(
+      objects,
+      tableNames,
+      segmentedSync,
+      'fullSync',
+      interval,
+      workerCount
     )
-
-    const totals: Record<string, number> = {}
-    for (const obj of objects) {
-      totals[obj] = 0
+    if (runKey == null) {
+      return { results: {}, totals: {}, totalSynced: 0, skipped: [], errors: [] }
     }
 
-    const skipped: string[] = []
+    // Reset any orphaned 'running' objects back to 'pending' (crash recovery).
+    // If the previous process was killed mid-sync, object runs may be stuck in
+    // 'running' with no active worker. Resetting lets new workers re-claim them.
+    const resetCount = await this.postgresClient.resetStuckRunningObjects(
+      runKey.accountId,
+      runKey.runStartedAt
+    )
+    if (resetCount > 0) {
+      this.config.logger?.info(
+        { resetCount },
+        `Reset ${resetCount} stuck 'running' object(s) to 'pending' (crash recovery)`
+      )
+    }
+
+    const workers = Array.from(
+      { length: workerCount },
+      () =>
+        new StripeSyncWorker(
+          this.stripe,
+          this.config,
+          this.sigma,
+          this.postgresClient,
+          this.accountId,
+          this.resourceRegistry,
+          this.sigmaRegistry,
+          runKey,
+          this.upsertAny.bind(this),
+          Infinity,
+          rateLimit
+        )
+    )
+    workers.forEach((worker) => worker.start())
+
+    let monitorInterval: ReturnType<typeof setInterval> | undefined
+    if (monitorProgress) {
+      this.disableLogger()
+      monitorInterval = this.startTableMonitor(1000, runKey)
+    }
+
+    await Promise.all(workers.map((worker) => worker.waitUntilDone()))
+    clearInterval(monitorInterval)
+    this.enableLogger()
+    await this.printProgress(runKey)
+
+    const totals = await this.postgresClient.getObjectSyncedCounts(
+      this.accountId,
+      runKey.runStartedAt
+    )
+
+    const results: Record<string, Sync> = {}
     const errors: Array<{ object: string; message: string }> = []
-    const queue = [...objects]
-    const shouldSkipInaccessibleTable = (message: string) =>
-      message.includes('tables which do not exist or are inaccessible')
+    for (const [obj, count] of Object.entries(totals)) {
+      results[obj] = { synced: count }
+    }
+    const totalSynced = Object.values(totals).reduce((sum, count) => sum + count, 0)
 
-    const worker = async () => {
-      while (true) {
-        const obj = queue.shift()
-        if (!obj) break
+    await this.postgresClient.closeSyncRun(runKey.accountId, runKey.runStartedAt)
 
-        try {
-          let hasMore = true
-          while (hasMore) {
-            const result = await this.processNext(obj, {
-              runStartedAt: runKey.runStartedAt,
-              triggeredBy,
-              created: params?.created,
-              backfillRelatedEntities: params?.backfillRelatedEntities,
-            })
-            totals[obj] += result.processed
-            hasMore = result.hasMore
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          if (skipInaccessibleSigmaTables && shouldSkipInaccessibleTable(message)) {
-            skipped.push(obj)
-            this.config.logger?.warn(`Skipping Sigma table ${obj}: not accessible for this account`)
-            continue
-          }
-          errors.push({ object: obj, message })
-          this.config.logger?.error(`Sync error for ${obj}: ${message}`)
-          if (!continueOnError) {
-            throw error
-          }
+    return { results, totals, totalSynced, skipped: [], errors }
+  }
+
+  async upsertAny(
+    items: { [Key: string]: any }[], // eslint-disable-line @typescript-eslint/no-explicit-any
+    accountId: string,
+    backfillRelatedEntities?: boolean,
+    syncTimestamp?: string
+  ): Promise<unknown[]> {
+    if (items.length === 0) return []
+    const stripeObjectName = items[0].object
+
+    const syncObjectName = normalizeStripeObjectName(stripeObjectName)
+    const registry = this.getRegistryForObject(syncObjectName)
+    const dependencies = registry[syncObjectName]?.dependencies ?? []
+    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
+      await Promise.all(
+        dependencies.map((dependency) =>
+          this.backfillAny(
+            getUniqueIds(items, dependency),
+            dependency as StripeObject,
+            accountId,
+            syncTimestamp
+          )
+        )
+      )
+    }
+
+    const config = registry[syncObjectName]
+    const autoExpandLists = this.config.autoExpandLists ?? false
+    if (autoExpandLists && config?.listExpands) {
+      for (const expandEntry of config.listExpands) {
+        for (const [property, expandFn] of Object.entries(expandEntry)) {
+          await expandEntity(items, property, (id) => expandFn(id))
         }
       }
     }
 
-    try {
-      const workers = Array.from({ length: workerCount }, () => worker())
-      await Promise.all(workers)
-
-      const results: SyncBackfill = {}
-      for (const obj of objects) {
-        this.applySyncBackfillResult(results, obj, { synced: totals[obj] ?? 0 })
-      }
-
-      const totalSynced = Object.values(totals).reduce((sum, count) => sum + count, 0)
-      await this.postgresClient.closeSyncRun(runKey.accountId, runKey.runStartedAt)
-
-      return { results, totals, totalSynced, skipped, errors }
-    } catch (error) {
-      await this.postgresClient.closeSyncRun(runKey.accountId, runKey.runStartedAt)
-      throw error
-    }
-  }
-
-  async processUntilDone(params?: SyncParams): Promise<SyncBackfill> {
-    const { object } = params ?? { object: 'all' }
-
-    // Join or create sync run with object filter
-    const { runKey } = await this.joinOrCreateSyncRun('processUntilDone', object)
-
-    return this.processUntilDoneWithRun(runKey.runStartedAt, object, params)
-  }
-
-  /**
-   * Internal implementation of processUntilDone with an existing run.
-   */
-  async processUntilDoneWithRun(
-    runStartedAt: Date,
-    object: SyncObject | undefined,
-    params?: SyncParams
-  ): Promise<SyncBackfill> {
-    const accountId = await this.getAccountId()
-
-    const results: SyncBackfill = {}
-
-    try {
-      // Determine which objects to sync
-      // getSupportedSyncObjects() returns objects in correct dependency order for backfills
-      const objectsToSync: Exclude<SyncObject, 'all' | 'customer_with_entitlements'>[] =
-        object === 'all' || object === undefined
-          ? this.getSupportedSyncObjects()
-          : [object as Exclude<SyncObject, 'all' | 'customer_with_entitlements'>]
-
-      // Sync each object type
-      for (const obj of objectsToSync) {
-        this.config.logger?.info(`Syncing ${obj}`)
-        const result = await this.processObjectUntilDone(obj, runStartedAt, params)
-        this.applySyncBackfillResult(results, obj, result)
-      }
-
-      // Close the sync run after all objects are done (status derived from object states)
-      await this.postgresClient.closeSyncRun(accountId, runStartedAt)
-
-      return results
-    } catch (error) {
-      // Close the sync run on error (status will be 'error' based on failed object states)
-      await this.postgresClient.closeSyncRun(accountId, runStartedAt)
-      throw error
-    }
-  }
-
-  async upsertCharges(
-    charges: Stripe.Charge[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.Charge[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await Promise.all([
-        this.backfillCustomers(getUniqueIds(charges, 'customer'), accountId),
-        this.backfillInvoices(getUniqueIds(charges, 'invoice'), accountId),
-      ])
-    }
-
-    await this.expandEntity(charges, 'refunds', (id) =>
-      this.stripe.refunds.list({ charge: id, limit: 100 })
-    )
-
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      charges,
-      'charges',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async backfillCharges(chargeIds: string[], accountId: string) {
-    const missingChargeIds = await this.postgresClient.findMissingEntries('charges', chargeIds)
-
-    this.postgresClient.deleteRemovedActiveEntitlements(accountId, missingChargeIds)
-    const charges = await this.fetchMissingEntities(missingChargeIds, (id) =>
-      this.stripe.charges.retrieve(id)
-    )
-    return this.upsertCharges(charges, accountId)
-  }
-
-  async backfillPaymentIntents(paymentIntentIds: string[], accountId: string) {
-    const missingIds = await this.postgresClient.findMissingEntries(
-      'payment_intents',
-      paymentIntentIds
-    )
-
-    const paymentIntents = await this.fetchMissingEntities(missingIds, (id) =>
-      this.stripe.paymentIntents.retrieve(id)
-    )
-    await this.upsertPaymentIntents(paymentIntents, accountId)
-  }
-
-  async upsertCreditNotes(
-    creditNotes: Stripe.CreditNote[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.CreditNote[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await Promise.all([
-        this.backfillCustomers(getUniqueIds(creditNotes, 'customer'), accountId),
-        this.backfillInvoices(getUniqueIds(creditNotes, 'invoice'), accountId),
-      ])
-    }
-
-    await this.expandEntity(creditNotes, 'lines', (id) =>
-      this.stripe.creditNotes.listLineItems(id, { limit: 100 })
-    )
-
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      creditNotes,
-      'credit_notes',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async upsertCheckoutSessions(
-    checkoutSessions: Stripe.Checkout.Session[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.Checkout.Session[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await Promise.all([
-        this.backfillCustomers(getUniqueIds(checkoutSessions, 'customer'), accountId),
-        this.backfillSubscriptions(getUniqueIds(checkoutSessions, 'subscription'), accountId),
-        this.backfillPaymentIntents(getUniqueIds(checkoutSessions, 'payment_intent'), accountId),
-        this.backfillInvoices(getUniqueIds(checkoutSessions, 'invoice'), accountId),
-      ])
-    }
-
-    // Upsert checkout sessions first
+    const tableName = getTableName(syncObjectName, registry)
     const rows = await this.postgresClient.upsertManyWithTimestampProtection(
-      checkoutSessions,
-      'checkout_sessions',
+      items,
+      tableName,
       accountId,
       syncTimestamp
     )
 
-    await this.fillCheckoutSessionsLineItems(
-      checkoutSessions.map((cs) => cs.id),
-      accountId,
-      syncTimestamp
-    )
+    if (syncObjectName === 'subscription') {
+      await this.syncSubscriptionItems(items as Stripe.Subscription[], accountId, syncTimestamp)
+    }
 
     return rows
   }
 
-  async upsertEarlyFraudWarning(
-    earlyFraudWarnings: Stripe.Radar.EarlyFraudWarning[],
+  async backfillAny(
+    ids: string[],
+    objectName: StripeObject,
     accountId: string,
-    backfillRelatedEntities?: boolean,
     syncTimestamp?: string
-  ): Promise<Stripe.Radar.EarlyFraudWarning[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await Promise.all([
-        this.backfillPaymentIntents(getUniqueIds(earlyFraudWarnings, 'payment_intent'), accountId),
-        this.backfillCharges(getUniqueIds(earlyFraudWarnings, 'charge'), accountId),
-      ])
+  ) {
+    const config = this.getRegistryForObject(objectName)[objectName]
+    const tableName = config?.tableName ?? objectName
+    if (!config?.retrieveFn) {
+      throw new Error(`No retrieveFn registered for resource: ${objectName}`)
     }
 
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      earlyFraudWarnings,
-      'early_fraud_warnings',
-      accountId,
-      syncTimestamp
-    )
+    const missingIds = await this.postgresClient.findMissingEntries(tableName, ids)
+
+    const items = await this.fetchMissingEntities(missingIds, (id) => config.retrieveFn!(id))
+    return this.upsertAny(items, accountId, false, syncTimestamp)
   }
 
-  async upsertRefunds(
-    refunds: Stripe.Refund[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.Refund[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await Promise.all([
-        this.backfillPaymentIntents(getUniqueIds(refunds, 'payment_intent'), accountId),
-        this.backfillCharges(getUniqueIds(refunds, 'charge'), accountId),
-      ])
-    }
-
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      refunds,
-      'refunds',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async upsertReviews(
-    reviews: Stripe.Review[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.Review[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await Promise.all([
-        this.backfillPaymentIntents(getUniqueIds(reviews, 'payment_intent'), accountId),
-        this.backfillCharges(getUniqueIds(reviews, 'charge'), accountId),
-      ])
-    }
-
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      reviews,
-      'reviews',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async upsertCustomers(
-    customers: (Stripe.Customer | Stripe.DeletedCustomer)[],
+  /**
+   * Upsert subscription items into a separate table and mark removed items as deleted.
+   * Skips deleted subscriptions that have no items data.
+   */
+  private async syncSubscriptionItems(
+    subscriptions: Stripe.Subscription[],
     accountId: string,
     syncTimestamp?: string
-  ): Promise<(Stripe.Customer | Stripe.DeletedCustomer)[]> {
-    const deletedCustomers = customers.filter((customer) => customer.deleted)
-    const nonDeletedCustomers = customers.filter((customer) => !customer.deleted)
+  ) {
+    const subscriptionsWithItems = subscriptions.filter((s) => s.items?.data)
 
-    await this.postgresClient.upsertManyWithTimestampProtection(
-      nonDeletedCustomers,
-      'customers',
-      accountId,
-      syncTimestamp
-    )
-    await this.postgresClient.upsertManyWithTimestampProtection(
-      deletedCustomers,
-      'customers',
-      accountId,
-      syncTimestamp
-    )
+    const allSubscriptionItems = subscriptionsWithItems.flatMap((s) => s.items.data)
+    await this.upsertSubscriptionItems(allSubscriptionItems, accountId, syncTimestamp)
 
-    return customers
-  }
-
-  async backfillCustomers(customerIds: string[], accountId: string) {
-    const missingIds = await this.postgresClient.findMissingEntries('customers', customerIds)
-
-    try {
-      const customers = await this.fetchMissingEntities(missingIds, (id) =>
-        this.stripe.customers.retrieve(id)
-      )
-      await this.upsertCustomers(customers, accountId)
-    } catch (err) {
-      this.config.logger?.error(err, 'Failed to backfill')
-      throw err
-    }
-  }
-
-  async upsertDisputes(
-    disputes: Stripe.Dispute[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.Dispute[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await this.backfillCharges(getUniqueIds(disputes, 'charge'), accountId)
-    }
-
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      disputes,
-      'disputes',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async upsertInvoices(
-    invoices: Stripe.Invoice[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.Invoice[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await Promise.all([
-        this.backfillCustomers(getUniqueIds(invoices, 'customer'), accountId),
-        this.backfillSubscriptions(getUniqueIds(invoices, 'subscription'), accountId),
-      ])
-    }
-
-    await this.expandEntity(invoices, 'lines', (id) =>
-      this.stripe.invoices.listLineItems(id, { limit: 100 })
-    )
-
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      invoices,
-      'invoices',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async backfillInvoices(invoiceIds: string[], accountId: string) {
-    const missingIds = await this.postgresClient.findMissingEntries('invoices', invoiceIds)
-    const invoices = await this.fetchMissingEntities(missingIds, (id) =>
-      this.stripe.invoices.retrieve(id)
-    )
-    await this.upsertInvoices(invoices, accountId)
-  }
-
-  async backfillPrices(priceIds: string[], accountId: string) {
-    const missingIds = await this.postgresClient.findMissingEntries('prices', priceIds)
-    const prices = await this.fetchMissingEntities(missingIds, (id) =>
-      this.stripe.prices.retrieve(id)
-    )
-    await this.upsertPrices(prices, accountId)
-  }
-
-  async upsertPlans(
-    plans: Stripe.Plan[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.Plan[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await this.backfillProducts(getUniqueIds(plans, 'product'), accountId)
-    }
-
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      plans,
-      'plans',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async upsertPrices(
-    prices: Stripe.Price[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.Price[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await this.backfillProducts(getUniqueIds(prices, 'product'), accountId)
-    }
-
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      prices,
-      'prices',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async upsertProducts(
-    products: Stripe.Product[],
-    accountId: string,
-    syncTimestamp?: string
-  ): Promise<Stripe.Product[]> {
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      products,
-      'products',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async backfillProducts(productIds: string[], accountId: string) {
-    const missingProductIds = await this.postgresClient.findMissingEntries('products', productIds)
-
-    const products = await this.fetchMissingEntities(missingProductIds, (id) =>
-      this.stripe.products.retrieve(id)
-    )
-    await this.upsertProducts(products, accountId)
-  }
-
-  async upsertPaymentIntents(
-    paymentIntents: Stripe.PaymentIntent[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.PaymentIntent[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await Promise.all([
-        this.backfillCustomers(getUniqueIds(paymentIntents, 'customer'), accountId),
-        this.backfillInvoices(getUniqueIds(paymentIntents, 'invoice'), accountId),
-      ])
-    }
-
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      paymentIntents,
-      'payment_intents',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async upsertPaymentMethods(
-    paymentMethods: Stripe.PaymentMethod[],
-    accountId: string,
-    backfillRelatedEntities: boolean = false,
-    syncTimestamp?: string
-  ): Promise<Stripe.PaymentMethod[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await this.backfillCustomers(getUniqueIds(paymentMethods, 'customer'), accountId)
-    }
-
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      paymentMethods,
-      'payment_methods',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async upsertSetupIntents(
-    setupIntents: Stripe.SetupIntent[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.SetupIntent[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await this.backfillCustomers(getUniqueIds(setupIntents, 'customer'), accountId)
-    }
-
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      setupIntents,
-      'setup_intents',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async upsertTaxIds(
-    taxIds: Stripe.TaxId[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.TaxId[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await this.backfillCustomers(getUniqueIds(taxIds, 'customer'), accountId)
-    }
-
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      taxIds,
-      'tax_ids',
-      accountId,
-      syncTimestamp
+    // Mark existing subscription items in db as deleted
+    // if they don't exist in the current subscriptionItems list
+    await Promise.all(
+      subscriptionsWithItems.map((subscription) => {
+        const subItemIds = subscription.items.data.map((x: Stripe.SubscriptionItem) => x.id)
+        return this.markDeletedSubscriptionItems(subscription.id, subItemIds)
+      })
     )
   }
 
@@ -2150,96 +574,16 @@ export class StripeSync {
     accountId: string,
     syncTimestamp?: string
   ) {
-    const modifiedSubscriptionItems = subscriptionItems.map((subscriptionItem) => {
-      // Modify price object to string id; reference prices table
-      const priceId = subscriptionItem.price.id.toString()
-      // deleted exists only on a deleted item
-      const deleted = subscriptionItem.deleted
-      // quantity not exist on volume tier item
-      const quantity = subscriptionItem.quantity
-      return {
-        ...subscriptionItem,
-        price: priceId,
-        deleted: deleted ?? false,
-        quantity: quantity ?? null,
-      }
-    })
+    const modifiedSubscriptionItems = subscriptionItems.map((subscriptionItem) => ({
+      ...subscriptionItem,
+      price: subscriptionItem.price.id.toString(),
+      deleted: subscriptionItem.deleted ?? false,
+      quantity: subscriptionItem.quantity ?? null,
+    }))
 
     await this.postgresClient.upsertManyWithTimestampProtection(
       modifiedSubscriptionItems,
       'subscription_items',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async fillCheckoutSessionsLineItems(
-    checkoutSessionIds: string[],
-    accountId: string,
-    syncTimestamp?: string
-  ) {
-    for (const checkoutSessionId of checkoutSessionIds) {
-      const lineItemResponses: Stripe.LineItem[] = []
-
-      // Manual pagination - each fetch() gets automatic retry protection
-      let hasMore = true
-      let startingAfter: string | undefined = undefined
-
-      while (hasMore) {
-        const response: Stripe.ApiList<Stripe.LineItem> =
-          await this.stripe.checkout.sessions.listLineItems(checkoutSessionId, {
-            limit: 100,
-            ...(startingAfter ? { starting_after: startingAfter } : {}),
-          })
-
-        lineItemResponses.push(...response.data)
-
-        hasMore = response.has_more
-        if (response.data.length > 0) {
-          startingAfter = response.data[response.data.length - 1].id
-        }
-      }
-
-      await this.upsertCheckoutSessionLineItems(
-        lineItemResponses,
-        checkoutSessionId,
-        accountId,
-        syncTimestamp
-      )
-    }
-  }
-
-  async upsertCheckoutSessionLineItems(
-    lineItems: Stripe.LineItem[],
-    checkoutSessionId: string,
-    accountId: string,
-    syncTimestamp?: string
-  ) {
-    // prices are needed for line items relation
-    await this.backfillPrices(
-      lineItems
-        .map((lineItem) => lineItem.price?.id?.toString() ?? undefined)
-        .filter((id) => id !== undefined),
-      accountId
-    )
-
-    const modifiedLineItems = lineItems.map((lineItem) => {
-      // Extract price ID if price is an object, otherwise use the string value
-      const priceId =
-        typeof lineItem.price === 'object' && lineItem.price?.id
-          ? lineItem.price.id.toString()
-          : lineItem.price?.toString() || null
-
-      return {
-        ...lineItem,
-        price: priceId,
-        checkout_session: checkoutSessionId,
-      }
-    })
-
-    await this.postgresClient.upsertManyWithTimestampProtection(
-      modifiedLineItems,
-      'checkout_session_line_items',
       accountId,
       syncTimestamp
     )
@@ -2275,99 +619,6 @@ export class StripeSync {
     }
   }
 
-  async upsertSubscriptionSchedules(
-    subscriptionSchedules: Stripe.SubscriptionSchedule[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.SubscriptionSchedule[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      const customerIds = getUniqueIds(subscriptionSchedules, 'customer')
-
-      await this.backfillCustomers(customerIds, accountId)
-    }
-
-    // Run it
-    const rows = await this.postgresClient.upsertManyWithTimestampProtection(
-      subscriptionSchedules,
-      'subscription_schedules',
-      accountId,
-      syncTimestamp
-    )
-
-    return rows
-  }
-
-  async upsertSubscriptions(
-    subscriptions: Stripe.Subscription[],
-    accountId: string,
-    backfillRelatedEntities?: boolean,
-    syncTimestamp?: string
-  ): Promise<Stripe.Subscription[]> {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      const customerIds = getUniqueIds(subscriptions, 'customer')
-
-      await this.backfillCustomers(customerIds, accountId)
-    }
-
-    await this.expandEntity(subscriptions, 'items', (id) =>
-      this.stripe.subscriptionItems.list({ subscription: id, limit: 100 })
-    )
-
-    // Run it
-    const rows = await this.postgresClient.upsertManyWithTimestampProtection(
-      subscriptions,
-      'subscriptions',
-      accountId,
-      syncTimestamp
-    )
-
-    // Upsert subscription items into a separate table
-    // need to run after upsert subscription cos subscriptionItems will reference the subscription
-    const allSubscriptionItems = subscriptions.flatMap((subscription) => subscription.items.data)
-    await this.upsertSubscriptionItems(allSubscriptionItems, accountId, syncTimestamp)
-
-    // We have to mark existing subscription item in db as deleted
-    // if it doesn't exist in current subscriptionItems list
-    const markSubscriptionItemsDeleted: Promise<{ rowCount: number }>[] = []
-    for (const subscription of subscriptions) {
-      const subscriptionItems = subscription.items.data
-      const subItemIds = subscriptionItems.map((x: Stripe.SubscriptionItem) => x.id)
-      markSubscriptionItemsDeleted.push(
-        this.markDeletedSubscriptionItems(subscription.id, subItemIds)
-      )
-    }
-    await Promise.all(markSubscriptionItemsDeleted)
-
-    return rows
-  }
-
-  async upsertFeatures(
-    features: Stripe.Entitlements.Feature[],
-    accountId: string,
-    syncTimestamp?: string
-  ) {
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      features,
-      'features',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async backfillFeatures(featureIds: string[], accountId: string) {
-    const missingFeatureIds = await this.postgresClient.findMissingEntries('features', featureIds)
-    try {
-      const features = await this.fetchMissingEntities(missingFeatureIds, (id) =>
-        this.stripe.entitlements.features.retrieve(id)
-      )
-      await this.upsertFeatures(features, accountId)
-    } catch (err) {
-      this.config.logger?.error(err, 'Failed to backfill features')
-      throw err
-    }
-  }
-
   async upsertActiveEntitlements(
     customerId: string,
     activeEntitlements: Stripe.Entitlements.ActiveEntitlement[],
@@ -2375,13 +626,6 @@ export class StripeSync {
     backfillRelatedEntities?: boolean,
     syncTimestamp?: string
   ) {
-    if (backfillRelatedEntities ?? this.config.backfillRelatedEntities) {
-      await Promise.all([
-        this.backfillCustomers(getUniqueIds(activeEntitlements, 'customer'), accountId),
-        this.backfillFeatures(getUniqueIds(activeEntitlements, 'feature'), accountId),
-      ])
-    }
-
     const entitlements = activeEntitlements.map((entitlement) => ({
       id: entitlement.id,
       object: entitlement.object,
@@ -2392,292 +636,7 @@ export class StripeSync {
       lookup_key: entitlement.lookup_key,
     }))
 
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      entitlements,
-      'active_entitlements',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async findOrCreateManagedWebhook(
-    url: string,
-    params?: Omit<Stripe.WebhookEndpointCreateParams, 'url'>
-  ): Promise<Stripe.WebhookEndpoint> {
-    // Default to supported event types if not specified
-    const webhookParams = {
-      enabled_events: this.getSupportedEventTypes(),
-      ...params,
-    }
-    // Use advisory lock to prevent race conditions when multiple instances
-    // try to create webhooks for the same URL simultaneously
-    // Lock is acquired at beginning and released at end via withAdvisoryLock wrapper
-    const accountId = await this.getAccountId()
-    // A webhook should be guaranteed unique over account id and url
-    const lockKey = `webhook:${accountId}:${url}`
-
-    return this.postgresClient.withAdvisoryLock(lockKey, async () => {
-      // Step 1: Check if we already have a webhook for this URL (and account ID) in the database
-      const existingWebhook = await this.getManagedWebhookByUrl(url)
-
-      if (existingWebhook) {
-        // Verify it still exists and is valid in Stripe
-        try {
-          const stripeWebhook = await this.stripe.webhookEndpoints.retrieve(existingWebhook.id)
-          if (stripeWebhook.status === 'enabled') {
-            // Webhook is valid, reuse it
-            return stripeWebhook
-          }
-          // Webhook is disabled, delete it and we'll create a new one below
-          this.config.logger?.info(
-            { webhookId: existingWebhook.id },
-            'Webhook is disabled, deleting and will recreate'
-          )
-          await this.stripe.webhookEndpoints.del(existingWebhook.id)
-          await this.postgresClient.delete('_managed_webhooks', existingWebhook.id)
-        } catch (error) {
-          // Only delete from database if it's a 404 (webhook deleted in Stripe)
-          // Other errors (network issues, rate limits, etc.) should not remove from DB
-          const stripeError = error as { statusCode?: number; code?: string }
-          if (stripeError?.statusCode === 404 || stripeError?.code === 'resource_missing') {
-            this.config.logger?.warn(
-              { error, webhookId: existingWebhook.id },
-              'Webhook not found in Stripe (404), removing from database'
-            )
-            await this.postgresClient.delete('_managed_webhooks', existingWebhook.id)
-          } else {
-            // For other errors, log but don't delete - could be transient
-            this.config.logger?.error(
-              { error, webhookId: existingWebhook.id },
-              'Error retrieving webhook from Stripe, keeping in database'
-            )
-            // Re-throw to prevent continuing with potentially invalid state
-            throw error
-          }
-        }
-      }
-
-      // Step 2: Clean up old webhooks with different URLs
-      const allDbWebhooks = await this.listManagedWebhooks()
-      for (const dbWebhook of allDbWebhooks) {
-        if (dbWebhook.url !== url) {
-          this.config.logger?.info(
-            { webhookId: dbWebhook.id, oldUrl: dbWebhook.url, newUrl: url },
-            'Webhook URL mismatch, deleting'
-          )
-          try {
-            await this.stripe.webhookEndpoints.del(dbWebhook.id)
-          } catch (error) {
-            this.config.logger?.warn(
-              { error, webhookId: dbWebhook.id },
-              'Failed to delete old webhook from Stripe'
-            )
-          }
-          await this.postgresClient.delete('_managed_webhooks', dbWebhook.id)
-        }
-      }
-
-      // Step 3: Before creating a new webhook, check Stripe for orphaned managed webhooks
-      // (webhooks that exist in Stripe but not in our database)
-      // We identify managed webhooks by checking metadata (preferred) or description (backwards compatible)
-      try {
-        const stripeWebhooks = await this.stripe.webhookEndpoints.list({ limit: 100 })
-
-        for (const stripeWebhook of stripeWebhooks.data) {
-          // Check if this webhook was created by us
-          // Method 1 (preferred): Check metadata for managed_by field
-          const isManagedByMetadata =
-            stripeWebhook.metadata?.managed_by?.toLowerCase().replace(/[\s\-]+/g, '') ===
-            'stripesync'
-
-          // Method 2 (backwards compatible): Check if description includes 'stripesync' (spaces/hyphens removed)
-          const normalizedDescription =
-            stripeWebhook.description?.toLowerCase().replace(/[\s\-]+/g, '') || ''
-          const isManagedByDescription = normalizedDescription.includes('stripesync')
-
-          if (isManagedByMetadata || isManagedByDescription) {
-            // Check if this webhook is in our database
-            const existsInDb = allDbWebhooks.some((dbWebhook) => dbWebhook.id === stripeWebhook.id)
-
-            if (!existsInDb) {
-              // This is an orphaned managed webhook - delete it from Stripe
-              // This includes old webhooks with different URLs and any other orphaned managed webhooks
-              this.config.logger?.warn(
-                { webhookId: stripeWebhook.id, url: stripeWebhook.url },
-                'Found orphaned managed webhook in Stripe, deleting'
-              )
-              await this.stripe.webhookEndpoints.del(stripeWebhook.id)
-            }
-          }
-        }
-      } catch (error) {
-        // Log error but continue - don't let cleanup failure prevent webhook creation
-        this.config.logger?.warn({ error }, 'Failed to check for orphaned webhooks')
-      }
-
-      // Step 4: No valid matching webhook found, create a new one
-      // Advisory lock ensures only one instance reaches here for this URL
-      // Create webhook at the exact URL
-      const webhook = await this.stripe.webhookEndpoints.create({
-        ...webhookParams,
-        url,
-        // Always set metadata to identify managed webhooks
-        metadata: {
-          ...webhookParams.metadata,
-          managed_by: 'stripe-sync',
-          version: pkg.version,
-        },
-      })
-
-      // Store webhook in database
-      const accountId = await this.getAccountId()
-      await this.upsertManagedWebhooks([webhook], accountId)
-
-      return webhook
-    })
-  }
-
-  async getManagedWebhook(id: string): Promise<Stripe.WebhookEndpoint | null> {
-    const accountId = await this.getAccountId()
-    const result = await this.postgresClient.query(
-      `SELECT * FROM "stripe"."_managed_webhooks" WHERE id = $1 AND "account_id" = $2`,
-      [id, accountId]
-    )
-    return result.rows.length > 0 ? (result.rows[0] as Stripe.WebhookEndpoint) : null
-  }
-
-  /**
-   * Get a managed webhook by URL and account ID.
-   * Used for race condition recovery: when createManagedWebhook hits a unique constraint
-   * violation (another instance created the webhook), we need to fetch the existing webhook
-   * by URL since we only know the URL, not the ID of the webhook that won the race.
-   */
-  async getManagedWebhookByUrl(url: string): Promise<Stripe.WebhookEndpoint | null> {
-    const accountId = await this.getAccountId()
-    const result = await this.postgresClient.query(
-      `SELECT * FROM "stripe"."_managed_webhooks" WHERE url = $1 AND "account_id" = $2`,
-      [url, accountId]
-    )
-    return result.rows.length > 0 ? (result.rows[0] as Stripe.WebhookEndpoint) : null
-  }
-
-  async listManagedWebhooks(): Promise<Array<Stripe.WebhookEndpoint>> {
-    const accountId = await this.getAccountId()
-    const result = await this.postgresClient.query(
-      `SELECT * FROM "stripe"."_managed_webhooks" WHERE "account_id" = $1 ORDER BY created DESC`,
-      [accountId]
-    )
-    return result.rows as Array<Stripe.WebhookEndpoint>
-  }
-
-  async updateManagedWebhook(
-    id: string,
-    params: Stripe.WebhookEndpointUpdateParams
-  ): Promise<Stripe.WebhookEndpoint> {
-    const webhook = await this.stripe.webhookEndpoints.update(id, params)
-    const accountId = await this.getAccountId()
-    await this.upsertManagedWebhooks([webhook], accountId)
-    return webhook
-  }
-
-  async deleteManagedWebhook(id: string): Promise<boolean> {
-    await this.stripe.webhookEndpoints.del(id)
-    return this.postgresClient.delete('_managed_webhooks', id)
-  }
-
-  async upsertManagedWebhooks(
-    webhooks: Array<Stripe.WebhookEndpoint>,
-    accountId: string,
-    syncTimestamp?: string
-  ): Promise<Array<Stripe.WebhookEndpoint>> {
-    // Filter webhooks to only include schema-defined properties
-    const filteredWebhooks = webhooks.map((webhook) => {
-      const filtered: Record<string, unknown> = {}
-      for (const prop of managedWebhookSchema.properties) {
-        if (prop in webhook) {
-          // No mapping needed for metadata tables - columns don't have underscore prefixes
-          filtered[prop] = webhook[prop as keyof typeof webhook]
-        }
-      }
-      return filtered
-    })
-
-    return this.postgresClient.upsertManyWithTimestampProtection(
-      filteredWebhooks as unknown as Array<Stripe.WebhookEndpoint>,
-      '_managed_webhooks',
-      accountId,
-      syncTimestamp
-    )
-  }
-
-  async backfillSubscriptions(subscriptionIds: string[], accountId: string) {
-    const missingSubscriptionIds = await this.postgresClient.findMissingEntries(
-      'subscriptions',
-      subscriptionIds
-    )
-
-    const subscriptions = await this.fetchMissingEntities(missingSubscriptionIds, (id) =>
-      this.stripe.subscriptions.retrieve(id)
-    )
-    await this.upsertSubscriptions(subscriptions, accountId)
-  }
-
-  async backfillSubscriptionSchedules(subscriptionIds: string[], accountId: string) {
-    const missingSubscriptionIds = await this.postgresClient.findMissingEntries(
-      'subscription_schedules',
-      subscriptionIds
-    )
-
-    const subscriptionSchedules = await this.fetchMissingEntities(missingSubscriptionIds, (id) =>
-      this.stripe.subscriptionSchedules.retrieve(id)
-    )
-    await this.upsertSubscriptionSchedules(subscriptionSchedules, accountId)
-  }
-
-  /**
-   * Stripe only sends the first 10 entries by default, the option will actively fetch all entries.
-   * Uses manual pagination - each fetch() gets automatic retry protection.
-   */
-  async expandEntity<
-    K extends { id?: string },
-    P extends keyof T,
-    T extends { id?: string } & { [key in P]?: Stripe.ApiList<K> | null },
-  >(
-    entities: T[],
-    property: P,
-    listFn: (id: string, params?: { starting_after?: string }) => Promise<Stripe.ApiList<K>>
-  ) {
-    if (!this.config.autoExpandLists) return
-
-    for (const entity of entities) {
-      if (entity[property]?.has_more) {
-        const allData: K[] = []
-
-        // Manual pagination - each fetch() gets automatic retry protection
-        let hasMore = true
-        let startingAfter: string | undefined = undefined
-
-        while (hasMore) {
-          const response = await listFn(
-            entity.id!,
-            startingAfter ? { starting_after: startingAfter } : undefined
-          )
-
-          allData.push(...response.data)
-
-          hasMore = response.has_more
-          if (response.data.length > 0) {
-            startingAfter = response.data[response.data.length - 1].id
-          }
-        }
-
-        entity[property] = {
-          ...entity[property],
-          data: allData,
-          has_more: false,
-        }
-      }
-    }
+    return this.upsertAny(entitlements, accountId, backfillRelatedEntities, syncTimestamp)
   }
 
   async fetchMissingEntities<T>(
@@ -2685,15 +644,7 @@ export class StripeSync {
     fetch: (id: string) => Promise<Stripe.Response<T>>
   ): Promise<T[]> {
     if (!ids.length) return []
-
-    const entities: T[] = []
-
-    for (const id of ids) {
-      const entity = await fetch(id)
-      entities.push(entity)
-    }
-
-    return entities
+    return Promise.all(ids.map(fetch))
   }
 
   /**
@@ -2702,5 +653,56 @@ export class StripeSync {
    */
   async close(): Promise<void> {
     await this.postgresClient.pool.end()
+  }
+  async printProgress(runKey: RunKey): Promise<void> {
+    const syncQuery = {
+      text: `SELECT * FROM "stripe"."sync_obj_progress"
+                  WHERE account_id = $1 AND run_started_at = $2
+                  ORDER BY object`,
+      values: [runKey.accountId, runKey.runStartedAt],
+    }
+
+    const [syncResult] = await Promise.all([
+      this.postgresClient.query(syncQuery.text, syncQuery.values),
+    ])
+
+    const lines: string[] = []
+
+    if (syncResult.rows.length > 0) {
+      lines.push('')
+      lines.push('--- Sync Progress ---')
+      for (const row of syncResult.rows) {
+        const pct = Number(row.pct_complete ?? 0)
+        const bar = buildProgressBar(pct, 20)
+        lines.push(
+          `  ${row.object.padEnd(24)} ${bar} ${String(pct.toFixed(1)).padStart(5)}%  (${row.processed} rows)`
+        )
+      }
+    }
+
+    if (this.previousLineCount > 0) {
+      process.stdout.write('\x1B[2K\x1B[0G')
+      process.stdout.write('\x1B[1A\x1B[2K'.repeat(this.previousLineCount))
+      process.stdout.write('\x1B[0G')
+    }
+
+    for (const line of lines) {
+      console.log(line)
+    }
+    this.previousLineCount = lines.length
+  }
+
+  /**
+   * Periodically logs row counts for all tables, refreshing in place.
+   * Returns the interval handle so the caller can clear it.
+   */
+  startTableMonitor(intervalMs = 2000, runKey: RunKey): ReturnType<typeof setInterval> {
+    return setInterval(async () => {
+      try {
+        await this.printProgress(runKey)
+      } catch {
+        // ignore monitoring errors
+      }
+    }, intervalMs)
   }
 }

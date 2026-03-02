@@ -34,7 +34,7 @@ const sync = new StripeSync({
 })
 
 // Example: process a Stripe webhook
-await sync.processWebhook(payload, signature)
+await sync.webhook.processWebhook(payload, signature)
 ```
 
 ## Configuration

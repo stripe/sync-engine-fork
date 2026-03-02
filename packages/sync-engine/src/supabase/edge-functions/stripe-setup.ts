@@ -1,5 +1,5 @@
-import { StripeSync, runMigrations, VERSION } from 'npm:stripe-experiment-sync'
-import postgres from 'npm:postgres'
+import { StripeSync, runMigrationsFromContent, VERSION, embeddedMigrations } from '../../index'
+import postgres from 'postgres'
 
 // Get management API base URL from environment variable (for testing against localhost/staging)
 // Caller should provide full URL with protocol (e.g., http://localhost:54323 or https://api.supabase.com)
@@ -93,15 +93,14 @@ Deno.serve(async (req) => {
 
   // Handle GET requests for status
   if (req.method === 'GET') {
-    const rawDbUrl = Deno.env.get('SUPABASE_DB_URL')
-    if (!rawDbUrl) {
+    const dbUrl = Deno.env.get('SUPABASE_DB_URL')
+    if (!dbUrl) {
       return new Response(JSON.stringify({ error: 'SUPABASE_DB_URL not set' }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       })
     }
 
-    const dbUrl = rawDbUrl.replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]$/, '')
     let sql
 
     try {
@@ -183,12 +182,10 @@ Deno.serve(async (req) => {
     let stripeSync = null
     try {
       // Get and validate database URL
-      const rawDbUrl = Deno.env.get('SUPABASE_DB_URL')
-      if (!rawDbUrl) {
+      const dbUrl = Deno.env.get('SUPABASE_DB_URL')
+      if (!dbUrl) {
         throw new Error('SUPABASE_DB_URL environment variable is not set')
       }
-      // Remove sslmode from connection string (not supported by pg in Deno)
-      const dbUrl = rawDbUrl.replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]$/, '')
 
       // Stripe key is required for uninstall to delete webhooks
       const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')
@@ -197,20 +194,24 @@ Deno.serve(async (req) => {
       }
 
       // Step 1: Delete Stripe webhooks and clean up database
-      stripeSync = new StripeSync({
+      stripeSync = await StripeSync.create({
         poolConfig: { connectionString: dbUrl, max: 2 },
         stripeSecretKey: stripeKey,
       })
 
       // Delete all managed webhooks
-      const webhooks = await stripeSync.listManagedWebhooks()
-      for (const webhook of webhooks) {
-        try {
-          await stripeSync.deleteManagedWebhook(webhook.id)
-          console.log(`Deleted webhook: ${webhook.id}`)
-        } catch (err) {
-          console.warn(`Could not delete webhook ${webhook.id}:`, err)
+      try {
+        const webhooks = await stripeSync.webhook.listManagedWebhooks()
+        for (const webhook of webhooks) {
+          try {
+            await stripeSync.deleteManagedWebhook(webhook.id)
+            console.log(`Deleted webhook: ${webhook.id}`)
+          } catch (err) {
+            console.warn(`Could not delete webhook ${webhook.id}:`, err)
+          }
         }
+      } catch (err) {
+        console.warn(`Could not get webooks:`, err)
       }
 
       // Unschedule pg_cron jobs
@@ -293,6 +294,18 @@ Deno.serve(async (req) => {
         console.warn('Could not delete STRIPE_SECRET_KEY secret:', err)
       }
 
+      try {
+        await deleteSecret(projectRef, 'MANAGEMENT_API_URL', accessToken)
+      } catch (err) {
+        console.warn('Could not delete MANAGEMENT_API_URL secret:', err)
+      }
+
+      try {
+        await deleteSecret(projectRef, 'ENABLE_SIGMA', accessToken)
+      } catch (err) {
+        console.warn('Could not delete ENABLE_SIGMA secret:', err)
+      }
+
       // Step 3: Delete Edge Functions
       try {
         await deleteEdgeFunction(projectRef, 'stripe-setup', accessToken)
@@ -310,6 +323,12 @@ Deno.serve(async (req) => {
         await deleteEdgeFunction(projectRef, 'stripe-worker', accessToken)
       } catch (err) {
         console.warn('Could not delete stripe-worker function:', err)
+      }
+
+      try {
+        await deleteEdgeFunction(projectRef, 'sigma-data-worker', accessToken)
+      } catch (err) {
+        console.warn('Could not delete sigma-data-worker function:', err)
       }
 
       return new Response(
@@ -347,17 +366,18 @@ Deno.serve(async (req) => {
   let stripeSync = null
   try {
     // Get and validate database URL
-    const rawDbUrl = Deno.env.get('SUPABASE_DB_URL')
-    if (!rawDbUrl) {
+    const dbUrl = Deno.env.get('SUPABASE_DB_URL')
+    if (!dbUrl) {
       throw new Error('SUPABASE_DB_URL environment variable is not set')
     }
-    // Remove sslmode from connection string (not supported by pg in Deno)
-    const dbUrl = rawDbUrl.replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]$/, '')
 
     const enableSigma = (Deno.env.get('ENABLE_SIGMA') ?? 'false') === 'true'
-    await runMigrations({ databaseUrl: dbUrl, enableSigma })
+    await runMigrationsFromContent(
+      { databaseUrl: dbUrl, enableSigma, logger: console },
+      embeddedMigrations
+    )
 
-    stripeSync = new StripeSync({
+    stripeSync = await StripeSync.create({
       poolConfig: { connectionString: dbUrl, max: 2 }, // Need 2 for advisory lock + queries
       stripeSecretKey: Deno.env.get('STRIPE_SECRET_KEY'),
     })
@@ -372,7 +392,7 @@ Deno.serve(async (req) => {
     }
     const webhookUrl = supabaseUrl + '/functions/v1/stripe-webhook'
 
-    const webhook = await stripeSync.findOrCreateManagedWebhook(webhookUrl)
+    const webhook = await stripeSync.webhook.findOrCreateManagedWebhook(webhookUrl)
 
     await stripeSync.postgresClient.pool.end()
 

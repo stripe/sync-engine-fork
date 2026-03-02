@@ -7,6 +7,7 @@ type PostgresConfig = {
   poolConfig: PoolConfig
 }
 
+const DAY = 60 * 60 * 24
 /**
  * All Stripe tables that store account-related data.
  * Ordered for safe cascade deletion: dependencies first, then parent tables last.
@@ -303,6 +304,19 @@ export class PostgresClient {
   }
 
   /**
+   * Get all accounts that have been synced to the database.
+   * Throws a descriptive error if the query fails.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async getAllSyncedAccounts(): Promise<any[]> {
+    try {
+      return await this.getAllAccounts()
+    } catch {
+      throw new Error('Failed to retrieve synced accounts from database')
+    }
+  }
+
+  /**
    * Looks up an account ID by API key hash
    * Uses the GIN index on api_key_hashes for fast lookups
    * @param apiKeyHash - SHA-256 hash of the Stripe API key
@@ -362,6 +376,20 @@ export class PostgresClient {
     return this.delete('products', id)
   }
 
+  async columnExists(table: string, column: string): Promise<boolean> {
+    const result = await this.query(
+      `SELECT EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_schema = $1 
+          AND table_name = $2 
+          AND column_name = $3
+      )`,
+      [this.config.schema, table, column]
+    )
+    return result.rows[0].exists
+  }
+
   async deleteTaxId(id: string): Promise<boolean> {
     return this.delete('tax_ids', id)
   }
@@ -380,6 +408,82 @@ export class PostgresClient {
       `)({ customerId, currentActiveEntitlementIds })
     const { rowCount } = await this.query(prepared.text, prepared.values)
     return { rowCount: rowCount || 0 }
+  }
+
+  /**
+   * DANGEROUS: Delete an account and all associated data from the database
+   * This operation cannot be undone!
+   *
+   * @param accountId - The Stripe account ID to delete
+   * @param options - Options for deletion behavior
+   * @param options.dryRun - If true, only count records without deleting (default: false)
+   * @param options.useTransaction - If true, use transaction for atomic deletion (default: true)
+   * @returns Deletion summary with counts and warnings
+   */
+  async dangerouslyDeleteSyncedAccountData(
+    accountId: string,
+    options?: {
+      dryRun?: boolean
+      useTransaction?: boolean
+    }
+  ): Promise<{
+    deletedAccountId: string
+    deletedRecordCounts: { [tableName: string]: number }
+    warnings: string[]
+  }> {
+    const dryRun = options?.dryRun ?? false
+    const useTransaction = options?.useTransaction ?? true
+
+    console.log(
+      `${dryRun ? 'Preview' : 'Deleting'} account ${accountId} (transaction: ${useTransaction})`
+    )
+
+    try {
+      // Get record counts
+      const counts = await this.getAccountRecordCounts(accountId)
+
+      // Generate warnings
+      const warnings: string[] = []
+      let totalRecords = 0
+
+      for (const [table, count] of Object.entries(counts)) {
+        if (count > 0) {
+          totalRecords += count
+          warnings.push(`Will delete ${count} ${table} record${count !== 1 ? 's' : ''}`)
+        }
+      }
+
+      if (totalRecords > 100000) {
+        warnings.push(
+          `Large dataset detected (${totalRecords} total records). Consider using useTransaction: false for better performance.`
+        )
+      }
+
+      // Dry-run mode: just return counts
+      if (dryRun) {
+        console.log(`Dry-run complete: ${totalRecords} total records would be deleted`)
+        return {
+          deletedAccountId: accountId,
+          deletedRecordCounts: counts,
+          warnings,
+        }
+      }
+
+      // Actual deletion
+      const deletionCounts = await this.deleteAccountWithCascade(accountId, useTransaction)
+
+      console.log(`Successfully deleted account ${accountId} with ${totalRecords} total records`)
+
+      return {
+        deletedAccountId: accountId,
+        deletedRecordCounts: deletionCounts,
+        warnings,
+      }
+    } catch (error) {
+      console.error(error, `Failed to delete account ${accountId}`)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      throw new Error(`Failed to delete account ${accountId}: ${errorMessage}`)
+    }
   }
 
   async deleteAccountWithCascade(
@@ -550,34 +654,44 @@ export class PostgresClient {
    * Auto-cancels stale runs before checking.
    *
    * @param triggeredBy - Worker type (e.g., 'worker', 'sigma-worker'). Runs are isolated per triggeredBy.
-   * @returns RunKey with isNew flag, or null if constraint violation (race condition)
+   * @returns RunKey with isNew flag. Always returns a run (retries on race condition).
    */
   async getOrCreateSyncRun(
     accountId: string,
     triggeredBy?: string
-  ): Promise<{ accountId: string; runStartedAt: Date; isNew: boolean } | null> {
+  ): Promise<{ accountId: string; runStartedAt: Date; isNew: boolean }> {
     // 1. Auto-cancel stale runs
     await this.cancelStaleRuns(accountId)
 
+    const triggeredByValue = triggeredBy ?? null
+
     // 2. Check for existing active run for this triggeredBy (closed_at IS NULL = still running)
     // Runs are isolated per (accountId, triggeredBy)
-    const triggeredByValue = triggeredBy ?? null
-    const existing = triggeredByValue
-      ? await this.query(
-          `SELECT "_account_id", started_at FROM "${this.config.schema}"."_sync_runs"
-           WHERE "_account_id" = $1 AND closed_at IS NULL AND triggered_by = $2`,
-          [accountId, triggeredByValue]
-        )
-      : await this.query(
-          `SELECT "_account_id", started_at FROM "${this.config.schema}"."_sync_runs"
-           WHERE "_account_id" = $1 AND closed_at IS NULL AND triggered_by IS NULL`,
-          [accountId]
-        )
-
-    if (existing.rows.length > 0) {
-      const row = existing.rows[0]
-      return { accountId: row._account_id, runStartedAt: row.started_at, isNew: false }
+    const findExisting = async () => {
+      const existing = triggeredByValue
+        ? await this.query(
+            `SELECT "_account_id", started_at FROM "${this.config.schema}"."_sync_runs"
+             WHERE "_account_id" = $1 AND closed_at IS NULL AND triggered_by = $2`,
+            [accountId, triggeredByValue]
+          )
+        : await this.query(
+            `SELECT "_account_id", started_at FROM "${this.config.schema}"."_sync_runs"
+             WHERE "_account_id" = $1 AND closed_at IS NULL AND triggered_by IS NULL`,
+            [accountId]
+          )
+      if (existing.rows.length > 0) {
+        const row = existing.rows[0]
+        return {
+          accountId: row._account_id as string,
+          runStartedAt: row.started_at as Date,
+          isNew: false,
+        }
+      }
+      return null
     }
+
+    const existingRun = await findExisting()
+    if (existingRun) return existingRun
 
     // 3. Try to create new run (EXCLUDE constraint prevents duplicates per triggeredBy)
     // Use date_trunc to ensure millisecond precision for JavaScript Date compatibility
@@ -591,12 +705,87 @@ export class PostgresClient {
       const row = result.rows[0]
       return { accountId: row._account_id, runStartedAt: row.started_at, isNew: true }
     } catch (error: unknown) {
-      // Only return null for exclusion constraint violation (concurrent run)
+      // Exclusion constraint violation means a concurrent writer created the run — re-read it
       if (error instanceof Error && 'code' in error && error.code === '23P01') {
-        return null
+        const retried = await findExisting()
+        if (retried) return retried
       }
       throw error
     }
+  }
+
+  /**
+   * Join an existing sync run or create a new one, and ensure object run rows exist.
+   *
+   * Combines getOrCreateSyncRun + createObjectRuns into a single atomic-ish operation.
+   * Object runs are created idempotently (ON CONFLICT DO NOTHING) so this is safe
+   * to call from multiple workers adding objects to the same run.
+   *
+   * @param accountId - The Stripe account ID
+   * @param triggeredBy - What triggered this sync (for observability)
+   * @param resourceNames - Database resource names (e.g. 'products', 'customers')
+   * @returns Run key with accountId and runStartedAt
+   */
+  async joinOrCreateSyncRun(
+    accountId: string,
+    triggeredBy: string,
+    resourceNames: string[],
+    priorities?: Record<string, number>
+  ): Promise<{ accountId: string; runStartedAt: Date }> {
+    const run = await this.getOrCreateSyncRun(accountId, triggeredBy)
+
+    await this.createObjectRuns(run.accountId, run.runStartedAt, resourceNames, priorities)
+
+    return { accountId: run.accountId, runStartedAt: run.runStartedAt }
+  }
+
+  /**
+   * Find a run that completed successfully (closed with no object errors)
+   * within the given time window.
+   *
+   * @param intervalSeconds - How far back to look, in seconds.
+   */
+  async getCompletedRun(
+    accountId: string,
+    intervalSeconds: number
+  ): Promise<{ accountId: string; runStartedAt: Date } | null> {
+    const result = await this.query(
+      `SELECT r."_account_id", r.started_at
+       FROM "${this.config.schema}"."_sync_runs" r
+       WHERE r."_account_id" = $1
+         AND r.closed_at IS NOT NULL
+         AND r.closed_at >= now() - make_interval(secs => $2)
+         AND NOT EXISTS (
+           SELECT 1 FROM "${this.config.schema}"."_sync_obj_runs" o
+           WHERE o."_account_id" = r."_account_id"
+             AND o.run_started_at = r.started_at
+             AND o.status = 'error'
+         )
+       LIMIT 1`,
+      [accountId, intervalSeconds]
+    )
+
+    if (result.rows.length === 0) return null
+    const row = result.rows[0]
+    return { accountId: row._account_id, runStartedAt: row.started_at }
+  }
+
+  /**
+   * Start a reconciliation run only if no run completed successfully in the last 24 hours.
+   *
+   * @returns Run key if a new run was created, or null if a recent successful run exists.
+   */
+  async reconciliationRun(
+    accountId: string,
+    triggeredBy: string,
+    resourceNames: string[],
+    interval: number = DAY,
+    priorities?: Record<string, number>
+  ): Promise<{ accountId: string; runStartedAt: Date } | null> {
+    const completedRun = await this.getCompletedRun(accountId, interval)
+    if (completedRun) return null
+
+    return this.joinOrCreateSyncRun(accountId, triggeredBy, resourceNames, priorities)
   }
 
   /**
@@ -688,20 +877,64 @@ export class PostgresClient {
    * All objects start as 'pending'.
    *
    * @param resourceNames - Database resource names (e.g. 'products', 'customers', NOT 'product', 'customer')
+   * @param priorities - Optional map of resource name → priority (from resourceRegistry order).
+   *                     Lower values are processed first.
    */
   async createObjectRuns(
     accountId: string,
     runStartedAt: Date,
-    resourceNames: string[]
+    resourceNames: string[],
+    priorities?: Record<string, number>
   ): Promise<void> {
     if (resourceNames.length === 0) return
 
-    const values = resourceNames.map((_, i) => `($1, $2, $${i + 3})`).join(', ')
+    const params: (string | Date | number)[] = [accountId, runStartedAt]
+    const valueClauses = resourceNames.map((name) => {
+      const nameIdx = params.length + 1
+      params.push(name)
+      const prioIdx = params.length + 1
+      params.push(priorities?.[name] ?? 0)
+      return `($1, $2, $${nameIdx}, $${prioIdx})`
+    })
+
     await this.query(
-      `INSERT INTO "${this.config.schema}"."_sync_obj_runs" ("_account_id", run_started_at, object)
-       VALUES ${values}
-       ON CONFLICT ("_account_id", run_started_at, object) DO NOTHING`,
-      [accountId, runStartedAt, ...resourceNames]
+      `INSERT INTO "${this.config.schema}"."_sync_obj_runs" ("_account_id", run_started_at, object, priority)
+       VALUES ${valueClauses.join(', ')}
+       ON CONFLICT ("_account_id", run_started_at, object, created_gte, created_lte) DO NOTHING`,
+      params
+    )
+  }
+
+  async createChunkedObjectRuns(
+    accountId: string,
+    runStartedAt: Date,
+    chunkCursors: Record<string, number[]>,
+    priorities?: Record<string, number>
+  ): Promise<void> {
+    const params: (string | Date | number | null)[] = [accountId, runStartedAt]
+    const valueClauses: string[] = []
+
+    for (const [tableName, timestamps] of Object.entries(chunkCursors)) {
+      const priority = priorities?.[tableName] ?? 0
+      for (let i = 0; i < timestamps.length; i++) {
+        const gte = timestamps[i]
+        const lte = i < timestamps.length - 1 ? timestamps[i + 1] : Math.floor(Date.now() / 1000)
+        const baseIdx = params.length + 1
+        valueClauses.push(
+          `($1, $2, $${baseIdx}, $${baseIdx + 1}, $${baseIdx + 2}, $${baseIdx + 3})`
+        )
+        params.push(tableName, gte, lte, priority)
+      }
+    }
+
+    if (valueClauses.length === 0) return
+
+    await this.query(
+      `INSERT INTO "${this.config.schema}"."_sync_obj_runs"
+         ("_account_id", run_started_at, object, created_gte, created_lte, priority)
+       VALUES ${valueClauses.join(', ')}
+       ON CONFLICT ("_account_id", run_started_at, object, created_gte, created_lte) DO NOTHING`,
+      params
     )
   }
 
@@ -734,6 +967,61 @@ export class PostgresClient {
     )
 
     return (result.rowCount ?? 0) > 0
+  }
+
+  /**
+   * Atomically claim the next pending task using FOR UPDATE SKIP LOCKED.
+   * Two concurrent workers will never claim the same row — the second worker
+   * skips the locked row and grabs the next one.
+   *
+   * Respects max_concurrent: returns null if already at the concurrency limit.
+   */
+  async claimNextTask(
+    accountId: string,
+    runStartedAt: Date,
+    rateLimit: number = 50
+  ): Promise<{
+    object: string
+    cursor: string | null
+    pageCursor: string | null
+    created_gte: number | null
+    created_lte: number | null
+  } | null> {
+    const run = await this.getSyncRun(accountId, runStartedAt)
+    if (!run) return null
+
+    await this.query(`SELECT "${this.config.schema}".check_rate_limit($1, $2, $3)`, [
+      'claimNextTask',
+      rateLimit,
+      1,
+    ])
+
+    const result = await this.query(
+      `UPDATE "${this.config.schema}"."_sync_obj_runs"
+       SET status = 'running', started_at = now(), updated_at = now()
+       WHERE ("_account_id", run_started_at, object, created_gte, created_lte) = (
+           SELECT "_account_id", run_started_at, object, created_gte, created_lte
+           FROM "${this.config.schema}"."_sync_obj_runs"
+           WHERE "_account_id" = $1
+             AND run_started_at = $2
+             AND status = 'pending'
+           ORDER BY priority, object, created_gte
+           LIMIT 1
+           FOR UPDATE SKIP LOCKED
+         )
+       RETURNING object, cursor, page_cursor, created_gte, created_lte`,
+      [accountId, runStartedAt]
+    )
+
+    if (result.rows.length === 0) return null
+    const row = result.rows[0]
+    return {
+      object: row.object,
+      cursor: row.cursor,
+      pageCursor: row.page_cursor,
+      created_gte: row.created_gte ?? null,
+      created_lte: row.created_lte ?? null,
+    }
   }
 
   /**
@@ -776,14 +1064,78 @@ export class PostgresClient {
     accountId: string,
     runStartedAt: Date,
     object: string,
-    count: number
-  ): Promise<void> {
-    await this.query(
+    count: number,
+    createdGte: number = 0,
+    createdLte: number = 0
+  ): Promise<number> {
+    const result = await this.query(
       `UPDATE "${this.config.schema}"."_sync_obj_runs"
        SET processed_count = processed_count + $4, updated_at = now()
-       WHERE "_account_id" = $1 AND run_started_at = $2 AND object = $3`,
-      [accountId, runStartedAt, object, count]
+       WHERE "_account_id" = $1 AND run_started_at = $2 AND object = $3 AND created_gte = $5 AND created_lte = $6
+       RETURNING processed_count`,
+      [accountId, runStartedAt, object, count, createdGte, createdLte]
     )
+    return result.rows[0]?.processed_count ?? 0
+  }
+
+  /**
+   * Atomically update an object sync row in a single round-trip.
+   * Only the fields present in `updates` are written; omitted fields are left unchanged.
+   * Auto-closes the sync run when all objects reach 'complete'.
+   */
+  async updateSyncObject(
+    accountId: string,
+    runStartedAt: Date,
+    object: string,
+    createdGte: number,
+    createdLte: number,
+    updates: {
+      processedCount?: number
+      cursor?: string | null
+      status?: 'pending' | 'complete' | 'error'
+      pageCursor?: string | null
+      errorMessage?: string
+    }
+  ): Promise<number> {
+    const terminal = updates.status === 'complete' || updates.status === 'error'
+
+    const sets: string[] = ['updated_at = now()']
+    const params: unknown[] = [accountId, runStartedAt, object, createdGte, createdLte]
+
+    const param = (value: unknown) => {
+      params.push(value)
+      return `$${params.length}`
+    }
+
+    if (updates.processedCount != null)
+      sets.push(`processed_count = processed_count + ${param(updates.processedCount)}`)
+    if (updates.cursor !== undefined) sets.push(`cursor = ${param(updates.cursor)}`)
+    if (updates.status != null) sets.push(`status = ${param(updates.status)}`)
+    if (updates.errorMessage != null) sets.push(`error_message = ${param(updates.errorMessage)}`)
+
+    if (terminal) {
+      sets.push('completed_at = now()', 'page_cursor = NULL')
+    } else if (updates.pageCursor !== undefined) {
+      sets.push(`page_cursor = ${param(updates.pageCursor)}`)
+    }
+
+    const result = await this.query(
+      `UPDATE "${this.config.schema}"."_sync_obj_runs"
+       SET ${sets.join(', ')}
+       WHERE "_account_id" = $1 AND run_started_at = $2 AND object = $3
+         AND created_gte = $4 AND created_lte = $5
+       RETURNING processed_count`,
+      params
+    )
+
+    const total = result.rows[0]?.processed_count ?? 0
+
+    if (terminal) {
+      const allDone = await this.areAllObjectsComplete(accountId, runStartedAt)
+      if (allDone) await this.closeSyncRun(accountId, runStartedAt)
+    }
+
+    return total
   }
 
   /**
@@ -804,6 +1156,26 @@ export class PostgresClient {
   }
 
   /**
+   * Release a running object back to pending with an updated page_cursor.
+   * Used after processing a single page when more pages remain.
+   */
+  async releaseObjectSync(
+    accountId: string,
+    runStartedAt: Date,
+    object: string,
+    pageCursor: string,
+    createdGte: number = 0,
+    createdLte: number = 0
+  ): Promise<void> {
+    await this.query(
+      `UPDATE "${this.config.schema}"."_sync_obj_runs"
+       SET status = 'pending', page_cursor = $4, updated_at = now()
+       WHERE "_account_id" = $1 AND run_started_at = $2 AND object = $3 AND created_gte = $5 AND created_lte = $6`,
+      [accountId, runStartedAt, object, pageCursor, createdGte, createdLte]
+    )
+  }
+
+  /**
    * Clear the pagination page_cursor for an object sync.
    */
   async clearObjectPageCursor(
@@ -815,40 +1187,38 @@ export class PostgresClient {
   }
 
   /**
-   * Update the cursor for an object sync.
-   * Only updates if the new cursor is higher than the existing one (cursors should never decrease).
-   * For numeric cursors (timestamps), uses GREATEST to ensure monotonic increase.
-   * For non-numeric cursors, just sets the value directly.
+   * Clear the sync cursor on all previous completed runs for an object,
+   * so the next run starts from scratch (no created.gte filter).
    */
+  async clearObjectCursorHistory(
+    accountId: string,
+    object: string,
+    runStartedAt: Date
+  ): Promise<void> {
+    await this.query(
+      `UPDATE "${this.config.schema}"."_sync_obj_runs"
+       SET cursor = NULL, updated_at = now()
+       WHERE "_account_id" = $1
+         AND object = $2
+         AND run_started_at < $3`,
+      [accountId, object, runStartedAt]
+    )
+  }
+
   async updateObjectCursor(
     accountId: string,
     runStartedAt: Date,
     object: string,
-    cursor: string | null
+    cursor: string | null,
+    createdGte: number = 0,
+    createdLte: number = 0
   ): Promise<void> {
-    // Check if cursor is numeric (for incremental sync timestamps)
-    const isNumeric = cursor !== null && /^\d+$/.test(cursor)
-    if (isNumeric) {
-      await this.query(
-        `UPDATE "${this.config.schema}"."_sync_obj_runs"
-         SET cursor = GREATEST(COALESCE(cursor::bigint, 0), $4::bigint)::text,
-             updated_at = now()
-         WHERE "_account_id" = $1 AND run_started_at = $2 AND object = $3`,
-        [accountId, runStartedAt, object, cursor]
-      )
-    } else {
-      await this.query(
-        `UPDATE "${this.config.schema}"."_sync_obj_runs"
-         SET cursor = CASE
-           WHEN cursor IS NULL THEN $4
-           WHEN (cursor COLLATE "C") < ($4::text COLLATE "C") THEN $4
-           ELSE cursor
-         END,
-         updated_at = now()
-         WHERE "_account_id" = $1 AND run_started_at = $2 AND object = $3`,
-        [accountId, runStartedAt, object, cursor]
-      )
-    }
+    await this.query(
+      `UPDATE "${this.config.schema}"."_sync_obj_runs"
+       SET cursor = $4, updated_at = now()
+       WHERE "_account_id" = $1 AND run_started_at = $2 AND object = $3 AND created_gte = $5 AND created_lte = $6`,
+      [accountId, runStartedAt, object, cursor, createdGte, createdLte]
+    )
   }
 
   async setObjectCursor(
@@ -889,6 +1259,27 @@ export class PostgresClient {
     )
 
     return result.rows.map((row) => row.object as string)
+  }
+
+  /**
+   * Get per-object processed counts for a sync run.
+   */
+  async getObjectSyncedCounts(
+    accountId: string,
+    runStartedAt: Date
+  ): Promise<Record<string, number>> {
+    const result = await this.query(
+      `SELECT object, SUM(processed_count)::int AS processed_count
+       FROM "${this.config.schema}"."_sync_obj_runs"
+       WHERE "_account_id" = $1 AND run_started_at = $2
+       GROUP BY object`,
+      [accountId, runStartedAt]
+    )
+    const counts: Record<string, number> = {}
+    for (const row of result.rows) {
+      counts[row.object] = row.processed_count ?? 0
+    }
+    return counts
   }
 
   /**
@@ -984,15 +1375,48 @@ export class PostgresClient {
   }
 
   /**
+   * Reset orphaned 'running' object runs back to 'pending'.
+   * Used for crash recovery: if a worker was killed mid-sync, the object run
+   * is left in 'running' state with no active worker. Resetting to 'pending'
+   * allows new workers to re-claim and finish the work.
+   */
+  async resetStuckRunningObjects(
+    accountId: string,
+    runStartedAt: Date,
+    stuckThresholdSeconds?: number
+  ): Promise<number> {
+    const baseQuery = `UPDATE "${this.config.schema}"."_sync_obj_runs"
+       SET status = 'pending', updated_at = now()
+       WHERE "_account_id" = $1 AND run_started_at = $2 AND status = 'running'`
+
+    if (stuckThresholdSeconds !== undefined) {
+      const result = await this.query(
+        `${baseQuery} AND updated_at < now() - interval '1 second' * $3`,
+        [accountId, runStartedAt, stuckThresholdSeconds]
+      )
+      return result.rowCount ?? 0
+    }
+
+    const result = await this.query(baseQuery, [accountId, runStartedAt])
+    return result.rowCount ?? 0
+  }
+
+  /**
    * Mark an object sync as complete.
    * Auto-closes the run when all objects are done.
    */
-  async completeObjectSync(accountId: string, runStartedAt: Date, object: string): Promise<void> {
+  async completeObjectSync(
+    accountId: string,
+    runStartedAt: Date,
+    object: string,
+    createdGte: number = 0,
+    createdLte: number = 0
+  ): Promise<void> {
     await this.query(
       `UPDATE "${this.config.schema}"."_sync_obj_runs"
        SET status = 'complete', completed_at = now(), page_cursor = NULL
-       WHERE "_account_id" = $1 AND run_started_at = $2 AND object = $3`,
-      [accountId, runStartedAt, object]
+       WHERE "_account_id" = $1 AND run_started_at = $2 AND object = $3 AND created_gte = $4 AND created_lte = $5`,
+      [accountId, runStartedAt, object, createdGte, createdLte]
     )
 
     // Auto-close sync run if all objects finished (status derived from objects)
@@ -1010,13 +1434,15 @@ export class PostgresClient {
     accountId: string,
     runStartedAt: Date,
     object: string,
-    errorMessage: string
+    errorMessage: string,
+    createdGte: number = 0,
+    createdLte: number = 0
   ): Promise<void> {
     await this.query(
       `UPDATE "${this.config.schema}"."_sync_obj_runs"
-       SET status = 'error', error_message = $4, completed_at = now(), page_cursor = NULL
-       WHERE "_account_id" = $1 AND run_started_at = $2 AND object = $3`,
-      [accountId, runStartedAt, object, errorMessage]
+       SET status = 'error', error_message = $6, completed_at = now(), page_cursor = NULL
+       WHERE "_account_id" = $1 AND run_started_at = $2 AND object = $3 AND created_gte = $4 AND created_lte = $5`,
+      [accountId, runStartedAt, object, createdGte, createdLte, errorMessage]
     )
 
     // Auto-close sync run if all objects finished (status derived from objects)
@@ -1065,7 +1491,7 @@ export class PostgresClient {
     const result = await this.query(
       `SELECT object FROM "${this.config.schema}"."_sync_obj_runs"
        WHERE "_account_id" = $1 AND run_started_at = $2 AND status = 'pending'
-       ORDER BY object
+       ORDER BY priority, object
        LIMIT 1`,
       [accountId, runStartedAt]
     )
@@ -1083,6 +1509,15 @@ export class PostgresClient {
       [accountId, runStartedAt]
     )
     return parseInt(result.rows[0].count) === 0
+  }
+
+  async countObjectRuns(accountId: string, runStartedAt: Date): Promise<number> {
+    const result = await this.query(
+      `SELECT COUNT(*) as count FROM "${this.config.schema}"."_sync_obj_runs"
+       WHERE "_account_id" = $1 AND run_started_at = $2`,
+      [accountId, runStartedAt]
+    )
+    return parseInt(result.rows[0].count)
   }
 
   /**

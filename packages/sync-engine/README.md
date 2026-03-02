@@ -39,7 +39,7 @@ const sync = new StripeSync({
 })
 
 // Create a managed webhook - no additional processing needed!
-const webhook = await sync.findOrCreateManagedWebhook('https://example.com/stripe-webhooks')
+const webhook = await sync.webhook.findOrCreateManagedWebhook('https://example.com/stripe-webhooks')
 
 // Cleanup when done (closes PostgreSQL connection pool)
 await sync.close()
@@ -54,7 +54,7 @@ The Stripe Sync Engine automatically manages webhook endpoints and their process
 ```typescript
 // Create or reuse an existing webhook endpoint
 // This webhook will automatically sync all Stripe events to your database
-const webhook = await sync.findOrCreateManagedWebhook('https://example.com/stripe-webhooks')
+const webhook = await sync.webhook.findOrCreateManagedWebhook('https://example.com/stripe-webhooks')
 
 // Create a webhook for specific events
 const webhook = await sync.createManagedWebhook('https://example.com/stripe-webhooks', {
@@ -71,7 +71,7 @@ console.log(webhook.secret) // whsec_xxx
 
 ```typescript
 // List all managed webhooks
-const webhooks = await sync.listManagedWebhooks()
+const webhooks = await sync.webhook.listManagedWebhooks()
 
 // Get a specific webhook
 const webhook = await sync.getManagedWebhook('we_xxx')
@@ -104,7 +104,7 @@ app.post('/stripe-webhooks', async (req, res) => {
   const payload = req.body
 
   try {
-    await sync.processWebhook(payload, signature)
+    await sync.webhook.processWebhook(payload, signature)
     res.status(200).send({ received: true })
   } catch (error) {
     res.status(400).send({ error: error.message })
@@ -132,9 +132,6 @@ await sync.close()
 | `autoExpandLists`               | boolean | Fetch all list items from Stripe (not just the default 10)                                                                                                                                                                                                                                             |
 | `backfillRelatedEntities`       | boolean | Ensure related entities exist for foreign key integrity                                                                                                                                                                                                                                                |
 | `revalidateObjectsViaStripeApi` | Array   | Always fetch latest data from Stripe instead of trusting webhook payload. Possible values: charge, credit_note, customer, dispute, invoice, payment_intent, payment_method, plan, price, product, refund, review, radar.early_fraud_warning, setup_intent, subscription, subscription_schedule, tax_id |
-| `maxRetries`                    | number  | Maximum retry attempts for 429 rate limits. Default: 5                                                                                                                                                                                                                                                 |
-| `initialRetryDelayMs`           | number  | Initial retry delay in milliseconds. Default: 1000                                                                                                                                                                                                                                                     |
-| `maxRetryDelayMs`               | number  | Maximum retry delay in milliseconds. Default: 60000                                                                                                                                                                                                                                                    |
 | `logger`                        | Logger  | Logger instance (pino-compatible)                                                                                                                                                                                                                                                                      |
 
 ## Database Schema
@@ -185,17 +182,14 @@ await sync.syncSingleEntity('prod_xyz')
 ### Backfill Historical Data
 
 ```ts
-// Sync all products created after a date
-await sync.processUntilDone({
-  object: 'product',
-  created: { gte: 1643872333 }, // Unix timestamp
-})
+// Sync all products
+await sync.fullSync(['product'])
 
 // Sync all customers
-await sync.processUntilDone({ object: 'customer' })
+await sync.fullSync(['customer'])
 
 // Sync everything
-await sync.processUntilDone({ object: 'all' })
+await sync.fullSync()
 ```
 
 Supported objects: `all`, `charge`, `checkout_sessions`, `credit_note`, `customer`, `customer_with_entitlements`, `dispute`, `early_fraud_warning`, `invoice`, `payment_intent`, `payment_method`, `plan`, `price`, `product`, `refund`, `setup_intent`, `subscription`, `subscription_schedules`, `tax_id`.
@@ -276,6 +270,21 @@ The install command will:
 2. Run database migrations to create the `stripe` schema
 3. Create a managed Stripe webhook pointing to your Supabase project
 4. Set up a pg_cron job for automatic background syncing
+
+### Required Permissions
+
+The Supabase access token must have the following Management API permissions:
+
+| Permission                     | Used For                                                     |
+| ------------------------------ | ------------------------------------------------------------ |
+| `projects_read`                | Validate project access and existence                        |
+| `edge_functions_write`         | Deploy Edge Functions (setup, webhook, worker, sigma-worker) |
+| `edge_functions_secrets_write` | Set Stripe API key and configuration secrets                 |
+| `database_write`               | Execute database migrations and schema setup                 |
+| `database_read`                | Check schema existence and verify installation               |
+| `api_gateway_keys_read`        | Retrieve project's anon API key                              |
+
+**Note:** When generating a personal access token or using OAuth2, ensure these permissions are granted. For OAuth2 tokens, these correspond to the fine-grained token permissions on the Management API.
 
 ## CLI Commands
 

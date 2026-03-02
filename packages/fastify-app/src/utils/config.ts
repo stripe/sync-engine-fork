@@ -27,6 +27,9 @@ export type StripeSyncServerConfig = {
   /** Optional Stripe partner ID (e.g. "pp_supabase"). */
   partnerId?: string
 
+  /** Stripe account ID. Skips the Stripe API call in StripeSync.create() when provided. */
+  stripeAccountId?: string
+
   port: number
   disableMigrations: boolean
   sslConnectionOptions?: ConnectionOptions
@@ -81,6 +84,7 @@ export function getConfig(): StripeSyncServerConfig {
       .map((it) => it.trim())
       .filter((it) => it.length > 0) as Array<RevalidateEntity>,
     partnerId: process.env.STRIPE_PARTNER_ID || undefined,
+    stripeAccountId: process.env.STRIPE_ACCOUNT_ID || undefined,
     disableMigrations: getConfigFromEnv('DISABLE_MIGRATIONS', 'false') === 'true',
     sslConnectionOptions: sslConnnectionOptionsFromEnv(),
   }

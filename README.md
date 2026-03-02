@@ -36,7 +36,7 @@ const sync = new StripeSync({
 })
 
 // Create a managed webhook - automatically syncs all Stripe events
-const webhook = await sync.findOrCreateManagedWebhook('https://example.com/stripe-webhooks')
+const webhook = await sync.webhook.findOrCreateManagedWebhook('https://example.com/stripe-webhooks')
 
 // Cleanup when done
 await sync.close()
@@ -63,7 +63,7 @@ app.post('/stripe-webhooks', express.raw({ type: 'application/json' }), async (r
   const signature = req.headers['stripe-signature']
 
   try {
-    await sync.processWebhook(req.body, signature)
+    await sync.webhook.processWebhook(req.body, signature)
     res.status(200).send({ received: true })
   } catch (error) {
     res.status(400).send({ error: error.message })
@@ -116,9 +116,6 @@ npx stripe-experiment-sync backfill customer \
 | `autoExpandLists`               | boolean | Fetch all list items from Stripe (not just the default 10)                                               |
 | `backfillRelatedEntities`       | boolean | Ensure related entities exist for foreign key integrity                                                  |
 | `revalidateObjectsViaStripeApi` | Array   | Always fetch latest data from Stripe instead of trusting webhook payload                                 |
-| `maxRetries`                    | number  | Maximum retry attempts for 429 rate limits. Default: 5                                                   |
-| `initialRetryDelayMs`           | number  | Initial retry delay in milliseconds. Default: 1000                                                       |
-| `maxRetryDelayMs`               | number  | Maximum retry delay in milliseconds. Default: 60000                                                      |
 | `logger`                        | Logger  | Logger instance (pino-compatible)                                                                        |
 
 ---

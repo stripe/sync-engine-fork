@@ -11,6 +11,8 @@ export const STRIPE_SCHEMA_COMMENT_PREFIX = 'stripe-sync'
 export const INSTALLATION_STARTED_SUFFIX = 'installation:started'
 export const INSTALLATION_ERROR_SUFFIX = 'installation:error'
 export const INSTALLATION_INSTALLED_SUFFIX = 'installed'
+export const UNINSTALLATION_STARTED_SUFFIX = 'uninstallation:started'
+export const UNINSTALLATION_ERROR_SUFFIX = 'uninstallation:error'
 
 export interface DeployClientOptions {
   accessToken: string
@@ -26,11 +28,12 @@ export interface ProjectInfo {
 }
 
 export class SupabaseSetupClient {
-  private api: SupabaseManagementAPI
+  api: SupabaseManagementAPI
   private projectRef: string
   private projectBaseUrl: string
   private supabaseManagementUrl?: string
   private accessToken: string
+  private workerSecret: string
 
   constructor(options: DeployClientOptions) {
     this.api = new SupabaseManagementAPI({
@@ -41,19 +44,28 @@ export class SupabaseSetupClient {
     this.projectBaseUrl = options.projectBaseUrl || process.env.SUPABASE_BASE_URL || 'supabase.co'
     this.supabaseManagementUrl = options.supabaseManagementUrl
     this.accessToken = options.accessToken
+    this.workerSecret = crypto.randomUUID()
   }
 
   /**
-   * Validate that the project exists and we have access
+   * Validate that the project exists and we have access.
+   * Fetches the project directly by ref instead of listing all projects,
+   * because some org-level tokens lack the list-all permission.
    */
   async validateProject(): Promise<ProjectInfo> {
-    const projects = await this.api.getProjects()
-    const project = projects?.find((p) => p.id === this.projectRef)
-    if (!project) {
-      throw new Error(`Project ${this.projectRef} not found or you don't have access`)
+    const baseUrl = this.supabaseManagementUrl || 'https://api.supabase.com'
+    const response = await fetch(`${baseUrl}/v1/projects/${this.projectRef}`, {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    })
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(
+        `Project ${this.projectRef} not found or you don't have access (${response.status}: ${body})`
+      )
     }
+    const project = await response.json()
     return {
-      id: project.id,
+      id: project.ref,
       name: project.name,
       region: project.region,
     }
@@ -63,25 +75,23 @@ export class SupabaseSetupClient {
    * Deploy an Edge Function
    */
   async deployFunction(name: string, code: string, verifyJwt = false): Promise<void> {
-    // Check if function exists
-    const functions = await this.api.listFunctions(this.projectRef)
-    const exists = functions?.some((f) => f.slug === name)
-
-    if (exists) {
-      // Update existing function
-      await this.api.updateFunction(this.projectRef, name, {
-        body: code,
-        verify_jwt: verifyJwt,
-      })
-    } else {
-      // Create new function
-      await this.api.createFunction(this.projectRef, {
+    // Create or update function
+    await this.api.deployAFunction(
+      this.projectRef,
+      {
+        file: [
+          new File([code], 'index.ts', { type: 'application/typescript' }),
+        ] as unknown as string[],
+        metadata: {
+          entrypoint_path: 'index.ts',
+          verify_jwt: verifyJwt,
+          name,
+        },
+      },
+      {
         slug: name,
-        name: name,
-        body: code,
-        verify_jwt: verifyJwt,
-      })
-    }
+      }
+    )
   }
 
   /**
@@ -102,14 +112,17 @@ export class SupabaseSetupClient {
    * Set secrets for Edge Functions
    */
   async setSecrets(secrets: { name: string; value: string }[]): Promise<void> {
-    await this.api.createSecrets(this.projectRef, secrets)
+    await this.api.bulkCreateSecrets(this.projectRef, secrets)
   }
 
   /**
    * Run SQL against the database
    */
   async runSQL(sql: string): Promise<unknown> {
-    return await this.api.runQuery(this.projectRef, sql)
+    const { data } = await this.api.runAQuery(this.projectRef, {
+      query: sql,
+    })
+    return data
   }
 
   /**
@@ -147,12 +160,8 @@ export class SupabaseSetupClient {
       )
     }
 
-    // Generate a unique secret for stripe-worker authentication
-    // This works even if service_role tokens are disabled
-    const workerSecret = crypto.randomUUID()
-
     // Escape single quotes to prevent SQL injection
-    const escapedWorkerSecret = workerSecret.replace(/'/g, "''")
+    const escapedWorkerSecret = this.workerSecret.replace(/'/g, "''")
 
     const sql = `
       -- Enable extensions
@@ -190,6 +199,11 @@ export class SupabaseSetupClient {
           headers := jsonb_build_object(
             'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'stripe_sync_worker_secret')
           )
+        )
+        WHERE NOT EXISTS (
+          SELECT 1 FROM vault.decrypted_secrets
+          WHERE name = 'stripe_sync_skip_until'
+            AND decrypted_secret::timestamptz > NOW()
         )
         $$
       );
@@ -265,8 +279,8 @@ export class SupabaseSetupClient {
   /**
    * Get the anon key for this project (needed for Realtime subscriptions)
    */
-  async getAnonKey(): Promise<string> {
-    const apiKeys = await this.api.getProjectApiKeys(this.projectRef)
+  async getAnonKey(): Promise<string | null | undefined> {
+    const { data: apiKeys } = await this.api.getProjectApiKeys(this.projectRef)
     const anonKey = apiKeys?.find((k) => k.name === 'anon')
     if (!anonKey) {
       throw new Error('Could not find anon API key')
@@ -285,12 +299,13 @@ export class SupabaseSetupClient {
    * Invoke an Edge Function
    */
   async invokeFunction(
-    name: string,
+    slug: string,
+    method: string,
     bearerToken: string
   ): Promise<{ success: boolean; error?: string }> {
-    const url = `https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/${name}`
+    const url = `https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/${slug}`
     const response = await fetch(url, {
-      method: 'POST',
+      method,
       headers: {
         Authorization: `Bearer ${bearerToken}`,
         'Content-Type': 'application/json',
@@ -311,6 +326,27 @@ export class SupabaseSetupClient {
   }
 
   /**
+   * Check if a schema exists in the database
+   * @param schema The schema name to check (defaults to 'stripe')
+   * @returns true if schema exists, false otherwise
+   */
+  private async schemaExists(schema = 'stripe'): Promise<boolean> {
+    try {
+      const schemaCheck = (await this.runSQL(
+        `SELECT EXISTS (
+          SELECT 1 FROM information_schema.schemata
+          WHERE schema_name = '${schema}'
+        ) as schema_exists`
+      )) as { rows?: { schema_exists: boolean }[] }[]
+
+      return schemaCheck[0]?.rows?.[0]?.schema_exists === true
+    } catch {
+      // Return false if query fails
+      return false
+    }
+  }
+
+  /**
    * Check if stripe-sync is installed in the database.
    *
    * Uses the Supabase Management API to run SQL queries.
@@ -324,16 +360,9 @@ export class SupabaseSetupClient {
   async isInstalled(schema = 'stripe'): Promise<boolean> {
     try {
       // Step 1: Duck typing - check if schema exists
-      const schemaCheck = (await this.runSQL(
-        `SELECT EXISTS (
-          SELECT 1 FROM information_schema.schemata
-          WHERE schema_name = '${schema}'
-        ) as schema_exists`
-      )) as { rows?: { schema_exists: boolean }[] }[]
+      const schemaExistsResult = await this.schemaExists(schema)
 
-      const schemaExists = schemaCheck[0]?.rows?.[0]?.schema_exists === true
-
-      if (!schemaExists) {
+      if (!schemaExistsResult) {
         // Schema doesn't exist - not installed
         return false
       }
@@ -371,6 +400,20 @@ export class SupabaseSetupClient {
         )
       }
 
+      // Check for uninstallation in progress
+      // NOTE: Check uninstallation before installation since "uninstallation:*" contains "installation:*"
+      if (comment.includes(UNINSTALLATION_STARTED_SUFFIX)) {
+        return false
+      }
+
+      // Check for failed uninstallation (requires manual intervention)
+      if (comment.includes(UNINSTALLATION_ERROR_SUFFIX)) {
+        throw new Error(
+          `Uninstallation failed: Schema '${schema}' exists but uninstallation encountered an error. ` +
+            `Comment: ${comment}. Manual cleanup may be required.`
+        )
+      }
+
       // Check for incomplete installation (can retry)
       if (comment.includes(INSTALLATION_STARTED_SUFFIX)) {
         return false
@@ -391,7 +434,8 @@ export class SupabaseSetupClient {
       if (
         error instanceof Error &&
         (error.message.includes('Legacy installation detected') ||
-          error.message.includes('Installation failed'))
+          error.message.includes('Installation failed') ||
+          error.message.includes('Uninstallation failed'))
       ) {
         throw error
       }
@@ -410,55 +454,44 @@ export class SupabaseSetupClient {
   }
 
   /**
-   * Delete an Edge Function
-   */
-  async deleteFunction(name: string): Promise<void> {
-    try {
-      await this.api.deleteFunction(this.projectRef, name)
-    } catch (err) {
-      // Silently ignore if function doesn't exist
-      console.warn(`Could not delete function ${name}:`, err)
-    }
-  }
-
-  /**
-   * Delete a secret
-   */
-  async deleteSecret(name: string): Promise<void> {
-    try {
-      await this.api.deleteSecrets(this.projectRef, [name])
-    } catch (err) {
-      console.warn(`Could not delete secret ${name}:`, err)
-    }
-  }
-
-  /**
    * Uninstall stripe-sync from a Supabase project
    * Invokes the stripe-setup edge function's DELETE endpoint which handles cleanup
+   * Tracks uninstallation progress via schema comments
    */
   async uninstall(): Promise<void> {
     try {
+      // Check if schema exists and mark uninstall as started
+      const hasSchema = await this.schemaExists('stripe')
+      if (hasSchema) {
+        await this.updateInstallationComment(
+          `${STRIPE_SCHEMA_COMMENT_PREFIX} v${pkg.version} ${UNINSTALLATION_STARTED_SUFFIX}`
+        )
+      }
+
       // Invoke the DELETE endpoint on stripe-setup function
       // Use accessToken in Authorization header for Management API validation
-      const url = `https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/stripe-setup`
-      const response = await fetch(url, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      })
+      const setupResult = await this.invokeFunction('stripe-setup', 'DELETE', this.accessToken)
 
-      if (!response.ok) {
-        const text = await response.text()
-        throw new Error(`Uninstall failed: ${response.status} ${text}`)
+      if (!setupResult.success) {
+        throw new Error(`Uninstall failed: ${setupResult.error}`)
       }
-
-      const result = (await response.json()) as { success?: boolean; error?: string }
-      if (result.success === false) {
-        throw new Error(`Uninstall failed: ${result.error}`)
-      }
+      // On success, schema is dropped by edge function (no comment update needed)
     } catch (error) {
+      // Mark schema with error if it still exists
+      try {
+        const hasSchema = await this.schemaExists('stripe')
+        if (hasSchema) {
+          await this.updateInstallationComment(
+            `${STRIPE_SCHEMA_COMMENT_PREFIX} v${pkg.version} ${UNINSTALLATION_ERROR_SUFFIX} - ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          )
+        }
+      } catch (error) {
+        throw new Error(
+          `Uninstall failed: ${error instanceof Error ? error.message : String(error)}`
+        )
+      }
       throw new Error(`Uninstall failed: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
@@ -467,7 +500,9 @@ export class SupabaseSetupClient {
     stripeKey: string,
     packageVersion?: string,
     workerIntervalSeconds?: number,
-    enableSigma?: boolean
+    enableSigma?: boolean,
+    rateLimit?: number,
+    syncIntervalSeconds?: number
   ): Promise<void> {
     const trimmedStripeKey = stripeKey.trim()
     if (!trimmedStripeKey.startsWith('sk_') && !trimmedStripeKey.startsWith('rk_')) {
@@ -489,39 +524,43 @@ export class SupabaseSetupClient {
         `${STRIPE_SCHEMA_COMMENT_PREFIX} v${pkg.version} ${INSTALLATION_STARTED_SUFFIX}`
       )
 
-      // Deploy Edge Functions with specified package version
-      const versionedSetup = this.injectPackageVersion(setupFunctionCode, version)
-      const versionedWebhook = this.injectPackageVersion(webhookFunctionCode, version)
-      const versionedWorker = this.injectPackageVersion(workerFunctionCode, version)
-
-      await this.deployFunction('stripe-setup', versionedSetup, false)
-      await this.deployFunction('stripe-webhook', versionedWebhook, false)
-      await this.deployFunction('stripe-worker', versionedWorker, false)
-
-      // Deploy sigma worker only if enabled
-      if (enableSigma) {
-        const versionedSigmaWorker = this.injectPackageVersion(sigmaWorkerFunctionCode, version)
-        await this.deployFunction('sigma-data-worker', versionedSigmaWorker, false)
-      }
-
-      // Set secrets (Note: "secrets" is Supabase's mechanism for passing environment variables to edge functions)
+      // Set secrets first -- stripe-setup needs STRIPE_SECRET_KEY to run
       const secrets = [{ name: 'STRIPE_SECRET_KEY', value: trimmedStripeKey }]
-      // Add MANAGEMENT_API_URL if custom URL provided (for localhost/staging testing)
       if (this.supabaseManagementUrl) {
         secrets.push({ name: 'MANAGEMENT_API_URL', value: this.supabaseManagementUrl })
       }
-      // Set ENABLE_SIGMA for edge functions to read
       if (enableSigma) {
         secrets.push({ name: 'ENABLE_SIGMA', value: 'true' })
       }
+      if (rateLimit != null) {
+        secrets.push({ name: 'RATE_LIMIT', value: String(rateLimit) })
+      }
+      if (syncIntervalSeconds != null) {
+        secrets.push({ name: 'SYNC_INTERVAL', value: String(syncIntervalSeconds) })
+      }
       await this.setSecrets(secrets)
+
+      const versionedSetup = this.injectPackageVersion(setupFunctionCode, version)
+      await this.deployFunction('stripe-setup', versionedSetup, false)
 
       // Run setup (migrations + webhook creation)
       // Use accessToken for Management API validation
-      const setupResult = await this.invokeFunction('stripe-setup', this.accessToken)
+      const setupResult = await this.invokeFunction('stripe-setup', 'POST', this.accessToken)
 
       if (!setupResult.success) {
         throw new Error(`Setup failed: ${setupResult.error}`)
+      }
+
+      // Now deploy the remaining edge functions -- schema is ready
+      const versionedWebhook = this.injectPackageVersion(webhookFunctionCode, version)
+      const versionedWorker = this.injectPackageVersion(workerFunctionCode, version)
+
+      await this.deployFunction('stripe-webhook', versionedWebhook, false)
+      await this.deployFunction('stripe-worker', versionedWorker, false)
+
+      if (enableSigma) {
+        const versionedSigmaWorker = this.injectPackageVersion(sigmaWorkerFunctionCode, version)
+        await this.deployFunction('sigma-data-worker', versionedSigmaWorker, false)
       }
 
       // Setup pg_cron - this is required for automatic syncing
@@ -532,16 +571,24 @@ export class SupabaseSetupClient {
         await this.setupSigmaPgCronJob()
       }
 
+      // Invoke stripe-worker immediately to trigger first sync for better UX on Supabase
+      // dashboard. We want to see the first sync run immediately after an installation.
+      await this.invokeFunction('stripe-worker', 'POST', this.workerSecret)
+
       // Set final version comment
       await this.updateInstallationComment(
         `${STRIPE_SCHEMA_COMMENT_PREFIX} v${pkg.version} ${INSTALLATION_INSTALLED_SUFFIX}`
       )
     } catch (error) {
-      await this.updateInstallationComment(
-        `${STRIPE_SCHEMA_COMMENT_PREFIX} v${pkg.version} ${INSTALLATION_ERROR_SUFFIX} - ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      )
+      try {
+        await this.updateInstallationComment(
+          `${STRIPE_SCHEMA_COMMENT_PREFIX} v${pkg.version} ${INSTALLATION_ERROR_SUFFIX} - ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        )
+      } catch {
+        // Schema may not exist if early steps failed -- don't mask the original error
+      }
       throw error
     }
   }
@@ -556,6 +603,8 @@ export async function install(params: {
   baseProjectUrl?: string
   supabaseManagementUrl?: string
   enableSigma?: boolean
+  rateLimit?: number
+  syncIntervalSeconds?: number
 }): Promise<void> {
   const {
     supabaseAccessToken,
@@ -564,6 +613,8 @@ export async function install(params: {
     packageVersion,
     workerIntervalSeconds,
     enableSigma,
+    rateLimit,
+    syncIntervalSeconds,
   } = params
 
   const client = new SupabaseSetupClient({
@@ -573,7 +624,14 @@ export async function install(params: {
     supabaseManagementUrl: params.supabaseManagementUrl,
   })
 
-  await client.install(stripeKey, packageVersion, workerIntervalSeconds, enableSigma)
+  await client.install(
+    stripeKey,
+    packageVersion,
+    workerIntervalSeconds,
+    enableSigma,
+    rateLimit,
+    syncIntervalSeconds
+  )
 }
 
 export async function uninstall(params: {

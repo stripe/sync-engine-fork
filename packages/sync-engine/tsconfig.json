@@ -8,7 +8,11 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "npm:stripe-experiment-sync": ["./src/index.ts"]
+    }
   },
   "include": ["src/**/*"]
 }

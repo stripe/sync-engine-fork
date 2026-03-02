@@ -91,34 +91,9 @@ export type StripeSyncConfig = {
   /** @deprecated Use `poolConfig` instead. */
   maxPostgresConnections?: number
 
-  poolConfig: PoolConfig
+  poolConfig?: PoolConfig
 
   logger?: Logger
-
-  /**
-   * Maximum number of retry attempts for 429 rate limit errors.
-   * Default: 5
-   */
-  maxRetries?: number
-
-  /**
-   * Initial delay in milliseconds before first retry attempt.
-   * Delay increases exponentially: 1s, 2s, 4s, 8s, 16s, etc.
-   * Default: 1000 (1 second)
-   */
-  initialRetryDelayMs?: number
-
-  /**
-   * Maximum delay in milliseconds between retry attempts.
-   * Default: 60000 (60 seconds)
-   */
-  maxRetryDelayMs?: number
-
-  /**
-   * Random jitter in milliseconds added to retry delays to prevent thundering herd.
-   * Default: 500
-   */
-  retryJitterMs?: number
 
   /**
    * Maximum number of customers to process concurrently when syncing payment methods.
@@ -148,32 +123,100 @@ export type SyncObject =
   | 'early_fraud_warning'
   | 'refund'
   | 'checkout_sessions'
+
+export const SUPPORTED_WEBHOOK_EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = [
+  'charge.captured',
+  'charge.expired',
+  'charge.failed',
+  'charge.pending',
+  'charge.refunded',
+  'charge.succeeded',
+  'charge.updated',
+  'customer.deleted',
+  'customer.created',
+  'customer.updated',
+  'checkout.session.async_payment_failed',
+  'checkout.session.async_payment_succeeded',
+  'checkout.session.completed',
+  'checkout.session.expired',
+  'customer.subscription.created',
+  'customer.subscription.deleted',
+  'customer.subscription.paused',
+  'customer.subscription.pending_update_applied',
+  'customer.subscription.pending_update_expired',
+  'customer.subscription.trial_will_end',
+  'customer.subscription.resumed',
+  'customer.subscription.updated',
+  'customer.tax_id.updated',
+  'customer.tax_id.created',
+  'customer.tax_id.deleted',
+  'invoice.created',
+  'invoice.deleted',
+  'invoice.finalized',
+  'invoice.finalization_failed',
+  'invoice.paid',
+  'invoice.payment_action_required',
+  'invoice.payment_failed',
+  'invoice.payment_succeeded',
+  'invoice.upcoming',
+  'invoice.sent',
+  'invoice.voided',
+  'invoice.marked_uncollectible',
+  'invoice.updated',
+  'product.created',
+  'product.updated',
+  'product.deleted',
+  'price.created',
+  'price.updated',
+  'price.deleted',
+  'plan.created',
+  'plan.updated',
+  'plan.deleted',
+  'setup_intent.canceled',
+  'setup_intent.created',
+  'setup_intent.requires_action',
+  'setup_intent.setup_failed',
+  'setup_intent.succeeded',
+  'subscription_schedule.aborted',
+  'subscription_schedule.canceled',
+  'subscription_schedule.completed',
+  'subscription_schedule.created',
+  'subscription_schedule.expiring',
+  'subscription_schedule.released',
+  'subscription_schedule.updated',
+  'payment_method.attached',
+  'payment_method.automatically_updated',
+  'payment_method.detached',
+  'payment_method.updated',
+  'charge.dispute.created',
+  'charge.dispute.funds_reinstated',
+  'charge.dispute.funds_withdrawn',
+  'charge.dispute.updated',
+  'charge.dispute.closed',
+  'payment_intent.amount_capturable_updated',
+  'payment_intent.canceled',
+  'payment_intent.created',
+  'payment_intent.partially_funded',
+  'payment_intent.payment_failed',
+  'payment_intent.processing',
+  'payment_intent.requires_action',
+  'payment_intent.succeeded',
+  'credit_note.created',
+  'credit_note.updated',
+  'credit_note.voided',
+  'radar.early_fraud_warning.created',
+  'radar.early_fraud_warning.updated',
+  'refund.created',
+  'refund.failed',
+  'refund.updated',
+  'charge.refund.updated',
+  'review.closed',
+  'review.opened',
+  'entitlements.active_entitlement_summary.updated',
+]
+
 export interface Sync {
   synced: number
-}
-
-export interface SyncBackfill {
-  products?: Sync
-  prices?: Sync
-  plans?: Sync
-  customers?: Sync
-  subscriptions?: Sync
-  subscriptionSchedules?: Sync
-  invoices?: Sync
-  setupIntents?: Sync
-  paymentIntents?: Sync
-  paymentMethods?: Sync
-  disputes?: Sync
-  charges?: Sync
-  taxIds?: Sync
-  creditNotes?: Sync
-  earlyFraudWarnings?: Sync
-  refunds?: Sync
-  checkoutSessions?: Sync
-  subscriptionItemChangeEventsV2Beta?: Sync
-  exchangeRatesFromUsd?: Sync
-  /** Sigma-backed results by table name (e.g. subscription_item_change_events_v2_beta). */
-  sigma?: Record<string, Sync>
 }
 
 export interface SyncParams {
@@ -242,8 +285,17 @@ export interface ProcessNextParams extends SyncParams {
 export type BaseResourceConfig = {
   /** Backfill order: lower numbers sync first; parents before children for FK dependencies */
   order: number
+  /** Database table name for this resource (e.g. 'customers', 'invoices') */
+  tableName: string
   /** Whether this resource supports incremental sync via 'created' filter or cursor */
   supportsCreatedFilter: boolean
+  /** Whether this resource is included in sync runs by default. Default: true */
+  sync?: boolean
+  /** Resource types that must be backfilled before this one (e.g. price depends on product) */
+  dependencies?: string[]
+  /** Function to check if an entity is in a final state and doesn't need revalidation */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  isFinalState?: (entity: any) => boolean
 }
 
 export type StripeListResourceConfig = BaseResourceConfig & {
@@ -252,12 +304,11 @@ export type StripeListResourceConfig = BaseResourceConfig & {
     data: unknown[]
     has_more: boolean
   }>
-  /** Function to upsert items to database */
-  upsertFn: (
-    items: unknown[],
-    accountId: string,
-    backfillRelated?: boolean
-  ) => Promise<unknown[] | void>
+  /** Function to retrieve a single item by ID from Stripe API */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  retrieveFn: (id: string) => Promise<Stripe.Response<any>>
+  /** Optional list of sub-resources to expand during upsert/fetching (e.g. 'refunds', 'listLineItems') */
+  listExpands?: Record<string, (id: string) => Promise<Stripe.ApiList<{ id?: string }>>>[]
   /** discriminator */
   sigma?: undefined
 }
@@ -274,7 +325,9 @@ export type SigmaResourceConfig = BaseResourceConfig & {
   /** discriminator */
   listFn?: undefined
   /** discriminator */
-  upsertFn?: undefined
+  retrieveFn?: undefined
+  /** discriminator */
+  listExpands?: Record<string, (id: string) => Promise<Stripe.ApiList<{ id?: string }>>>[]
 }
 
 /** Union of all resource configuration types */
