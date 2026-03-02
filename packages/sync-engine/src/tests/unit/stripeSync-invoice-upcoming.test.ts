@@ -35,12 +35,9 @@ describe('invoice.upcoming handling', () => {
 
     const stripeSync = await createMockedStripeSync({ logger })
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(stripeSync as any).getAccountId = vi.fn().mockResolvedValue('acct_test')
-
     const upsertSpy = vi.fn()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(stripeSync as any).upsertInvoices = upsertSpy
+    ;(stripeSync.webhook as any).deps.upsertAny = upsertSpy
 
     const event = {
       id: 'evt_test_upcoming',
@@ -58,7 +55,7 @@ describe('invoice.upcoming handling', () => {
       created: Math.floor(Date.now() / 1000),
     } as unknown as Stripe.Event
 
-    await expect(stripeSync.processEvent(event)).resolves.toBeUndefined()
+    await expect(stripeSync.webhook.processEvent(event)).resolves.toBeUndefined()
 
     expect(upsertSpy).not.toHaveBeenCalled()
 
@@ -76,12 +73,9 @@ describe('invoice.upcoming handling', () => {
 
     const stripeSync = await createMockedStripeSync({ logger })
 
+    const upsertSpy = vi.fn().mockResolvedValue([])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(stripeSync as any).getAccountId = vi.fn().mockResolvedValue('acct_test')
-
-    const handlerSpy = vi.fn().mockResolvedValue(undefined)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(stripeSync as any).eventHandlers['invoice.paid'] = handlerSpy
+    ;(stripeSync.webhook as any).deps.upsertAny = upsertSpy
 
     const event = {
       id: 'evt_test_paid',
@@ -99,8 +93,13 @@ describe('invoice.upcoming handling', () => {
       created: Math.floor(Date.now() / 1000),
     } as unknown as Stripe.Event
 
-    await expect(stripeSync.processEvent(event)).resolves.toBeUndefined()
+    await expect(stripeSync.webhook.processEvent(event)).resolves.toBeUndefined()
 
-    expect(handlerSpy).toHaveBeenCalledWith(event, 'acct_test')
+    expect(upsertSpy).toHaveBeenCalledWith(
+      [event.data.object],
+      'acct_test',
+      false,
+      expect.any(String)
+    )
   })
 })
