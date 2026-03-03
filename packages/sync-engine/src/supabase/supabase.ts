@@ -6,7 +6,7 @@ import {
   sigmaWorkerFunctionCode,
 } from './edge-function-code'
 import pkg from '../../package.json' with { type: 'json' }
-import { parseSchemaComment, buildSchemaComment } from './schemaComment'
+import { parseSchemaComment, buildSchemaComment, SchemaInstallationStatus } from './schemaComment'
 
 export interface DeployClientOptions {
   accessToken: string
@@ -443,10 +443,14 @@ export class SupabaseSetupClient {
   /**
    * Update installation progress comment on the stripe schema
    */
-  async updateInstallationComment(message: string): Promise<void> {
+  async updateComment(
+    status: SchemaInstallationStatus,
+    errorMessage?: string | undefined
+  ): Promise<void> {
+    const comment = buildSchemaComment({ status, version: pkg.version, errorMessage })
     // Escape single quotes to prevent SQL injection
-    const escapedMessage = message.replace(/'/g, "''")
-    await this.runSQL(`COMMENT ON SCHEMA stripe IS '${escapedMessage}'`)
+    const escapedComment = comment.replace(/'/g, "''")
+    await this.runSQL(`COMMENT ON SCHEMA stripe IS '${escapedComment}'`)
   }
 
   /**
@@ -459,9 +463,7 @@ export class SupabaseSetupClient {
       // Check if schema exists and mark uninstall as started
       const hasSchema = await this.schemaExists('stripe')
       if (hasSchema) {
-        await this.updateInstallationComment(
-          buildSchemaComment({ status: 'uninstalling', version: pkg.version })
-        )
+        await this.updateComment('uninstalling')
       }
 
       // Invoke the DELETE endpoint on stripe-setup function
@@ -477,13 +479,8 @@ export class SupabaseSetupClient {
       try {
         const hasSchema = await this.schemaExists('stripe')
         if (hasSchema) {
-          await this.updateInstallationComment(
-            buildSchemaComment({
-              status: 'uninstall_error',
-              version: pkg.version,
-              errorMessage: error instanceof Error ? error.message : String(error),
-            })
-          )
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          await this.updateComment('uninstall_error', errorMessage)
         }
       } catch (error) {
         throw new Error(
@@ -518,9 +515,7 @@ export class SupabaseSetupClient {
       await this.runSQL(`CREATE SCHEMA IF NOT EXISTS stripe`)
 
       // Signal installation started
-      await this.updateInstallationComment(
-        buildSchemaComment({ status: 'installing', version: pkg.version })
-      )
+      await this.updateComment('installing')
 
       // Set secrets first -- stripe-setup needs STRIPE_SECRET_KEY to run
       const secrets = [{ name: 'STRIPE_SECRET_KEY', value: trimmedStripeKey }]
@@ -574,18 +569,11 @@ export class SupabaseSetupClient {
       await this.invokeFunction('stripe-worker', 'POST', this.workerSecret)
 
       // Set final version comment
-      await this.updateInstallationComment(
-        buildSchemaComment({ status: 'installed', version: pkg.version })
-      )
+      await this.updateComment('installed')
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
       try {
-        await this.updateInstallationComment(
-          buildSchemaComment({
-            status: 'install_error',
-            version: pkg.version,
-            errorMessage: error instanceof Error ? error.message : String(error),
-          })
-        )
+        await this.updateComment('install_error', errorMessage)
       } catch {
         // Schema may not exist if early steps failed -- don't mask the original error
       }
