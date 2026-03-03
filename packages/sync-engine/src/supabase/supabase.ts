@@ -331,9 +331,9 @@ export class SupabaseSetupClient {
           SELECT 1 FROM information_schema.schemata
           WHERE schema_name = '${schema}'
         ) as schema_exists`
-      )) as { rows?: { schema_exists: boolean }[] }[]
+      )) as { schema_exists: boolean }[]
 
-      return schemaCheck[0]?.rows?.[0]?.schema_exists === true
+      return schemaCheck[0].schema_exists === true
     } catch {
       // Return false if query fails
       return false
@@ -356,9 +356,9 @@ export class SupabaseSetupClient {
       `SELECT obj_description(oid, 'pg_namespace') as comment
          FROM pg_namespace
          WHERE nspname = '${schema}'`
-    )) as { rows?: { comment: string | null }[] }[]
+    )) as { comment: string | null }[]
 
-    const comment = commentCheck[0]?.rows?.[0]?.comment ?? null
+    const comment = commentCheck[0]?.comment ?? null
     const parsedComment = parseSchemaComment(comment)
     return parsedComment
   }
@@ -382,9 +382,9 @@ export class SupabaseSetupClient {
           SELECT 1 FROM information_schema.tables
           WHERE table_schema = '${schema}' AND table_name IN ('migrations', '_migrations')
         ) as table_exists`
-      )) as { rows?: { table_exists: boolean }[] }[]
+      )) as { table_exists: boolean }[]
 
-      const migrationsTableExists = migrationsCheck[0]?.rows?.[0]?.table_exists === true
+      const migrationsTableExists = migrationsCheck[0].table_exists === true
 
       if (!migrationsTableExists) {
         // Schema exists but no migrations table - incomplete/manual installation

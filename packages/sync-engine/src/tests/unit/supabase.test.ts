@@ -349,8 +349,11 @@ describe('SupabaseDeployClient', () => {
         projectRef: mockProjectRef,
       })
 
-      // Mock runSQL to return schema doesn't exist
-      const mockRunSQL = vi.fn().mockResolvedValueOnce([{ rows: [{ schema_exists: false }] }])
+      // Mock runSQL to return migrations table check, then schema doesn't exist
+      const mockRunSQL = vi
+        .fn()
+        .mockResolvedValueOnce([{ table_exists: true }]) // migrations table exists
+        .mockResolvedValueOnce([{ schema_exists: false }]) // schema doesn't exist
       client.runSQL = mockRunSQL
 
       const installed = await client.isInstalled()
@@ -364,11 +367,8 @@ describe('SupabaseDeployClient', () => {
         projectRef: mockProjectRef,
       })
 
-      // Mock runSQL to return schema exists, but migrations table doesn't
-      const mockRunSQL = vi
-        .fn()
-        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
-        .mockResolvedValueOnce([{ rows: [{ table_exists: false }] }]) // migrations table doesn't exist
+      // Mock runSQL to return migrations table doesn't exist (returns early)
+      const mockRunSQL = vi.fn().mockResolvedValueOnce([{ table_exists: false }]) // migrations table doesn't exist
       client.runSQL = mockRunSQL
 
       const installed = await client.isInstalled()
@@ -385,9 +385,9 @@ describe('SupabaseDeployClient', () => {
       // Mock runSQL to return schema exists, migrations table exists, but no comment
       const mockRunSQL = vi
         .fn()
-        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
-        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
-        .mockResolvedValueOnce([{ rows: [{ comment: null }] }]) // no comment
+        .mockResolvedValueOnce([{ table_exists: true }]) // migrations table exists
+        .mockResolvedValueOnce([{ schema_exists: true }]) // schema exists
+        .mockResolvedValueOnce([{ comment: null }]) // no comment
       client.runSQL = mockRunSQL
 
       await expect(client.isInstalled()).rejects.toThrow(/Legacy installation detected/)
@@ -402,9 +402,9 @@ describe('SupabaseDeployClient', () => {
       // Mock runSQL to return schema exists, migrations table exists, but wrong comment
       const mockRunSQL = vi
         .fn()
-        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
-        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
-        .mockResolvedValueOnce([{ rows: [{ comment: 'some other tool' }] }]) // wrong comment
+        .mockResolvedValueOnce([{ table_exists: true }]) // migrations table exists
+        .mockResolvedValueOnce([{ schema_exists: true }]) // schema exists
+        .mockResolvedValueOnce([{ comment: 'some other tool' }]) // wrong comment
       client.runSQL = mockRunSQL
 
       await expect(client.isInstalled()).rejects.toThrow(/Legacy installation detected/)
@@ -419,10 +419,10 @@ describe('SupabaseDeployClient', () => {
       // Mock runSQL to return in-progress installation
       const mockRunSQL = vi
         .fn()
-        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
-        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([{ table_exists: true }]) // migrations table exists
+        .mockResolvedValueOnce([{ schema_exists: true }]) // schema exists
         .mockResolvedValueOnce([
-          { rows: [{ comment: JSON.stringify({ status: 'installing', version: '1.0.0' }) }] },
+          { comment: JSON.stringify({ status: 'installing', newVersion: '1.0.0' }) },
         ]) // in progress
       client.runSQL = mockRunSQL
 
@@ -440,19 +440,15 @@ describe('SupabaseDeployClient', () => {
       // Mock runSQL to return failed installation
       const mockRunSQL = vi
         .fn()
-        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
-        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([{ table_exists: true }]) // migrations table exists
+        .mockResolvedValueOnce([{ schema_exists: true }]) // schema exists
         .mockResolvedValueOnce([
           {
-            rows: [
-              {
-                comment: JSON.stringify({
-                  status: 'install_error',
-                  version: '1.0.0',
-                  errorMessage: 'Something went wrong',
-                }),
-              },
-            ],
+            comment: JSON.stringify({
+              status: 'install_error',
+              newVersion: '1.0.0',
+              errorMessage: 'Something went wrong',
+            }),
           },
         ]) // failed
       client.runSQL = mockRunSQL
@@ -476,10 +472,10 @@ describe('SupabaseDeployClient', () => {
       // Mock runSQL to return in-progress uninstallation
       const mockRunSQL = vi
         .fn()
-        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
-        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([{ table_exists: true }]) // migrations table exists
+        .mockResolvedValueOnce([{ schema_exists: true }]) // schema exists
         .mockResolvedValueOnce([
-          { rows: [{ comment: JSON.stringify({ status: 'uninstalling', version: '1.0.0' }) }] },
+          { comment: JSON.stringify({ status: 'uninstalling', oldVersion: '1.0.0' }) },
         ]) // in progress
       client.runSQL = mockRunSQL
 
@@ -497,19 +493,15 @@ describe('SupabaseDeployClient', () => {
       // Mock runSQL to return failed uninstallation
       const mockRunSQL = vi
         .fn()
-        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
-        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([{ table_exists: true }]) // migrations table exists
+        .mockResolvedValueOnce([{ schema_exists: true }]) // schema exists
         .mockResolvedValueOnce([
           {
-            rows: [
-              {
-                comment: JSON.stringify({
-                  status: 'uninstall_error',
-                  version: '1.0.0',
-                  errorMessage: 'Cleanup failed',
-                }),
-              },
-            ],
+            comment: JSON.stringify({
+              status: 'uninstall_error',
+              oldVersion: '1.0.0',
+              errorMessage: 'Cleanup failed',
+            }),
           },
         ]) // failed
       client.runSQL = mockRunSQL
@@ -533,10 +525,10 @@ describe('SupabaseDeployClient', () => {
       // Mock runSQL to return completed installation
       const mockRunSQL = vi
         .fn()
-        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
-        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([{ table_exists: true }]) // migrations table exists
+        .mockResolvedValueOnce([{ schema_exists: true }]) // schema exists
         .mockResolvedValueOnce([
-          { rows: [{ comment: JSON.stringify({ status: 'installed', version: '1.0.0' }) }] },
+          { comment: JSON.stringify({ status: 'installed', oldVersion: '1.0.0' }) },
         ]) // installed
       client.runSQL = mockRunSQL
 
@@ -554,10 +546,10 @@ describe('SupabaseDeployClient', () => {
       // Mock runSQL to return completed installation
       const mockRunSQL = vi
         .fn()
-        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
-        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([{ table_exists: true }]) // migrations table exists
+        .mockResolvedValueOnce([{ schema_exists: true }]) // schema exists
         .mockResolvedValueOnce([
-          { rows: [{ comment: JSON.stringify({ status: 'installed', version: '1.0.0' }) }] },
+          { comment: JSON.stringify({ status: 'installed', oldVersion: '1.0.0' }) },
         ]) // installed
       client.runSQL = mockRunSQL
 
@@ -577,9 +569,9 @@ describe('SupabaseDeployClient', () => {
       // Mock runSQL to return legacy plain-text format
       const mockRunSQL = vi
         .fn()
-        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
-        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
-        .mockResolvedValueOnce([{ rows: [{ comment: 'stripe-sync v1.0.0 installed' }] }]) // legacy format
+        .mockResolvedValueOnce([{ table_exists: true }]) // migrations table exists
+        .mockResolvedValueOnce([{ schema_exists: true }]) // schema exists
+        .mockResolvedValueOnce([{ comment: 'stripe-sync v1.0.0 installed' }]) // legacy format
       client.runSQL = mockRunSQL
 
       const installed = await client.isInstalled()
@@ -596,10 +588,10 @@ describe('SupabaseDeployClient', () => {
       // Mock runSQL to return legacy plain-text format with error
       const mockRunSQL = vi
         .fn()
-        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
-        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([{ table_exists: true }]) // migrations table exists
+        .mockResolvedValueOnce([{ schema_exists: true }]) // schema exists
         .mockResolvedValueOnce([
-          { rows: [{ comment: 'stripe-sync v1.0.0 installation:error - Legacy error message' }] },
+          { comment: 'stripe-sync v1.0.0 installation:error - Legacy error message' },
         ])
       client.runSQL = mockRunSQL
 
@@ -622,10 +614,10 @@ describe('SupabaseDeployClient', () => {
       // Mock runSQL to return legacy plain-text format with error
       const mockRunSQL = vi
         .fn()
-        .mockResolvedValueOnce([{ rows: [{ schema_exists: true }] }]) // schema exists
-        .mockResolvedValueOnce([{ rows: [{ table_exists: true }] }]) // migrations table exists
+        .mockResolvedValueOnce([{ table_exists: true }]) // migrations table exists
+        .mockResolvedValueOnce([{ schema_exists: true }]) // schema exists
         .mockResolvedValueOnce([
-          { rows: [{ comment: 'stripe-sync v1.0.0 uninstallation:error - Legacy error message' }] },
+          { comment: 'stripe-sync v1.0.0 uninstallation:error - Legacy error message' },
         ])
       client.runSQL = mockRunSQL
 
@@ -672,7 +664,6 @@ describe('SupabaseDeployClient', () => {
       client.invokeFunction = vi.fn().mockResolvedValue({ success: true })
       client.setupPgCronJob = vi.fn().mockResolvedValue(null)
       client.setupSigmaPgCronJob = vi.fn().mockResolvedValue(null)
-      client.updateInstallationComment = vi.fn().mockResolvedValue(null)
 
       await client.install('sk_test_key')
 
@@ -701,7 +692,6 @@ describe('SupabaseDeployClient', () => {
       client.invokeFunction = vi.fn().mockResolvedValue({ success: true })
       client.setupPgCronJob = vi.fn().mockResolvedValue(null)
       client.setupSigmaPgCronJob = vi.fn().mockResolvedValue(null)
-      client.updateInstallationComment = vi.fn().mockResolvedValue(null)
 
       await client.install('sk_test_key')
 
