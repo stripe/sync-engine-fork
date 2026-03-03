@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
           break
         case 'installed':
           status = 'completed'
-          step = `installed${parsedComment.version ? ` (v${parsedComment.version})` : ''}`
+          step = `installed${parsedComment.newVersion ? ` (v${parsedComment.newVersion})` : ''}`
           break
         case 'install_error':
           status = 'error'

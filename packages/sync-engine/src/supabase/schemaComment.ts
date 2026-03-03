@@ -24,8 +24,15 @@ export interface StripeSchemaComment {
   /** The installation status */
   status: SchemaInstallationStatus
 
-  /** The sync engine package version from the schema comment (e.g., '1.2.3') */
-  version?: string
+  /** The old sync engine package version (e.g., '1.2.3'). This is
+   * set to the old version being upgraded from.
+   */
+  oldVersion?: string
+
+  /** The new sync engine package version (e.g., '1.2.3'). This is
+   * set to the new version being installed or upgraded to.
+   */
+  newVersion?: string
 
   /** Error message if status is install_error or uninstall_error */
   errorMessage?: string
@@ -62,7 +69,7 @@ export function parseSchemaComment(comment: string | null | undefined): StripeSc
 
   // Extract version if present (format: "stripe-sync v1.2.3 ..." or "stripe-sync 1.2.3 ...")
   const versionMatch = comment.match(/stripe-sync\s+v?([0-9]+\.[0-9]+\.[0-9]+)/)
-  const version = versionMatch?.[1]
+  const newVersion = versionMatch?.[1]
 
   // Determine status from legacy suffixes
   let status: SchemaInstallationStatus
@@ -88,5 +95,5 @@ export function parseSchemaComment(comment: string | null | undefined): StripeSc
     return { status: 'uninstalled' }
   }
 
-  return { status, version, errorMessage }
+  return { status, newVersion, errorMessage }
 }
