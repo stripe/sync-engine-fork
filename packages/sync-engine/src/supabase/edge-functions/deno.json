@@ -1,8 +1,8 @@
 {
-    "compilerOptions": {
-        "strict": true
-    },
-    "imports": {
-        "postgres": "npm:postgres@3.4.8"
-    }
+  "compilerOptions": {
+    "strict": true
+  },
+  "imports": {
+    "postgres": "npm:postgres@3.4.8"
+  }
 }
