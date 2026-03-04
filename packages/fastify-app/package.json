@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src --ext .ts",
     "start": "NODE_ENV=production node dist/src/server.js",
-    "test": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:55432/postgres} TEST_POSTGRES_DB_URL=${TEST_POSTGRES_DB_URL:-postgresql://postgres:postgres@localhost:55432/postgres} STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_123} STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-whsec_test} vitest"
+    "test": "vitest"
   },
   "author": "Supabase",
   "license": "MIT",
