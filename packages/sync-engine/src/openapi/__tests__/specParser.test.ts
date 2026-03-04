@@ -85,4 +85,46 @@ describe('SpecParser', () => {
 
     expect(reversed).toEqual(normal)
   })
+
+  it('marks expandable references from x-expansionResources metadata', () => {
+    const parser = new SpecParser()
+    const parsed = parser.parse(
+      {
+        ...minimalStripeOpenApiSpec,
+        components: {
+          schemas: {
+            charge: {
+              'x-resourceId': 'charge',
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                customer: {
+                  anyOf: [{ type: 'string' }, { $ref: '#/components/schemas/customer' }],
+                  'x-expansionResources': {
+                    oneOf: [{ $ref: '#/components/schemas/customer' }],
+                  },
+                },
+              },
+            },
+            customer: {
+              'x-resourceId': 'customer',
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      { allowedTables: ['charges'] }
+    )
+
+    const charges = parsed.tables.find((table) => table.tableName === 'charges')
+    expect(charges?.columns).toContainEqual({
+      name: 'customer',
+      type: 'json',
+      nullable: false,
+      expandableReference: true,
+    })
+  })
 })

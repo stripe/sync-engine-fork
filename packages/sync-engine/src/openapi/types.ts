@@ -10,6 +10,10 @@ export type OpenApiSchemaObject = {
   enum?: unknown[]
   additionalProperties?: boolean | OpenApiSchemaOrReference
   'x-resourceId'?: string
+  'x-expandableFields'?: string[]
+  'x-expansionResources'?: {
+    oneOf?: OpenApiSchemaOrReference[]
+  }
 }
 
 export type OpenApiReferenceObject = {
@@ -34,6 +38,7 @@ export type ParsedColumn = {
   name: string
   type: ScalarType
   nullable: boolean
+  expandableReference?: boolean
 }
 
 export type ParsedResourceTable = {

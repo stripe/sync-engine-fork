@@ -11,9 +11,8 @@ import {
   type StripeWebSocketClient,
   type StripeWebhookEvent,
 } from '../index'
-import { SYNC_OBJECTS } from '../syncObjects'
 import { createTunnel, type NgrokTunnel } from './ngrok'
-import { type StripeObject } from '../resourceRegistry'
+import { SYNC_OBJECTS, type StripeObject } from '../resourceRegistry'
 import { install, uninstall } from '../supabase'
 import { SIGMA_INGESTION_CONFIGS } from '../sigma/sigmaIngestionConfigs'
 
@@ -204,10 +203,14 @@ export async function backfillCommand(options: CliOptions, entityName: string): 
 
     // Run migrations first (will check for legacy installations and throw if detected)
     try {
+      const schemaName = process.env.SYNC_SCHEMA_NAME ?? undefined
+      const syncTablesSchemaName = process.env.SYNC_TABLES_SCHEMA_NAME ?? undefined
       await runMigrations({
         databaseUrl: config.databaseUrl,
         enableSigma,
         stripeApiVersion: process.env.STRIPE_API_VERSION || '2020-08-27',
+        schemaName,
+        syncTablesSchemaName,
       })
     } catch (migrationError) {
       console.error(chalk.red('Failed to run migrations:'))
@@ -337,10 +340,14 @@ export async function migrateCommand(options: CliOptions): Promise<void> {
     }
 
     try {
+      const schemaName = process.env.SYNC_SCHEMA_NAME ?? undefined
+      const syncTablesSchemaName = process.env.SYNC_TABLES_SCHEMA_NAME ?? undefined
       await runMigrations({
         databaseUrl,
         enableSigma,
         stripeApiVersion: process.env.STRIPE_API_VERSION || '2020-08-27',
+        schemaName,
+        syncTablesSchemaName,
       })
       console.log(chalk.green('✓ Migrations completed successfully'))
     } catch (migrationError) {
@@ -460,10 +467,14 @@ export async function syncCommand(options: CliOptions): Promise<void> {
 
     // 1. Run migrations (will check for legacy installations and throw if detected)
     try {
+      const schemaName = process.env.SYNC_SCHEMA_NAME ?? undefined
+      const syncTablesSchemaName = process.env.SYNC_TABLES_SCHEMA_NAME ?? undefined
       await runMigrations({
         databaseUrl: config.databaseUrl,
         enableSigma: config.enableSigma,
         stripeApiVersion: process.env.STRIPE_API_VERSION || '2020-08-27',
+        schemaName,
+        syncTablesSchemaName,
       })
     } catch (migrationError) {
       console.error(chalk.red('Failed to run migrations:'))
@@ -717,9 +728,13 @@ export async function fullSyncCommand(
 
     // Run migrations first
     try {
+      const schemaName = process.env.SYNC_SCHEMA_NAME ?? undefined
+      const syncTablesSchemaName = process.env.SYNC_TABLES_SCHEMA_NAME ?? undefined
       await runMigrations({
         databaseUrl: config.databaseUrl,
         enableSigma,
+        schemaName,
+        syncTablesSchemaName,
       })
     } catch (migrationError) {
       console.error(chalk.red('Failed to run migrations:'))

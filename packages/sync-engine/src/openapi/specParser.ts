@@ -7,7 +7,11 @@ import type {
   ParsedOpenApiSpec,
   ScalarType,
 } from './types'
-import { RUNTIME_REQUIRED_TABLES as DEFAULT_RUNTIME_REQUIRED_TABLES } from '../syncObjects'
+import { RUNTIME_REQUIRED_TABLES as DEFAULT_RUNTIME_REQUIRED_TABLES } from '../resourceRegistry'
+import {
+  OPENAPI_COMPATIBILITY_COLUMNS,
+  OPENAPI_RESOURCE_TABLE_ALIASES as DEFAULT_OPENAPI_RESOURCE_TABLE_ALIASES,
+} from './runtimeMappings'
 
 const RESERVED_COLUMNS = new Set([
   'id',
@@ -19,59 +23,14 @@ const RESERVED_COLUMNS = new Set([
 
 export const RUNTIME_REQUIRED_TABLES = DEFAULT_RUNTIME_REQUIRED_TABLES
 
-export const RUNTIME_RESOURCE_ALIASES: Record<string, string> = {
-  active_entitlement: 'active_entitlements',
-  charge: 'charges',
-  'checkout.session': 'checkout_sessions',
-  'checkout.session.line_item': 'checkout_session_line_items',
-  'checkout.session.line_items': 'checkout_session_line_items',
-  'checkout.session_line_item': 'checkout_session_line_items',
-  credit_note: 'credit_notes',
-  customer: 'customers',
-  dispute: 'disputes',
-  'entitlements.active_entitlement': 'active_entitlements',
-  'entitlements.feature': 'features',
-  feature: 'features',
-  invoice: 'invoices',
-  item: 'checkout_session_line_items',
-  payment_intent: 'payment_intents',
-  payment_method: 'payment_methods',
-  plan: 'plans',
-  price: 'prices',
-  product: 'products',
-  'radar.early_fraud_warning': 'early_fraud_warnings',
-  refund: 'refunds',
-  review: 'reviews',
-  setup_intent: 'setup_intents',
-  subscription: 'subscriptions',
-  subscription_item: 'subscription_items',
-  subscription_schedule: 'subscription_schedules',
-  tax_id: 'tax_ids',
-}
-
-const COMPATIBILITY_COLUMNS: Record<string, ParsedColumn[]> = {
-  active_entitlements: [
-    { name: 'customer', type: 'text', nullable: true },
-    { name: 'object', type: 'text', nullable: true },
-    { name: 'feature', type: 'text', nullable: true },
-    { name: 'livemode', type: 'boolean', nullable: true },
-    { name: 'lookup_key', type: 'text', nullable: true },
-  ],
-  checkout_session_line_items: [
-    { name: 'checkout_session', type: 'text', nullable: true },
-    { name: 'amount_discount', type: 'bigint', nullable: true },
-    { name: 'amount_tax', type: 'bigint', nullable: true },
-  ],
-  customers: [{ name: 'deleted', type: 'boolean', nullable: true }],
-  subscription_items: [
-    { name: 'deleted', type: 'boolean', nullable: true },
-    { name: 'subscription', type: 'text', nullable: true },
-  ],
-}
+export const OPENAPI_RESOURCE_TABLE_ALIASES = DEFAULT_OPENAPI_RESOURCE_TABLE_ALIASES
+/** @deprecated Use OPENAPI_RESOURCE_TABLE_ALIASES instead. */
+export const RUNTIME_RESOURCE_ALIASES = OPENAPI_RESOURCE_TABLE_ALIASES
 
 type ColumnAccumulator = {
   type: ScalarType
   nullable: boolean
+  expandableReference: boolean
 }
 
 export class SpecParser {
@@ -81,7 +40,7 @@ export class SpecParser {
       throw new Error('OpenAPI spec is missing components.schemas')
     }
 
-    const aliases = { ...RUNTIME_RESOURCE_ALIASES, ...(options.resourceAliases ?? {}) }
+    const aliases = { ...OPENAPI_RESOURCE_TABLE_ALIASES, ...(options.resourceAliases ?? {}) }
     const allowedTables = new Set(options.allowedTables ?? RUNTIME_REQUIRED_TABLES)
     const tableMap = new Map<
       string,
@@ -121,12 +80,17 @@ export class SpecParser {
       for (const column of parsedColumns) {
         const current = existing.columns.get(column.name)
         if (!current) {
-          existing.columns.set(column.name, { type: column.type, nullable: column.nullable })
+          existing.columns.set(column.name, {
+            type: column.type,
+            nullable: column.nullable,
+            expandableReference: column.expandableReference ?? false,
+          })
           continue
         }
         existing.columns.set(column.name, {
           type: this.mergeTypes(current.type, column.type),
           nullable: current.nullable || column.nullable,
+          expandableReference: current.expandableReference || (column.expandableReference ?? false),
         })
       }
 
@@ -141,12 +105,13 @@ export class SpecParser {
           sourceSchemaName: 'compatibility_fallback',
           columns: new Map<string, ColumnAccumulator>(),
         } as const)
-      for (const compatibilityColumn of COMPATIBILITY_COLUMNS[tableName] ?? []) {
+      for (const compatibilityColumn of OPENAPI_COMPATIBILITY_COLUMNS[tableName] ?? []) {
         const existing = current.columns.get(compatibilityColumn.name)
         if (!existing) {
           current.columns.set(compatibilityColumn.name, {
             type: compatibilityColumn.type,
             nullable: compatibilityColumn.nullable,
+            expandableReference: compatibilityColumn.expandableReference ?? false,
           })
         }
       }
@@ -160,7 +125,12 @@ export class SpecParser {
         resourceId: table.resourceId,
         sourceSchemaName: table.sourceSchemaName,
         columns: Array.from(table.columns.entries())
-          .map(([name, value]) => ({ name, type: value.type, nullable: value.nullable }))
+          .map(([name, value]) => ({
+            name,
+            type: value.type,
+            nullable: value.nullable,
+            ...(value.expandableReference ? { expandableReference: true } : {}),
+          }))
           .sort((a, b) => a.name.localeCompare(b.name)),
       }))
 
@@ -196,6 +166,7 @@ export class SpecParser {
         name: propertyName,
         type: inferred.type,
         nullable: inferred.nullable,
+        ...(inferred.expandableReference ? { expandableReference: true } : {}),
       })
     }
     return columns
@@ -204,20 +175,23 @@ export class SpecParser {
   private inferFromCandidates(
     candidates: OpenApiSchemaOrReference[],
     spec: OpenApiSpec
-  ): { type: ScalarType; nullable: boolean } {
+  ): { type: ScalarType; nullable: boolean; expandableReference: boolean } {
     if (candidates.length === 0) {
-      return { type: 'text', nullable: true }
+      return { type: 'text', nullable: true, expandableReference: false }
     }
 
     let mergedType: ScalarType | null = null
     let nullable = false
+    let expandableReference = false
     for (const candidate of candidates) {
       const inferred = this.inferType(candidate, spec)
       mergedType = mergedType ? this.mergeTypes(mergedType, inferred.type) : inferred.type
       nullable = nullable || inferred.nullable
+      expandableReference =
+        expandableReference || this.isExpandableReferenceCandidate(candidate, spec)
     }
 
-    return { type: mergedType ?? 'text', nullable }
+    return { type: mergedType ?? 'text', nullable, expandableReference }
   }
 
   private mergeTypes(left: ScalarType, right: ScalarType): ScalarType {
@@ -278,6 +252,14 @@ export class SpecParser {
     }
 
     return { type: 'text', nullable: true }
+  }
+
+  private isExpandableReferenceCandidate(
+    schemaOrRef: OpenApiSchemaOrReference,
+    spec: OpenApiSpec
+  ): boolean {
+    const schema = this.resolveSchema(schemaOrRef, spec)
+    return Boolean(schema['x-expansionResources'])
   }
 
   private collectPropertyCandidates(
