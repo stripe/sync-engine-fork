@@ -31,6 +31,15 @@ type MigrationConfig = {
   stripeApiVersion?: string
   openApiSpecPath?: string
   openApiCacheDir?: string
+  schemaName?: string
+}
+
+function quoteIdentifier(identifier: string): string {
+  return `"${identifier.replaceAll('"', '""')}"`
+}
+
+function rewriteStripeSchema(sql: string, schemaName: string): string {
+  return sql.replaceAll('"stripe"', quoteIdentifier(schemaName))
 }
 
 function truncateIdentifier(name: string, maxBytes: number): string {
@@ -178,11 +187,13 @@ function shouldRecreateTable(
 async function ensureSigmaTableMetadata(
   client: Client,
   schema: string,
-  config: SigmaIngestionConfig
+  config: SigmaIngestionConfig,
+  stripeSchemaName = 'stripe'
 ): Promise<void> {
   const tableName = config.destinationTable
 
   const fkName = `fk_${tableName}_account`
+  const stripeSchemaIdent = quoteIdentifier(stripeSchemaName)
   await client.query(`
     ALTER TABLE "${schema}"."${tableName}"
     DROP CONSTRAINT IF EXISTS "${fkName}";
@@ -190,7 +201,7 @@ async function ensureSigmaTableMetadata(
   await client.query(`
     ALTER TABLE "${schema}"."${tableName}"
     ADD CONSTRAINT "${fkName}"
-    FOREIGN KEY ("_account_id") REFERENCES "stripe"."accounts" (id);
+    FOREIGN KEY ("_account_id") REFERENCES ${stripeSchemaIdent}."accounts" (id);
   `)
 
   await client.query(`
@@ -206,7 +217,8 @@ async function ensureSigmaTableMetadata(
 async function createSigmaTable(
   client: Client,
   schema: string,
-  config: SigmaIngestionConfig
+  config: SigmaIngestionConfig,
+  stripeSchemaName = 'stripe'
 ): Promise<void> {
   const tableName = config.destinationTable
   const { generatedColumns, generatedNameMap } = getSigmaColumnMappings(config)
@@ -240,13 +252,14 @@ async function createSigmaTable(
       PRIMARY KEY (${pk.map((c) => `"${c}"`).join(', ')})
     );
   `)
-  await ensureSigmaTableMetadata(client, schema, config)
+  await ensureSigmaTableMetadata(client, schema, config, stripeSchemaName)
 }
 
 async function migrateSigmaSchema(
   client: Client,
   config: MigrationConfig,
-  sigmaSchemaName = 'sigma'
+  sigmaSchemaName = 'sigma',
+  stripeSchemaName = 'stripe'
 ): Promise<void> {
   config.logger?.info(`Reconciling Sigma schema "${sigmaSchemaName}"`)
   await client.query(`CREATE SCHEMA IF NOT EXISTS "${sigmaSchemaName}"`)
@@ -275,27 +288,33 @@ async function migrateSigmaSchema(
           `Schema mismatch for ${sigmaSchemaName}.${tableName} - dropping and recreating`
         )
         await client.query(`DROP TABLE "${sigmaSchemaName}"."${tableName}" CASCADE`)
-        await createSigmaTable(client, sigmaSchemaName, tableConfig)
+        await createSigmaTable(client, sigmaSchemaName, tableConfig, stripeSchemaName)
       } else {
-        await ensureSigmaTableMetadata(client, sigmaSchemaName, tableConfig)
+        await ensureSigmaTableMetadata(client, sigmaSchemaName, tableConfig, stripeSchemaName)
       }
     } else {
       config.logger?.info(`Creating Sigma table ${sigmaSchemaName}.${tableName}`)
-      await createSigmaTable(client, sigmaSchemaName, tableConfig)
+      await createSigmaTable(client, sigmaSchemaName, tableConfig, stripeSchemaName)
     }
   }
 }
 
-async function rebuildStripeSchema(client: Client, logger?: Logger): Promise<void> {
-  logger?.info('Dropping and recreating stripe schema')
-  await client.query(`DROP SCHEMA IF EXISTS "stripe" CASCADE`)
-  await client.query(`CREATE SCHEMA "stripe"`)
+async function rebuildStripeSchema(
+  client: Client,
+  stripeSchemaName = 'stripe',
+  logger?: Logger
+): Promise<void> {
+  const schemaIdent = quoteIdentifier(stripeSchemaName)
+  logger?.info(`Dropping and recreating ${stripeSchemaName} schema`)
+  await client.query(`DROP SCHEMA IF EXISTS ${schemaIdent} CASCADE`)
+  await client.query(`CREATE SCHEMA ${schemaIdent}`)
 }
 
-async function bootstrapInternalSchema(client: Client): Promise<void> {
-  await client.query(`CREATE EXTENSION IF NOT EXISTS btree_gist`)
+async function bootstrapInternalSchema(client: Client, stripeSchemaName = 'stripe'): Promise<void> {
+  const runQuery = (sql: string) => client.query(rewriteStripeSchema(sql, stripeSchemaName))
+  await runQuery(`CREATE EXTENSION IF NOT EXISTS btree_gist`)
 
-  await client.query(`
+  await runQuery(`
     CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger
         LANGUAGE plpgsql
     AS $$
@@ -306,7 +325,7 @@ async function bootstrapInternalSchema(client: Client): Promise<void> {
     $$;
   `)
 
-  await client.query(`
+  await runQuery(`
     CREATE OR REPLACE FUNCTION set_updated_at_metadata() RETURNS trigger
         LANGUAGE plpgsql
     AS $$
@@ -317,20 +336,20 @@ async function bootstrapInternalSchema(client: Client): Promise<void> {
     $$;
   `)
 
-  await client.query(`
+  await runQuery(`
     CREATE TABLE "stripe"."_migrations" (
       id serial PRIMARY KEY,
       migration_name text NOT NULL UNIQUE,
       applied_at timestamptz NOT NULL DEFAULT now()
     );
   `)
-  await client.query(`
+  await runQuery(`
     INSERT INTO "stripe"."_migrations" ("migration_name")
     VALUES ('openapi_bootstrap')
     ON CONFLICT ("migration_name") DO NOTHING;
   `)
 
-  await client.query(`
+  await runQuery(`
     CREATE TABLE "stripe"."accounts" (
       "_raw_data" jsonb NOT NULL,
       "id" text GENERATED ALWAYS AS ((_raw_data->>'id')::text) STORED,
@@ -341,17 +360,17 @@ async function bootstrapInternalSchema(client: Client): Promise<void> {
       PRIMARY KEY ("id")
     );
   `)
-  await client.query(`
+  await runQuery(`
     CREATE INDEX "idx_accounts_api_key_hashes" ON "stripe"."accounts" USING GIN ("api_key_hashes");
   `)
-  await client.query(`DROP TRIGGER IF EXISTS handle_updated_at ON "stripe"."accounts";`)
-  await client.query(`
+  await runQuery(`DROP TRIGGER IF EXISTS handle_updated_at ON "stripe"."accounts";`)
+  await runQuery(`
     CREATE TRIGGER handle_updated_at
     BEFORE UPDATE ON "stripe"."accounts"
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
   `)
 
-  await client.query(`
+  await runQuery(`
     CREATE TABLE "stripe"."_managed_webhooks" (
       "id" text PRIMARY KEY,
       "object" text,
@@ -373,20 +392,20 @@ async function bootstrapInternalSchema(client: Client): Promise<void> {
         FOREIGN KEY ("account_id") REFERENCES "stripe"."accounts" (id)
     );
   `)
-  await client.query(`
+  await runQuery(`
     CREATE INDEX "idx_managed_webhooks_status" ON "stripe"."_managed_webhooks" ("status");
   `)
-  await client.query(`
+  await runQuery(`
     CREATE INDEX "idx_managed_webhooks_enabled" ON "stripe"."_managed_webhooks" ("enabled");
   `)
-  await client.query(`DROP TRIGGER IF EXISTS handle_updated_at ON "stripe"."_managed_webhooks";`)
-  await client.query(`
+  await runQuery(`DROP TRIGGER IF EXISTS handle_updated_at ON "stripe"."_managed_webhooks";`)
+  await runQuery(`
     CREATE TRIGGER handle_updated_at
     BEFORE UPDATE ON "stripe"."_managed_webhooks"
     FOR EACH ROW EXECUTE FUNCTION set_updated_at_metadata();
   `)
 
-  await client.query(`
+  await runQuery(`
     CREATE TABLE "stripe"."_sync_runs" (
       "_account_id" text NOT NULL,
       "started_at" timestamptz NOT NULL DEFAULT now(),
@@ -399,7 +418,7 @@ async function bootstrapInternalSchema(client: Client): Promise<void> {
         FOREIGN KEY ("_account_id") REFERENCES "stripe"."accounts" (id)
     );
   `)
-  await client.query(`
+  await runQuery(`
     ALTER TABLE "stripe"."_sync_runs"
     ADD CONSTRAINT one_active_run_per_account_triggered_by
     EXCLUDE (
@@ -407,18 +426,18 @@ async function bootstrapInternalSchema(client: Client): Promise<void> {
       COALESCE(triggered_by, 'default') WITH =
     ) WHERE (closed_at IS NULL);
   `)
-  await client.query(`DROP TRIGGER IF EXISTS handle_updated_at ON "stripe"."_sync_runs";`)
-  await client.query(`
+  await runQuery(`DROP TRIGGER IF EXISTS handle_updated_at ON "stripe"."_sync_runs";`)
+  await runQuery(`
     CREATE TRIGGER handle_updated_at
     BEFORE UPDATE ON "stripe"."_sync_runs"
     FOR EACH ROW EXECUTE FUNCTION set_updated_at_metadata();
   `)
-  await client.query(`
+  await runQuery(`
     CREATE INDEX "idx_sync_runs_account_status"
       ON "stripe"."_sync_runs" ("_account_id", "closed_at");
   `)
 
-  await client.query(`
+  await runQuery(`
     CREATE TABLE "stripe"."_sync_obj_runs" (
       "_account_id" text NOT NULL,
       "run_started_at" timestamptz NOT NULL,
@@ -430,26 +449,77 @@ async function bootstrapInternalSchema(client: Client): Promise<void> {
       "processed_count" integer NOT NULL DEFAULT 0,
       "cursor" text,
       "page_cursor" text,
+      "created_gte" integer NOT NULL DEFAULT 0,
+      "created_lte" integer NOT NULL DEFAULT 0,
+      "priority" integer NOT NULL DEFAULT 0,
       "error_message" text,
       "updated_at" timestamptz NOT NULL DEFAULT now(),
-      PRIMARY KEY ("_account_id", "run_started_at", "object"),
+      PRIMARY KEY ("_account_id", "run_started_at", "object", "created_gte", "created_lte"),
       CONSTRAINT "fk_sync_obj_runs_parent"
         FOREIGN KEY ("_account_id", "run_started_at")
         REFERENCES "stripe"."_sync_runs" ("_account_id", "started_at")
     );
   `)
-  await client.query(`DROP TRIGGER IF EXISTS handle_updated_at ON "stripe"."_sync_obj_runs";`)
-  await client.query(`
+  await runQuery(`DROP TRIGGER IF EXISTS handle_updated_at ON "stripe"."_sync_obj_runs";`)
+  await runQuery(`
     CREATE TRIGGER handle_updated_at
     BEFORE UPDATE ON "stripe"."_sync_obj_runs"
     FOR EACH ROW EXECUTE FUNCTION set_updated_at_metadata();
   `)
-  await client.query(`
+  await runQuery(`
     CREATE INDEX "idx_sync_obj_runs_status"
       ON "stripe"."_sync_obj_runs" ("_account_id", "run_started_at", "status");
   `)
+  await runQuery(`
+    CREATE INDEX "idx_sync_obj_runs_priority"
+      ON "stripe"."_sync_obj_runs" ("_account_id", "run_started_at", "status", "priority");
+  `)
 
-  await client.query(`
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS "stripe"."_rate_limits" (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 0,
+      window_start TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `)
+  await runQuery(`
+    CREATE OR REPLACE FUNCTION "stripe".check_rate_limit(
+      rate_key TEXT,
+      max_requests INTEGER,
+      window_seconds INTEGER
+    )
+    RETURNS VOID AS $$
+    DECLARE
+      now TIMESTAMPTZ := clock_timestamp();
+      window_length INTERVAL := make_interval(secs => window_seconds);
+      current_count INTEGER;
+    BEGIN
+      PERFORM pg_advisory_xact_lock(hashtext(rate_key));
+
+      INSERT INTO "stripe"."_rate_limits" (key, count, window_start)
+      VALUES (rate_key, 1, now)
+      ON CONFLICT (key) DO UPDATE
+      SET count = CASE
+                    WHEN "_rate_limits".window_start + window_length <= now
+                      THEN 1
+                      ELSE "_rate_limits".count + 1
+                  END,
+          window_start = CASE
+                           WHEN "_rate_limits".window_start + window_length <= now
+                             THEN now
+                             ELSE "_rate_limits".window_start
+                         END;
+
+      SELECT count INTO current_count FROM "stripe"."_rate_limits" WHERE key = rate_key;
+
+      IF current_count > max_requests THEN
+        RAISE EXCEPTION 'Rate limit exceeded for %', rate_key;
+      END IF;
+    END;
+    $$ LANGUAGE plpgsql;
+  `)
+
+  await runQuery(`
     CREATE VIEW "stripe"."sync_runs" AS
     SELECT
       r._account_id as account_id,
@@ -477,9 +547,33 @@ async function bootstrapInternalSchema(client: Client): Promise<void> {
       AND o.run_started_at = r.started_at
     GROUP BY r._account_id, r.started_at, r.closed_at, r.triggered_by, r.max_concurrent;
   `)
+  await runQuery(`DROP FUNCTION IF EXISTS "stripe"."sync_obj_progress"(TEXT, TIMESTAMPTZ);`)
+  await runQuery(`
+    CREATE OR REPLACE VIEW "stripe"."sync_obj_progress" AS
+    SELECT
+      r."_account_id" AS account_id,
+      r.run_started_at,
+      r.object,
+      ROUND(
+        100.0 * COUNT(*) FILTER (WHERE r.status = 'complete') / NULLIF(COUNT(*), 0),
+        1
+      ) AS pct_complete,
+      COALESCE(SUM(r.processed_count), 0) AS processed
+    FROM "stripe"."_sync_obj_runs" r
+    WHERE r.run_started_at = (
+      SELECT MAX(s.started_at)
+      FROM "stripe"."_sync_runs" s
+      WHERE s."_account_id" = r."_account_id"
+    )
+    GROUP BY r."_account_id", r.run_started_at, r.object;
+  `)
 }
 
-async function applyOpenApiSchema(client: Client, config: MigrationConfig): Promise<void> {
+async function applyOpenApiSchema(
+  client: Client,
+  config: MigrationConfig,
+  stripeSchemaName = 'stripe'
+): Promise<void> {
   const apiVersion = config.stripeApiVersion ?? DEFAULT_STRIPE_API_VERSION
   const resolvedSpec = await resolveOpenApiSpec({
     apiVersion,
@@ -501,7 +595,7 @@ async function applyOpenApiSchema(client: Client, config: MigrationConfig): Prom
     resourceAliases: RUNTIME_RESOURCE_ALIASES,
     allowedTables: [...RUNTIME_REQUIRED_TABLES],
   })
-  const adapter = new PostgresAdapter({ schemaName: 'stripe' })
+  const adapter = new PostgresAdapter({ schemaName: stripeSchemaName })
   const statements = adapter.buildAllStatements(parsedSpec.tables)
   for (const statement of statements) {
     await client.query(statement)
@@ -524,15 +618,16 @@ export async function runMigrations(config: MigrationConfig): Promise<void> {
     ssl: config.ssl,
     connectionTimeoutMillis: 10_000,
   })
+  const stripeSchemaName = config.schemaName ?? 'stripe'
 
   try {
     await client.connect()
-    await rebuildStripeSchema(client, config.logger)
-    await bootstrapInternalSchema(client)
-    await applyOpenApiSchema(client, config)
+    await rebuildStripeSchema(client, stripeSchemaName, config.logger)
+    await bootstrapInternalSchema(client, stripeSchemaName)
+    await applyOpenApiSchema(client, config, stripeSchemaName)
 
     if (config.enableSigma) {
-      await migrateSigmaSchema(client, config)
+      await migrateSigmaSchema(client, config, 'sigma', stripeSchemaName)
     }
   } catch (err) {
     config.logger?.error(err, 'Error running migrations')
@@ -647,7 +742,7 @@ export async function runMigrationsFromContent(
     connectionTimeoutMillis: 10_000,
   })
 
-  const schema = 'stripe'
+  const schema = config.schemaName ?? 'stripe'
   const tableName = '_migrations'
 
   try {
@@ -656,7 +751,7 @@ export async function runMigrationsFromContent(
     config.logger?.info('Connected to database')
 
     // Ensure schema exists
-    await client.query(`CREATE SCHEMA IF NOT EXISTS ${schema};`)
+    await client.query(`CREATE SCHEMA IF NOT EXISTS ${quoteIdentifier(schema)};`)
 
     // Rename old migrations table if it exists (one-time upgrade)
     await renameMigrationsTableIfNeeded(client, schema, config.logger)

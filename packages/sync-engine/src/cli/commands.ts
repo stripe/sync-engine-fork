@@ -8,7 +8,6 @@ import {
   StripeSync,
   runMigrations,
   createStripeWebSocketClient,
-  type SyncObject,
   type StripeWebSocketClient,
   type StripeWebhookEvent,
 } from '../index'
