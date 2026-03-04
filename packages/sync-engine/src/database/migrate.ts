@@ -378,9 +378,9 @@ async function insertMigrationMarker(
   }
 
   const idResult = await client.query(
-    `SELECT COALESCE(MIN(id), 0) - 1 as next_id FROM "${schema}"."_migrations"`
+    `SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM "${schema}"."_migrations"`
   )
-  const nextId = Number(idResult.rows[0]?.next_id ?? -1)
+  const nextId = Number(idResult.rows[0]?.next_id ?? 0)
   await client.query(
     `INSERT INTO "${schema}"."_migrations" (id, name, hash) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING`,
     [nextId, marker, hash]
