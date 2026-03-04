@@ -1,4 +1,4 @@
-import { StripeSync, runMigrations, VERSION } from '../../index'
+import { StripeSync, runMigrationsFromContent, VERSION, embeddedMigrations } from '../../index'
 import postgres from 'postgres'
 
 // Get management API base URL from environment variable (for testing against localhost/staging)
@@ -386,13 +386,16 @@ Deno.serve(async (req) => {
     const enableSigma = (Deno.env.get('ENABLE_SIGMA') ?? 'false') === 'true'
     const schemaName = Deno.env.get('SYNC_SCHEMA_NAME') ?? 'stripe'
     const syncTablesSchemaName = Deno.env.get('SYNC_TABLES_SCHEMA_NAME') ?? schemaName
-    await runMigrations({
-      databaseUrl: dbUrl,
-      enableSigma,
-      stripeApiVersion: Deno.env.get('STRIPE_API_VERSION') ?? '2020-08-27',
-      schemaName,
-      syncTablesSchemaName,
-    })
+    await runMigrationsFromContent(
+      {
+        databaseUrl: dbUrl,
+        enableSigma,
+        stripeApiVersion: Deno.env.get('STRIPE_API_VERSION') ?? '2020-08-27',
+        schemaName,
+        syncTablesSchemaName,
+      },
+      embeddedMigrations
+    )
 
     stripeSync = await StripeSync.create({
       poolConfig: { connectionString: dbUrl, max: 2 }, // Need 2 for advisory lock + queries
