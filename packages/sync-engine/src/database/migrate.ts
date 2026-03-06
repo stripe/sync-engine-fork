@@ -548,6 +548,25 @@ export async function runMigrations(config: MigrationConfig): Promise<void> {
       const isEmpty = migrationCount.rows[0]?.count === '0'
       if (isEmpty) {
         await cleanupSchema(client, syncSchema, config.logger)
+      } else if (fs.existsSync(migrationsDirectory)) {
+        const initialFile = fs
+          .readdirSync(migrationsDirectory)
+          .filter((f) => f.endsWith('.sql'))
+          .sort()
+          .find((f) => parseMigrationId(f) === 0)
+        if (initialFile) {
+          const initialSql = fs.readFileSync(path.join(migrationsDirectory, initialFile), 'utf8')
+          const expectedHash = computeMigrationHash(initialFile, initialSql)
+          const result = await client.query(
+            `SELECT hash FROM "${syncSchema}"."_migrations" WHERE id = 0`
+          )
+          if (result.rows.length > 0 && result.rows[0].hash !== expectedHash) {
+            config.logger?.warn(
+              'Initial migration (0) hash changed — resetting schema to reapply from scratch'
+            )
+            await cleanupSchema(client, syncSchema, config.logger)
+          }
+        }
       }
     }
 
@@ -704,21 +723,32 @@ export async function runMigrationsFromContent(
 
     await ensureMigrationsTable(client, syncSchema, tableName)
 
-    const appliedMigrations = await getAppliedMigrations(client, syncSchema, tableName)
-    const appliedIds = new Set(appliedMigrations.map((migration) => migration.id))
+    let appliedMigrations = await getAppliedMigrations(client, syncSchema, tableName)
     const parsedMigrations = parseMigrations(migrations)
 
-    for (const applied of appliedMigrations) {
-      const intended = parsedMigrations.find((migration) => migration.id === applied.id)
-      if (intended && intended.hash !== applied.hash) {
-        throw new Error(
-          `Migration hash mismatch for ${applied.name}: ` +
-            `expected ${intended.hash}, got ${applied.hash}. ` +
-            `Migrations cannot be modified after being applied.`
-        )
+    const appliedInitial = appliedMigrations.find((m) => m.id === 0)
+    const intendedInitial = parsedMigrations.find((m) => m.id === 0)
+    if (appliedInitial && intendedInitial && appliedInitial.hash !== intendedInitial.hash) {
+      config.logger?.warn(
+        'Initial migration (0) hash changed — resetting schema to reapply from scratch'
+      )
+      await cleanupSchema(client, syncSchema, config.logger)
+      await ensureMigrationsTable(client, syncSchema, tableName)
+      appliedMigrations = []
+    } else {
+      for (const applied of appliedMigrations) {
+        const intended = parsedMigrations.find((migration) => migration.id === applied.id)
+        if (intended && intended.hash !== applied.hash) {
+          throw new Error(
+            `Migration hash mismatch for ${applied.name}: ` +
+              `expected ${intended.hash}, got ${applied.hash}. ` +
+              `Migrations cannot be modified after being applied.`
+          )
+        }
       }
     }
 
+    const appliedIds = new Set(appliedMigrations.map((migration) => migration.id))
     const pendingMigrations = parsedMigrations.filter((migration) => !appliedIds.has(migration.id))
     if (pendingMigrations.length === 0) {
       config.logger?.info('No migrations to run')
