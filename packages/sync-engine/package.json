@@ -33,7 +33,8 @@
     "test:integration": "vitest run src/tests/integration/",
     "test:e2e": "pnpm run build && vitest run --config vitest.e2e.config.ts && vitest run --config vitest.e2e.webhook.config.ts",
     "sync": "pnpm run build && node dist/cli/index.js sync",
-    "generate:sigma-schema": "tsx src/sigma/schema/fetch-schema.ts"
+    "generate:sigma-schema": "tsx src/sigma/schema/fetch-schema.ts",
+    "prepare": "npm run build"
   },
   "files": [
     "dist"
