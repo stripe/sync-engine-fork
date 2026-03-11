@@ -12,7 +12,10 @@
     "lint": "pnpm -r run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "dashboard": "pnpm --filter @supabase/stripe-sync-dashboard dev"
+    "dashboard": "pnpm --filter @supabase/stripe-sync-dashboard dev",
+    "explorer:db:start": "tsx scripts/explorer-harness.ts start",
+    "explorer:db:stop": "tsx scripts/explorer-harness.ts stop",
+    "explorer:db:status": "tsx scripts/explorer-harness.ts status"
   },
   "dependencies": {
     "pino": "^10.0.0"

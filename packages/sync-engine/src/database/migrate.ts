@@ -29,7 +29,7 @@ const SIGMA_COLUMN_HASH_BYTES = 8
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-type MigrationConfig = {
+export type MigrationConfig = {
   databaseUrl: string
   ssl?: ConnectionOptions
   logger?: Logger
@@ -40,6 +40,12 @@ type MigrationConfig = {
   schemaName?: string
   /** Schema for sync metadata tables (accounts, _sync_runs, etc.). Defaults to schemaName. */
   syncTablesSchemaName?: string
+  /**
+   * Table filtering mode for OpenAPI schema migration:
+   * - 'runtime_required': Only migrate tables in RUNTIME_REQUIRED_TABLES (default)
+   * - 'all_projected': Migrate all resolvable tables from the OpenAPI spec
+   */
+  tableMode?: 'runtime_required' | 'all_projected'
 }
 
 function quoteIdentifier(identifier: string): string {
@@ -491,10 +497,18 @@ async function applyOpenApiSchema(
   }
 
   const parser = new SpecParser()
-  const parsedSpec = parser.parse(resolvedSpec.spec, {
+  const tableMode = config.tableMode ?? 'runtime_required'
+  const parseOptions: { resourceAliases: Record<string, string>; allowedTables?: string[] } = {
     resourceAliases: OPENAPI_RESOURCE_TABLE_ALIASES,
-    allowedTables: [...RUNTIME_REQUIRED_TABLES],
-  })
+  }
+
+  // In 'runtime_required' mode, restrict to RUNTIME_REQUIRED_TABLES.
+  // In 'all_projected' mode, omit allowedTables to parse all resolvable tables.
+  if (tableMode === 'runtime_required') {
+    parseOptions.allowedTables = [...RUNTIME_REQUIRED_TABLES]
+  }
+
+  const parsedSpec = parser.parse(resolvedSpec.spec, parseOptions)
   const adapter = new PostgresAdapter({
     schemaName: dataSchema,
     accountSchema: syncSchema,
@@ -512,6 +526,7 @@ async function applyOpenApiSchema(
     {
       tableCount: parsedSpec.tables.length,
       writePlanCount: writePlans.length,
+      tableMode,
       marker,
     },
     'Applied OpenAPI-generated Stripe tables'

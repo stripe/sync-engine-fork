@@ -13,3 +13,4 @@ private/
 .mcp.*
 .vercel
 .env*.local
+.tmp/
