@@ -177,7 +177,7 @@ function mapPostgresType(type: string): string {
 async function generateInsertStatements(
   client: Client,
   tableName: string,
-  columns: string[]
+  tableInfo: TableInfo
 ): Promise<string> {
   // Query all rows from the table
   const result = await client.query(`SELECT * FROM stripe.${tableName}`);
@@ -186,6 +186,9 @@ async function generateInsertStatements(
     return `-- No data in stripe.${tableName}\n`;
   }
 
+  const columns = tableInfo.columns.map((c) => c.name);
+  const columnTypes = new Map(tableInfo.columns.map((c) => [c.name, c.type]));
+
   const inserts: string[] = [];
 
   for (const row of result.rows) {
@@ -193,6 +196,7 @@ async function generateInsertStatements(
 
     for (const col of columns) {
       const value = row[col];
+      const colType = columnTypes.get(col);
 
       if (value === null || value === undefined) {
         values.push('NULL');
@@ -209,8 +213,16 @@ async function generateInsertStatements(
           });
           values.push(`'{${arrayValues.join(',')}}'`);
         }
+      } else if (colType === 'timestamp with time zone' || colType === 'timestamp without time zone') {
+        // Handle timestamp columns (pg returns them as Date objects or ISO strings)
+        if (value instanceof Date) {
+          values.push(`'${value.toISOString()}'`);
+        } else {
+          // Already a string (ISO format from pg)
+          values.push(`'${String(value).replace(/'/g, "''")}'`);
+        }
       } else if (value instanceof Date) {
-        // Handle Date/timestamp columns - must come before typeof object check
+        // Handle other Date/timestamp columns - must come before typeof object check
         values.push(`'${value.toISOString()}'`);
       } else if (typeof value === 'object') {
         // Handle JSON/JSONB columns
@@ -288,8 +300,7 @@ async function exportDatabase(client: Client): Promise<void> {
 
     // Generate INSERT statements
     if (rowCount > 0) {
-      const columnNames = tableInfo.columns.map((c) => c.name);
-      const inserts = await generateInsertStatements(client, tableName, columnNames);
+      const inserts = await generateInsertStatements(client, tableName, tableInfo);
       sqlParts.push(inserts);
       sqlParts.push('');
     }

@@ -1,4 +1,4 @@
-'use client';
+'use client'
 
 /**
  * Example component demonstrating usePGlite hook
@@ -6,14 +6,14 @@
  * Shows loading states, error handling, and basic query execution
  */
 
-import { usePGlite } from '@/lib/pglite';
-import { useState } from 'react';
+import { usePGlite } from '@/lib/pglite'
+import { useState } from 'react'
 
 export default function ExplorerExample() {
-  const { db, status, error, query, manifest } = usePGlite();
-  const [queryResult, setQueryResult] = useState<any[] | null>(null);
-  const [queryError, setQueryError] = useState<string | null>(null);
-  const [isQuerying, setIsQuerying] = useState(false);
+  const { status, error, query, manifest } = usePGlite()
+  const [queryResult, setQueryResult] = useState<Record<string, unknown>[] | null>(null)
+  const [queryError, setQueryError] = useState<string | null>(null)
+  const [isQuerying, setIsQuerying] = useState(false)
 
   // Loading state
   if (status === 'loading') {
@@ -25,7 +25,7 @@ export default function ExplorerExample() {
           <small>Initializing PGlite and hydrating from static artifacts</small>
         </div>
       </div>
-    );
+    )
   }
 
   // Error state
@@ -33,13 +33,15 @@ export default function ExplorerExample() {
     return (
       <div style={{ padding: '2rem' }}>
         <h2>Schema Explorer</h2>
-        <div style={{
-          padding: '1rem',
-          backgroundColor: '#fee',
-          border: '1px solid #fcc',
-          borderRadius: '4px',
-          marginTop: '1rem'
-        }}>
+        <div
+          style={{
+            padding: '1rem',
+            backgroundColor: '#fee',
+            border: '1px solid #fcc',
+            borderRadius: '4px',
+            marginTop: '1rem',
+          }}
+        >
           <strong>Error:</strong> {error}
         </div>
         <div style={{ marginTop: '1rem', color: '#666' }}>
@@ -48,14 +50,14 @@ export default function ExplorerExample() {
           </small>
         </div>
       </div>
-    );
+    )
   }
 
   // Ready state - database is initialized
   const handleExampleQuery = async () => {
-    setIsQuerying(true);
-    setQueryError(null);
-    setQueryResult(null);
+    setIsQuerying(true)
+    setQueryError(null)
+    setQueryResult(null)
 
     try {
       // Example query: Get top 10 customers with their subscription count
@@ -70,28 +72,30 @@ export default function ExplorerExample() {
         GROUP BY c.id, c._raw_data
         ORDER BY subscription_count DESC
         LIMIT 10
-      `);
+      `)
 
-      setQueryResult(result.rows);
+      setQueryResult(result.rows)
     } catch (err) {
-      setQueryError(err instanceof Error ? err.message : 'Unknown query error');
+      setQueryError(err instanceof Error ? err.message : 'Unknown query error')
     } finally {
-      setIsQuerying(false);
+      setIsQuerying(false)
     }
-  };
+  }
 
   return (
     <div style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif' }}>
       <h2>Schema Explorer (PGlite)</h2>
 
       {/* Database Status */}
-      <div style={{
-        padding: '1rem',
-        backgroundColor: '#efe',
-        border: '1px solid #cfc',
-        borderRadius: '4px',
-        marginBottom: '1rem'
-      }}>
+      <div
+        style={{
+          padding: '1rem',
+          backgroundColor: '#efe',
+          border: '1px solid #cfc',
+          borderRadius: '4px',
+          marginBottom: '1rem',
+        }}
+      >
         <strong>Status:</strong> {status} ✓
       </div>
 
@@ -122,7 +126,7 @@ export default function ExplorerExample() {
             border: 'none',
             borderRadius: '4px',
             cursor: isQuerying ? 'not-allowed' : 'pointer',
-            fontSize: '1rem'
+            fontSize: '1rem',
           }}
         >
           {isQuerying ? 'Running...' : 'Run: Top Customers by Subscription Count'}
@@ -130,13 +134,15 @@ export default function ExplorerExample() {
 
         {/* Query Error */}
         {queryError && (
-          <div style={{
-            marginTop: '1rem',
-            padding: '1rem',
-            backgroundColor: '#fee',
-            border: '1px solid #fcc',
-            borderRadius: '4px'
-          }}>
+          <div
+            style={{
+              marginTop: '1rem',
+              padding: '1rem',
+              backgroundColor: '#fee',
+              border: '1px solid #fcc',
+              borderRadius: '4px',
+            }}
+          >
             <strong>Query Error:</strong> {queryError}
           </div>
         )}
@@ -145,11 +151,13 @@ export default function ExplorerExample() {
         {queryResult && (
           <div style={{ marginTop: '1rem' }}>
             <h4>Results ({queryResult.length} rows)</h4>
-            <table style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              marginTop: '0.5rem'
-            }}>
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                marginTop: '0.5rem',
+              }}
+            >
               <thead>
                 <tr style={{ backgroundColor: '#f5f5f5' }}>
                   <th style={{ padding: '0.5rem', textAlign: 'left', border: '1px solid #ddd' }}>
@@ -170,16 +178,16 @@ export default function ExplorerExample() {
                 {queryResult.map((row, i) => (
                   <tr key={i}>
                     <td style={{ padding: '0.5rem', border: '1px solid #ddd' }}>
-                      <code>{row.id}</code>
+                      <code>{String(row.id)}</code>
                     </td>
                     <td style={{ padding: '0.5rem', border: '1px solid #ddd' }}>
-                      {row.email || '-'}
+                      {String(row.email || '-')}
                     </td>
                     <td style={{ padding: '0.5rem', border: '1px solid #ddd' }}>
-                      {row.name || '-'}
+                      {String(row.name || '-')}
                     </td>
                     <td style={{ padding: '0.5rem', textAlign: 'right', border: '1px solid #ddd' }}>
-                      {row.subscription_count}
+                      {String(row.subscription_count)}
                     </td>
                   </tr>
                 ))}
@@ -200,7 +208,7 @@ export default function ExplorerExample() {
             <div style={{ paddingLeft: '1rem' }}>
               <h4>Core Tables ({manifest.coreTables.length})</h4>
               <ul style={{ color: '#666', fontSize: '0.9rem' }}>
-                {manifest.coreTables.map(table => (
+                {manifest.coreTables.map((table) => (
                   <li key={table}>
                     <code>stripe.{table}</code> ({manifest.manifest[table]} rows)
                   </li>
@@ -209,7 +217,7 @@ export default function ExplorerExample() {
 
               <h4>Long-Tail Tables ({manifest.longTailTables.length})</h4>
               <ul style={{ color: '#666', fontSize: '0.9rem' }}>
-                {manifest.longTailTables.map(table => (
+                {manifest.longTailTables.map((table) => (
                   <li key={table}>
                     <code>stripe.{table}</code> ({manifest.manifest[table]} rows)
                   </li>
@@ -220,5 +228,5 @@ export default function ExplorerExample() {
         </div>
       )}
     </div>
-  );
+  )
 }
