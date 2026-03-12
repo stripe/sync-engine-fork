@@ -16,7 +16,14 @@ export default function Home() {
       <p style={{ color: '#666', marginBottom: 32 }}>Deploy Stripe sync to your Supabase project</p>
 
       <DeployForm
-        onDeploying={setDeploying}
+        onDeploying={(deployingState) => {
+          if (deployingState) {
+            setSessionId(null)
+            setInstallationComplete(false)
+          }
+
+          setDeploying(deployingState)
+        }}
         onSuccess={(id) => {
           setDeploying(false)
           setSessionId(id)

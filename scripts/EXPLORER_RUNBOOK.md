@@ -79,6 +79,7 @@ packages/dashboard/public/explorer-data/
 ### Build Time
 
 Typical build time: **30-90 seconds** depending on:
+
 - Number of projected tables in the API version
 - Docker container startup time
 - Host machine performance
@@ -128,6 +129,7 @@ cat packages/dashboard/public/explorer-data/manifest.json | jq
 ```
 
 Look for:
+
 - `apiVersion`: Matches your target API version
 - `totalTables`: Number of tables in the schema
 - `verification.allTablesSeeded`: Should be `true` (all tables have data)
@@ -216,6 +218,7 @@ To automate deployment on every commit:
 **Symptoms**: Error starting Docker container
 
 **Solutions**:
+
 - Ensure Docker is installed and running: `docker ps`
 - Check if port range 50000-60000 is available
 - Verify no stale containers: `docker ps -a | grep schema-explorer`
@@ -226,6 +229,7 @@ To automate deployment on every commit:
 **Symptoms**: Migration errors, missing tables
 
 **Solutions**:
+
 - Check if API version is valid: `--api-version=2020-08-27`
 - Verify spec resolution works: check migration logs for OpenAPI spec download
 - Ensure no database connection issues: check harness is running with `pnpm explorer:db:status`
@@ -235,6 +239,7 @@ To automate deployment on every commit:
 **Symptoms**: Insert errors, constraint violations
 
 **Solutions**:
+
 - Check if tables were created in migration phase
 - Verify seed value is a valid integer: `--seed=42`
 - Review seed logs for specific table errors
@@ -245,6 +250,7 @@ To automate deployment on every commit:
 **Symptoms**: Export errors, missing output files
 
 **Solutions**:
+
 - Ensure output directory exists: `packages/dashboard/public/explorer-data/`
 - Check disk space (exports can be large)
 - Verify database connection is still active
@@ -254,6 +260,7 @@ To automate deployment on every commit:
 **Symptoms**: `bootstrap.sql` exceeds 10MB uncompressed
 
 **Solutions**:
+
 - Reduce seed row counts in `scripts/explorer-seed.ts`
 - Filter out large long-tail tables
 - Implement lazy hydration (load tables on-demand)
@@ -263,6 +270,7 @@ To automate deployment on every commit:
 **Symptoms**: `pnpm explorer:db:stop` fails or hangs
 
 **Solutions**:
+
 - List running containers: `docker ps | grep schema-explorer`
 - Manually stop: `docker stop <container-id>`
 - Remove container: `docker rm <container-id>`
@@ -274,6 +282,7 @@ To automate deployment on every commit:
 **Symptoms**: PGlite initializes but tables are empty
 
 **Solutions**:
+
 - Verify `bootstrap.sql` has INSERT statements (not just CREATE TABLE)
 - Check browser console for SQL execution errors
 - Ensure artifacts are in correct location: `packages/dashboard/public/explorer-data/`
@@ -284,6 +293,7 @@ To automate deployment on every commit:
 **Symptoms**: Manifest shows different API version than expected
 
 **Solutions**:
+
 - Re-run build with correct flag: `pnpm explorer:build --api-version=<version>`
 - Check if artifacts were overwritten by another build
 - Verify environment variable: `STRIPE_API_VERSION` is not set globally
@@ -322,7 +332,7 @@ Edit row counts in `scripts/explorer-seed.ts` to control data volume:
 
 ```typescript
 // Example: Reduce core table row counts
-const count = 10; // was 25 for customers
+const count = 10 // was 25 for customers
 ```
 
 Re-run:

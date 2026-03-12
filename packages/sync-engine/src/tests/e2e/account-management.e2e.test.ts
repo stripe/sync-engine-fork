@@ -119,7 +119,10 @@ describe('Account Management E2E', () => {
         `SELECT COUNT(*) FROM stripe._sync_accounts WHERE id = '${accountId}'`
       )
 
-      const result = await sync.postgresClient.deleteSyncAccountScopedDataWithCascade(accountId, true)
+      const result = await sync.postgresClient.deleteSyncAccountScopedDataWithCascade(
+        accountId,
+        true
+      )
       expect(result.products).toBe(productsBefore)
       expect(result._sync_accounts).toBe(syncAccountsBefore)
 

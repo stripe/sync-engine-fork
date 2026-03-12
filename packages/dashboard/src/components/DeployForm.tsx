@@ -66,8 +66,11 @@ export function DeployForm({ onDeploying, onSuccess }: DeployFormProps) {
   return (
     <form onSubmit={handleSubmit}>
       <div style={{ marginBottom: 20 }}>
-        <label style={labelStyle}>Supabase Access Token</label>
+        <label htmlFor="supabase-access-token" style={labelStyle}>
+          Supabase Access Token
+        </label>
         <input
+          id="supabase-access-token"
           type="password"
           name="supabaseAccessToken"
           required
@@ -80,6 +83,7 @@ export function DeployForm({ onDeploying, onSuccess }: DeployFormProps) {
             style={{ color: '#3b82f6', textDecoration: 'none' }}
             href="https://supabase.com/dashboard/account/tokens"
             target="_blank"
+            rel="noopener noreferrer"
           >
             supabase.com/dashboard/account/tokens
           </Link>
@@ -87,8 +91,11 @@ export function DeployForm({ onDeploying, onSuccess }: DeployFormProps) {
       </div>
 
       <div style={{ marginBottom: 20 }}>
-        <label style={labelStyle}>Supabase Project Ref</label>
+        <label htmlFor="supabase-project-ref" style={labelStyle}>
+          Supabase Project Ref
+        </label>
         <input
+          id="supabase-project-ref"
           type="text"
           name="supabaseProjectRef"
           required
@@ -98,8 +105,11 @@ export function DeployForm({ onDeploying, onSuccess }: DeployFormProps) {
       </div>
 
       <div style={{ marginBottom: 20 }}>
-        <label style={labelStyle}>Stripe Secret Key</label>
+        <label htmlFor="stripe-secret-key" style={labelStyle}>
+          Stripe Secret Key
+        </label>
         <input
+          id="stripe-secret-key"
           type="password"
           name="stripeKey"
           required

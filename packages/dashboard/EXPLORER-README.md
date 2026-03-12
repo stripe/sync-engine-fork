@@ -3,6 +3,7 @@
 This document describes the client-side Stripe schema explorer powered by PGlite (Postgres in the browser).
 
 The explorer has two moving parts:
+
 - A **build pipeline** that creates temporary Docker data and writes static artifacts.
 - A browser runtime that loads those artifacts in PGlite.
 
@@ -12,6 +13,7 @@ The explorer has two moving parts:
 - `packages/dashboard/public/explorer-data/manifest.json`
 
 `pnpm explorer:build` runs the full pipeline:
+
 1. Start isolated Postgres harness.
 2. Run migrations for all projected tables.
 3. Seed deterministic fake data.
@@ -44,25 +46,25 @@ At runtime, the app loads `manifest.json` first, then hydrates PGlite from `boot
 After hydration, you can run SQL directly against the local schema in the browser.
 
 ```tsx
-import { usePGlite } from '@/lib/pglite';
+import { usePGlite } from '@/lib/pglite'
 
 function ExplorerPanel() {
-  const { status, error, query, manifest } = usePGlite();
+  const { status, error, query, manifest } = usePGlite()
 
-  if (status === 'loading') return <p>Preparing explorer database…</p>;
-  if (status === 'error') return <p>Unable to initialize explorer: {error}</p>;
+  if (status === 'loading') return <p>Preparing explorer database…</p>
+  if (status === 'error') return <p>Unable to initialize explorer: {error}</p>
 
   const loadCustomers = async () => {
-    const result = await query('SELECT * FROM stripe.customers LIMIT 10');
-    console.log(result.rows);
-  };
+    const result = await query('SELECT * FROM stripe.customers LIMIT 10')
+    console.log(result.rows)
+  }
 
   return (
     <>
       <p>Tables loaded: {manifest?.totalTables ?? 0}</p>
       <button onClick={loadCustomers}>Load customers</button>
     </>
-  );
+  )
 }
 ```
 
@@ -85,6 +87,13 @@ pnpm tsx scripts/explorer-export.ts
 - `bootstrap.sql` and `manifest.json` are generated and should stay out of version control.
 - SQL bootstrap is preferred for speed and consistency.
 - The build scripts are expected to create, seed, and export from scratch each run.
+- There is currently no dedicated automated test file for `usePGlite`; behavior is validated by exercising:
+  - manifest load and bootstrap initialization paths
+  - query execution (including parameterized queries)
+  - initialization and bootstrap fallback error handling
+  - lifecycle behavior under repeated renders/unmount
+
+If you need to track these checks, keep the spec in your internal test notes, since it is no longer stored as a checked-in markdown test artifact.
 
 ### Harness details
 

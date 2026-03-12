@@ -51,17 +51,22 @@ describe('Observable Sync System Methods', () => {
     })
 
     it('should count and delete sync-account-scoped rows across projected and metadata tables', async () => {
-      await db.pool.query(`INSERT INTO stripe.products (_raw_data, _account_id) VALUES ($1::jsonb, $2)`, [
-        JSON.stringify({ id: 'prod_test_obs_123', object: 'product' }),
+      await db.pool.query(
+        `INSERT INTO stripe.products (_raw_data, _account_id) VALUES ($1::jsonb, $2)`,
+        [JSON.stringify({ id: 'prod_test_obs_123', object: 'product' }), testAccountId]
+      )
+      await db.pool.query(`INSERT INTO stripe._sync_runs ("_account_id") VALUES ($1)`, [
         testAccountId,
       ])
-      await db.pool.query(`INSERT INTO stripe._sync_runs ("_account_id") VALUES ($1)`, [testAccountId])
 
       const counts = await postgresClient.getSyncAccountScopedRecordCounts(testAccountId)
       expect(counts.products).toBe(1)
       expect(counts._sync_runs).toBe(1)
 
-      const result = await postgresClient.deleteSyncAccountScopedDataWithCascade(testAccountId, true)
+      const result = await postgresClient.deleteSyncAccountScopedDataWithCascade(
+        testAccountId,
+        true
+      )
       expect(result.products).toBe(1)
       expect(result._sync_runs).toBe(1)
       expect(result._sync_accounts).toBe(1)

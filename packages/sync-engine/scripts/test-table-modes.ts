@@ -5,7 +5,12 @@
  * Usage:
  *   TEST_POSTGRES_DB_URL=postgresql://localhost:5432/test_db tsx scripts/test-table-modes.ts
  */
-import { SpecParser, OPENAPI_RESOURCE_TABLE_ALIASES, RUNTIME_REQUIRED_TABLES, resolveOpenApiSpec } from '../src/openapi'
+import {
+  SpecParser,
+  OPENAPI_RESOURCE_TABLE_ALIASES,
+  RUNTIME_REQUIRED_TABLES,
+  resolveOpenApiSpec,
+} from '../src/openapi'
 
 async function main() {
   console.log('Testing table mode differences...\n')
@@ -30,7 +35,7 @@ async function main() {
 
   console.log('=== runtime_required mode ===')
   console.log(`Tables parsed: ${runtimeRequiredSpec.tables.length}`)
-  console.log(`Table names: ${runtimeRequiredSpec.tables.map(t => t.tableName).join(', ')}`)
+  console.log(`Table names: ${runtimeRequiredSpec.tables.map((t) => t.tableName).join(', ')}`)
   console.log()
 
   // Test all_projected mode (omit allowedTables per the interface documentation)
@@ -42,7 +47,7 @@ async function main() {
 
   console.log('=== all_projected mode ===')
   console.log(`Tables parsed: ${allProjectedSpec.tables.length}`)
-  console.log(`Table names: ${allProjectedSpec.tables.map(t => t.tableName).join(', ')}`)
+  console.log(`Table names: ${allProjectedSpec.tables.map((t) => t.tableName).join(', ')}`)
   console.log()
 
   // Compare
@@ -52,22 +57,26 @@ async function main() {
   console.log()
 
   // Find tables that are in all_projected but not in runtime_required
-  const runtimeTableNames = new Set(runtimeRequiredSpec.tables.map(t => t.tableName))
+  const runtimeTableNames = new Set(runtimeRequiredSpec.tables.map((t) => t.tableName))
   const additionalTables = allProjectedSpec.tables
-    .filter(t => !runtimeTableNames.has(t.tableName))
-    .map(t => t.tableName)
+    .filter((t) => !runtimeTableNames.has(t.tableName))
+    .map((t) => t.tableName)
 
   if (additionalTables.length > 0) {
     console.log('Additional tables in all_projected mode:')
-    additionalTables.forEach(name => console.log(`  - ${name}`))
+    additionalTables.forEach((name) => console.log(`  - ${name}`))
   } else {
     console.log('No additional tables found in all_projected mode.')
-    console.log('Note: The SpecParser defaults to RUNTIME_REQUIRED_TABLES when allowedTables is omitted.')
-    console.log('This means the parser scope may be the actual bottleneck, not the migration filtering.')
+    console.log(
+      'Note: The SpecParser defaults to RUNTIME_REQUIRED_TABLES when allowedTables is omitted.'
+    )
+    console.log(
+      'This means the parser scope may be the actual bottleneck, not the migration filtering.'
+    )
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Error:', err)
   process.exit(1)
 })
