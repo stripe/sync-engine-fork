@@ -13,7 +13,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dashboard": "pnpm --filter @supabase/stripe-sync-dashboard dev",
-    "visualizer": "pnpm --filter @supabase/stripe-sync-visualizer dev -- --port 3001",
+    "visualizer": "pnpm --filter @supabase/stripe-sync-visualizer dev",
     "visualizer:with-data": "pnpm explorer:build && pnpm visualizer",
     "explorer:build": "tsx scripts/explorer-build.ts"
   },
