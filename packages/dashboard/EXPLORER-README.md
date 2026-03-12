@@ -1,6 +1,6 @@
-# Schema Explorer (this branch)
+# Schema Explorer
 
-This branch includes a client-side Stripe schema explorer powered by PGlite (Postgres in the browser).
+This document describes the client-side Stripe schema explorer powered by PGlite (Postgres in the browser).
 
 The explorer has two moving parts:
 - A **build pipeline** that creates temporary Docker data and writes static artifacts.
@@ -22,6 +22,12 @@ The explorer has two moving parts:
 
 ```bash
 pnpm explorer:build
+```
+
+If you want to regenerate artifacts and launch the dashboard in one step, run:
+
+```bash
+pnpm dashboard:with-data
 ```
 
 Optional overrides:

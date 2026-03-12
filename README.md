@@ -85,6 +85,7 @@ npx stripe-experiment-sync supabase install \
 The schema explorer is a client-side SQL playground for Stripe tables.
 It uses `pnpm explorer:build` to generate `bootstrap.sql` and `manifest.json`
 for PGlite hydration in `packages/dashboard`.
+Use `pnpm dashboard:with-data` to run explorer build and start the dashboard together.
 
 Each package has its own README with installation, configuration, and usage instructions.
 
