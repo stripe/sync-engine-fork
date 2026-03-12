@@ -144,7 +144,7 @@ async function main(): Promise<void> {
     // Set environment variable for API version
     try {
       execPhase(
-        `pnpm tsx scripts/explorer-migrate.ts -- --api-version=${config.apiVersion}`,
+        `pnpm tsx scripts/explorer-migrate.ts --api-version=${config.apiVersion}`,
         'Migrate schema',
         {
           STRIPE_API_VERSION: config.apiVersion,
@@ -162,7 +162,7 @@ async function main(): Promise<void> {
 
     try {
       execPhase(
-        `pnpm tsx scripts/explorer-seed.ts -- --api-version=${config.apiVersion} --seed=${config.seed}`,
+        `pnpm tsx scripts/explorer-seed.ts --api-version=${config.apiVersion} --seed=${config.seed}`,
         'Seed data',
         {
           STRIPE_API_VERSION: config.apiVersion,

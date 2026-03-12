@@ -30,7 +30,7 @@ interface MigrationScriptConfig {
 }
 
 function printUsage(): void {
-  console.log('Usage: pnpm tsx scripts/explorer-migrate.ts -- --api-version=2020-08-27');
+  console.log('Usage: pnpm tsx scripts/explorer-migrate.ts --api-version=2020-08-27');
   console.log('');
   console.log('Flags:');
   console.log(`  --api-version  Stripe API version for schema resolution (default: ${DEFAULT_STRIPE_API_VERSION})`);

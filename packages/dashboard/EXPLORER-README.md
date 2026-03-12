@@ -75,8 +75,8 @@ The raw scripts still exist so you can debug each phase directly:
 
 ```bash
 pnpm tsx scripts/explorer-harness.ts start
-pnpm tsx scripts/explorer-migrate.ts -- --api-version=2020-08-27
-pnpm tsx scripts/explorer-seed.ts -- --api-version=2020-08-27 --seed=42
+pnpm tsx scripts/explorer-migrate.ts --api-version=2020-08-27
+pnpm tsx scripts/explorer-seed.ts --api-version=2020-08-27 --seed=42
 pnpm tsx scripts/explorer-export.ts
 ```
 

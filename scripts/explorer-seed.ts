@@ -81,7 +81,7 @@ interface SeedScriptConfig {
 }
 
 function printUsage(): void {
-  console.log('Usage: pnpm tsx scripts/explorer-seed.ts -- --api-version=2020-08-27 --seed=42')
+  console.log('Usage: pnpm tsx scripts/explorer-seed.ts --api-version=2020-08-27 --seed=42')
   console.log('')
   console.log('Flags:')
   console.log(

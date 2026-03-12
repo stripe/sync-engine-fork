@@ -32,7 +32,7 @@ Runs database migrations to create the Stripe schema tables.
 
 **Command:**
 ```bash
-pnpm tsx scripts/explorer-migrate.ts -- --api-version=2020-08-27
+pnpm tsx scripts/explorer-migrate.ts --api-version=2020-08-27
 ```
 
 **What it does:**
@@ -47,7 +47,7 @@ Generates deterministic, graph-aware synthetic Stripe data.
 
 **Command:**
 ```bash
-pnpm tsx scripts/explorer-seed.ts -- --api-version=2020-08-27 --seed=42
+pnpm tsx scripts/explorer-seed.ts --api-version=2020-08-27 --seed=42
 ```
 
 **Features:**
@@ -88,10 +88,10 @@ pnpm tsx scripts/explorer-seed.ts -- --api-version=2020-08-27 --seed=42
 pnpm tsx scripts/explorer-harness.ts start
 
 # 2. Run migrations
-pnpm tsx scripts/explorer-migrate.ts -- --api-version=2020-08-27
+ pnpm tsx scripts/explorer-migrate.ts --api-version=2020-08-27
 
 # 3. Seed data
-pnpm tsx scripts/explorer-seed.ts -- --api-version=2020-08-27 --seed=42
+ pnpm tsx scripts/explorer-seed.ts --api-version=2020-08-27 --seed=42
 
 # 4. When done, cleanup
 pnpm tsx scripts/explorer-harness.ts stop
