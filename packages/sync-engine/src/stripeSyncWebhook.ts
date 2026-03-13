@@ -68,11 +68,8 @@ export class StripeSyncWebhook {
       throw new Error('Missing stripe-signature header')
     }
 
-    const normalizedPayload =
-      payload instanceof Uint8Array && !Buffer.isBuffer(payload) ? Buffer.from(payload) : payload
-
     const event = await this.deps.stripe.webhooks.constructEventAsync(
-      normalizedPayload,
+      payload as string | Buffer,
       signature,
       webhookSecret
     )
