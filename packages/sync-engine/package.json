@@ -1,6 +1,6 @@
 {
   "name": "@stripe/sync-engine",
-  "version": "1.0.26",
+  "version": "0.1.0",
   "private": false,
   "description": "DEPRECATED - This package has moved to https://github.com/stripe/sync-engine",
   "type": "module",
