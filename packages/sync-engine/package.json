@@ -1,11 +1,13 @@
 {
   "name": "@stripe/sync-engine",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": false,
   "description": "DEPRECATED - This package has moved to https://github.com/stripe/sync-engine",
   "type": "module",
   "main": "./dist/index.cjs",
-  "bin": "./dist/cli/index.js",
+  "bin": {
+    "sync-engine": "./dist/cli/index.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -44,7 +46,6 @@
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "dotenv": "^16.4.7",
-    "esbuild": "^0.27.3",
     "express": "^4.18.2",
     "inquirer": "^12.3.0",
     "papaparse": "5.4.1",
