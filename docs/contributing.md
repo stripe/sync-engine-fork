@@ -56,11 +56,11 @@ cd packages/sync-engine && pnpm test:e2e
 E2E tests spin up isolated Postgres containers via Docker and make real Stripe
 API calls. They require these environment variables:
 
-| Variable | Required for |
-|---|---|
-| `STRIPE_API_KEY` | All e2e tests |
+| Variable           | Required for        |
+| ------------------ | ------------------- |
+| `STRIPE_API_KEY`   | All e2e tests       |
 | `STRIPE_API_KEY_2` | Webhook reuse tests |
-| `STRIPE_API_KEY_3` | Sigma tests |
+| `STRIPE_API_KEY_3` | Sigma tests         |
 
 The API keys need **write permissions** (`rak_customer_write`, `rak_product_write`,
 `rak_feature_write`) because the tests create and delete Stripe objects to verify
