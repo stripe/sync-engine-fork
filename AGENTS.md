@@ -42,6 +42,12 @@ If you edit migrations, also verify `migrations-embedded.ts` is up to date:
 - `packages/fastify-app` — demo/reference Fastify app
 - `packages/supabase` — Supabase edge functions (Deno runtime, not Node)
 
+## GitHub Workflow
+
+When asked to push to GitHub, monitor CI checks until they all pass before
+reporting back. Don't just push and return — keep polling `gh pr checks` or
+`gh run watch` until all checks are green (or report failures if they occur).
+
 ## Key Gotchas
 
 - `tsx` fails on this project — `?raw` imports pull in Deno-only code. Use built output.
