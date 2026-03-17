@@ -242,9 +242,7 @@ describeWithDb('runMigrations — first migration after initial succeeds', () =>
     ).resolves.toBeUndefined()
 
     const pool = new pg.Pool({ connectionString: TEST_DB_URL! })
-    const rows = await pool.query(
-      `SELECT id, name FROM "${SCHEMA}"."_migrations" ORDER BY id`
-    )
+    const rows = await pool.query(`SELECT id, name FROM "${SCHEMA}"."_migrations" ORDER BY id`)
     await pool.end()
 
     const fileMigrations = rows.rows.filter((r: { name: string }) => !r.name.startsWith('openapi:'))
