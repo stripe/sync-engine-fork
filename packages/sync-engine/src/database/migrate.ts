@@ -354,10 +354,11 @@ async function insertMigrationMarker(
     return
   }
 
+  // Use negative IDs so OpenAPI markers never collide with file migration IDs (0, 1, 2, ...).
   const idResult = await client.query(
-    `SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM "${schema}"."_migrations"`
+    `SELECT COALESCE(MIN(id), 0) - 1 as next_id FROM "${schema}"."_migrations" WHERE id < 0`
   )
-  const nextId = Number(idResult.rows[0]?.next_id ?? 0)
+  const nextId = Number(idResult.rows[0]?.next_id ?? -1)
   await client.query(
     `INSERT INTO "${schema}"."_migrations" (id, name, hash) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING`,
     [nextId, marker, hash]
@@ -674,7 +675,10 @@ async function runMigrationsWithContent(
 
     await ensureMigrationsTable(client, syncSchema, tableName)
 
-    let appliedMigrations = await getAppliedMigrations(client, syncSchema, tableName)
+    // Only consider file migrations for validation; OpenAPI markers are stored separately (negative IDs).
+    let appliedMigrations = (await getAppliedMigrations(client, syncSchema, tableName)).filter(
+      (m) => !m.name.startsWith('openapi:')
+    )
     const appliedInitial = appliedMigrations.find((migration) => migration.id === 0)
     const intendedInitial = parsedMigrations.find((migration) => migration.id === 0)
     if (appliedInitial && intendedInitial && appliedInitial.hash !== intendedInitial.hash) {

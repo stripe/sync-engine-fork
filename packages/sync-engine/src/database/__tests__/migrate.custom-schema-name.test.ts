@@ -3,7 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { runMigrations } from '../migrate'
+import { runMigrations, runMigrationsFromContent } from '../migrate'
+import { embeddedMigrations } from '../migrations-embedded'
 import { minimalStripeOpenApiSpec } from '../../openapi/__tests__/fixtures/minimalSpec'
 
 const TEST_DB_URL = process.env.TEST_POSTGRES_DB_URL
@@ -180,5 +181,76 @@ describeWithDb('runMigrations — custom schema name support', () => {
       [CUSTOM_SCHEMA_NAME]
     )
     expect(result.rows).toHaveLength(1)
+  })
+})
+
+describeWithDb('runMigrations — first migration after initial succeeds', () => {
+  const SCHEMA = 'repro_first_migration_after_bootstrap'
+  let specPath: string
+  let tempDir: string
+
+  beforeAll(async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'first-migration-after-bootstrap-'))
+    specPath = path.join(tempDir, 'spec.json')
+    await fs.writeFile(specPath, JSON.stringify(minimalStripeOpenApiSpec), 'utf8')
+
+    const cleanupClient = new pg.Client({ connectionString: TEST_DB_URL! })
+    await cleanupClient.connect()
+    await cleanupClient.query(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`)
+    await cleanupClient.end()
+  })
+
+  afterAll(async () => {
+    const cleanupClient = new pg.Client({ connectionString: TEST_DB_URL! })
+    await cleanupClient.connect()
+    await cleanupClient.query(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`)
+    await cleanupClient.end()
+    if (tempDir) await fs.rm(tempDir, { recursive: true, force: true })
+  })
+
+  it('applies 0001 after bootstrap without hash mismatch', async () => {
+    await runMigrationsFromContent(
+      {
+        databaseUrl: TEST_DB_URL!,
+        schemaName: SCHEMA,
+        syncTablesSchemaName: SCHEMA,
+        openApiSpecPath: specPath,
+        stripeApiVersion: '2020-08-27',
+      },
+      embeddedMigrations
+    )
+
+    const migrationsWith0001 = [
+      ...embeddedMigrations,
+      {
+        name: '0001_add_dummy_table.sql',
+        sql: 'CREATE TABLE IF NOT EXISTS "dummy_table" (id integer primary key);',
+      },
+    ]
+
+    await expect(
+      runMigrationsFromContent(
+        {
+          databaseUrl: TEST_DB_URL!,
+          schemaName: SCHEMA,
+          syncTablesSchemaName: SCHEMA,
+          openApiSpecPath: specPath,
+          stripeApiVersion: '2020-08-27',
+        },
+        migrationsWith0001
+      )
+    ).resolves.toBeUndefined()
+
+    const pool = new pg.Pool({ connectionString: TEST_DB_URL! })
+    const rows = await pool.query(
+      `SELECT id, name FROM "${SCHEMA}"."_migrations" ORDER BY id`
+    )
+    await pool.end()
+
+    const fileMigrations = rows.rows.filter((r: { name: string }) => !r.name.startsWith('openapi:'))
+    expect(fileMigrations.map((r: { id: number; name: string }) => [r.id, r.name])).toEqual([
+      [0, 'initial_migration'],
+      [1, 'add_dummy_table'],
+    ])
   })
 })
