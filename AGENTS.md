@@ -40,7 +40,7 @@ If you edit migrations, also verify `migrations-embedded.ts` is up to date:
 
 - `packages/sync-engine` — core sync engine + CLI (published as `@stripe/sync-engine`)
 - `packages/fastify-app` — demo/reference Fastify app
-- `packages/supabase` — Supabase edge functions (Deno runtime, not Node)
+- `packages/sync-engine/src/supabase` — Supabase edge functions (Deno runtime, not Node)
 
 ## GitHub Workflow
 
@@ -51,5 +51,5 @@ reporting back. Don't just push and return — keep polling `gh pr checks` or
 ## Key Gotchas
 
 - `tsx` fails on this project — `?raw` imports pull in Deno-only code. Use built output.
-- `packages/supabase` is Deno, not Node. Don't try to run those files with Node/tsx.
+- `packages/sync-engine/src/supabase` is Deno, not Node. Don't try to run those files with Node/tsx.
 - E2E tests need Stripe keys with **write** permissions (they create real objects).
