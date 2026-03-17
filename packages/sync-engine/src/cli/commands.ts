@@ -148,11 +148,7 @@ export async function migrateCommand(options: CliOptions): Promise<void> {
     const schemaName = process.env.SYNC_SCHEMA_NAME
     const syncTablesSchemaName = process.env.SYNC_TABLES_SCHEMA_NAME
 
-    console.log(
-      chalk.blue(
-        `Running database migrations in '${schemaName ?? 'stripe'}' schema...`
-      )
-    )
+    console.log(chalk.blue(`Running database migrations in '${schemaName ?? 'stripe'}' schema...`))
     console.log(chalk.gray(`Database: ${databaseUrl.replace(/:[^:@]+@/, ':****@')}`))
     if (enableSigma) {
       console.log(chalk.blue('Sigma tables enabled'))
