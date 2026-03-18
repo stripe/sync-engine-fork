@@ -29,7 +29,7 @@ BEGIN
 END;
 $$;
 
-CREATE TABLE IF NOT EXISTS "stripe"."accounts" (
+CREATE TABLE IF NOT EXISTS "stripe"."_accounts" (
   "_raw_data" jsonb NOT NULL,
   "id" text GENERATED ALWAYS AS ((_raw_data->>'id')::text) STORED,
   "api_key_hashes" text[] NOT NULL DEFAULT '{}',
@@ -38,11 +38,11 @@ CREATE TABLE IF NOT EXISTS "stripe"."accounts" (
   "_updated_at" timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
-CREATE INDEX IF NOT EXISTS "idx_accounts_api_key_hashes"
-  ON "stripe"."accounts" USING GIN ("api_key_hashes");
-DROP TRIGGER IF EXISTS handle_updated_at ON "stripe"."accounts";
+CREATE INDEX IF NOT EXISTS "idx__accounts_api_key_hashes"
+  ON "stripe"."_accounts" USING GIN ("api_key_hashes");
+DROP TRIGGER IF EXISTS handle_updated_at ON "stripe"."_accounts";
 CREATE TRIGGER handle_updated_at
-BEFORE UPDATE ON "stripe"."accounts"
+BEFORE UPDATE ON "stripe"."_accounts"
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE IF NOT EXISTS "stripe"."_managed_webhooks" (
@@ -70,7 +70,7 @@ ALTER TABLE "stripe"."_managed_webhooks"
   DROP CONSTRAINT IF EXISTS "fk_managed_webhooks_account";
 ALTER TABLE "stripe"."_managed_webhooks"
   ADD CONSTRAINT "fk_managed_webhooks_account"
-    FOREIGN KEY ("account_id") REFERENCES "stripe"."accounts" (id);
+    FOREIGN KEY ("account_id") REFERENCES "stripe"."_accounts" (id);
 CREATE INDEX IF NOT EXISTS "idx_managed_webhooks_status"
   ON "stripe"."_managed_webhooks" ("status");
 CREATE INDEX IF NOT EXISTS "idx_managed_webhooks_enabled"
@@ -96,7 +96,7 @@ ALTER TABLE "stripe"."_sync_runs"
   DROP CONSTRAINT IF EXISTS "fk_sync_runs_account";
 ALTER TABLE "stripe"."_sync_runs"
   ADD CONSTRAINT "fk_sync_runs_account"
-    FOREIGN KEY ("_account_id") REFERENCES "stripe"."accounts" (id);
+    FOREIGN KEY ("_account_id") REFERENCES "stripe"."_accounts" (id);
 ALTER TABLE "stripe"."_sync_runs"
   DROP CONSTRAINT IF EXISTS one_active_run_per_account;
 ALTER TABLE "stripe"."_sync_runs"

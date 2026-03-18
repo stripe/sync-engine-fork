@@ -1,35 +1,14 @@
-import { RESOURCE_TABLE_NAME_MAP, STRIPE_OBJECT_TO_SYNC_OBJECT_ALIASES } from '../resourceRegistry'
 import type { ParsedColumn } from './types'
 
-const OPENAPI_ADDITIONAL_RESOURCE_TABLE_ALIASES: Record<string, string> = {
-  // OpenAPI resource id differs from runtime sync object routing for this nested entitlement schema.
-  'entitlements.feature': 'features',
-  // OpenAPI uses generic "item" for checkout session line items.
-  item: 'checkout_session_line_items',
-}
-
-const OPENAPI_RESOURCE_TABLE_ALIASES_FROM_REGISTRY: Record<string, string> = Object.fromEntries(
-  Object.entries(RESOURCE_TABLE_NAME_MAP).map(([objectName, tableName]) => [objectName, tableName])
-)
-
-const OPENAPI_RESOURCE_TABLE_ALIASES_FROM_STRIPE_OBJECT_ALIASES: Record<string, string> =
-  Object.fromEntries(
-    Object.entries(STRIPE_OBJECT_TO_SYNC_OBJECT_ALIASES).map(
-      ([stripeObjectName, syncObjectName]) => [
-        stripeObjectName,
-        RESOURCE_TABLE_NAME_MAP[syncObjectName],
-      ]
-    )
-  )
-
 /**
- * OpenAPI resource-id to runtime table-name aliases.
- * Most entries come directly from the runtime resource registry to avoid duplicating table config.
+ * Overrides for x-resourceId values whose table name cannot be inferred by the
+ * default pluralisation / dot-to-underscore rule in SpecParser.resolveTableName.
  */
 export const OPENAPI_RESOURCE_TABLE_ALIASES: Record<string, string> = {
-  ...OPENAPI_RESOURCE_TABLE_ALIASES_FROM_REGISTRY,
-  ...OPENAPI_RESOURCE_TABLE_ALIASES_FROM_STRIPE_OBJECT_ALIASES,
-  ...OPENAPI_ADDITIONAL_RESOURCE_TABLE_ALIASES,
+  'radar.early_fraud_warning': 'early_fraud_warnings',
+  'entitlements.active_entitlement': 'active_entitlements',
+  'entitlements.feature': 'features',
+  item: 'checkout_session_line_items',
 }
 
 /**

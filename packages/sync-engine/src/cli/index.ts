@@ -8,6 +8,8 @@ import {
   installCommand,
   uninstallCommand,
   fullSyncCommand,
+  generateSchemaCommand,
+  inspectResourcesCommand,
 } from './commands'
 
 const program = new Command()
@@ -27,6 +29,48 @@ program
     await migrateCommand({
       databaseUrl: options.databaseUrl,
       enableSigma: options.sigma,
+    })
+  })
+
+// Generate schema command
+program
+  .command('generate-schema')
+  .description(
+    'Generate OpenAPI-derived table DDL and write it to the migrations folder as a SQL file'
+  )
+  .option(
+    '--api-version <version>',
+    'Stripe API version (YYYY-MM-DD, or STRIPE_API_VERSION env, default: 2020-08-27)'
+  )
+  .option('--spec-path <path>', 'Path to a local spec3.json file (skips GitHub fetch)')
+  .option(
+    '--output <path>',
+    'Output file path (default: src/database/migrations/0001_openapi_schema.sql)'
+  )
+  .action(async (options) => {
+    await generateSchemaCommand({
+      apiVersion: options.apiVersion,
+      specPath: options.specPath,
+      output: options.output,
+    })
+  })
+
+// Inspect resources command
+program
+  .command('inspect-resources')
+  .description(
+    'Scan the OpenAPI spec and output a JSON file of all list endpoints (top-level vs nested, SDK resolution status)'
+  )
+  .option('--api-version <version>', 'Stripe API version (YYYY-MM-DD, default: 2020-08-27)')
+  .option('--spec-path <path>', 'Path to a local spec file (skips GitHub fetch)')
+  .option('--output <path>', 'Output file path (default: src/openapi/stripe-resources.json)')
+  .option('--stripe-key <key>', 'Stripe API key to test SDK resolution (or STRIPE_API_KEY env)')
+  .action(async (options) => {
+    await inspectResourcesCommand({
+      apiVersion: options.apiVersion,
+      specPath: options.specPath,
+      output: options.output,
+      stripeKey: options.stripeKey,
     })
   })
 

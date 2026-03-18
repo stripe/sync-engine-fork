@@ -1,6 +1,11 @@
 import Stripe from 'stripe'
 import { PostgresClient } from './database/postgres'
-import { ProcessNextResult, ResourceConfig, StripeSyncConfig } from './types'
+import {
+  ProcessNextResult,
+  ResourceConfig,
+  StripeListResourceConfig,
+  StripeSyncConfig,
+} from './types'
 import { SigmaSyncProcessor } from './sigma/sigmaSyncProcessor'
 import { RunKey } from './stripeSync'
 
@@ -161,7 +166,8 @@ export class StripeSyncWorker {
   async updateTaskProgress(
     task: SyncTask,
     data: Stripe.Response<Stripe.ApiList<unknown>>['data'],
-    has_more: boolean
+    has_more: boolean,
+    nested: Array<{ object: string; count: number }> = []
   ) {
     const minCreate = Math.min(...data.map((i) => (i as { created?: number }).created || 0))
     const cursor = minCreate > 0 ? String(minCreate) : null
@@ -189,6 +195,21 @@ export class StripeSyncWorker {
         pageCursor: complete ? null : lastId,
       }
     )
+    for (const { object, count } of nested) {
+      await this.postgresClient.updateSyncObject(
+        this.accountId,
+        this.runKey.runStartedAt,
+        object,
+        task.created_gte,
+        task.created_lte,
+        {
+          processedCount: count,
+          cursor,
+          status: complete ? 'complete' : 'pending',
+          pageCursor: complete ? null : lastId,
+        }
+      )
+    }
   }
 
   async processSingleTask(task: SyncTask): Promise<ProcessNextResult> {
@@ -222,7 +243,7 @@ export class StripeSyncWorker {
 
       return result
     }
-
+    const synced_nested: Array<{ object: string; count: number }> = []
     // Core Stripe API resources
     const { data, has_more } = await this.fetchOnePage(
       task.object,
@@ -244,9 +265,60 @@ export class StripeSyncWorker {
     } else if (data.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await this.upsertAny(data as { [Key: string]: any }[], this.accountId, false)
-    }
+      const listConfig = config as StripeListResourceConfig
 
-    await this.updateTaskProgress(task, data, has_more)
+      if (listConfig.nestedResources?.length) {
+        const parentIds = data
+          .map((item) => (item as { id?: string }).id)
+          .filter((id): id is string => !!id)
+
+        for (const nested of listConfig.nestedResources) {
+          if (nested.tableName !== 'persons') continue
+          synced_nested.push({ object: nested.tableName, count: 0 })
+          for (const parentId of parentIds) {
+            try {
+              const nestedPath = nested.apiPath.replace(`{${nested.parentParamName}}`, parentId)
+              let hasMore = true
+              let startingAfter: string | undefined
+
+              while (hasMore) {
+                let url = nestedPath
+                if (nested.supportsPagination) {
+                  const qs = new URLSearchParams({ limit: '100' })
+                  if (startingAfter) qs.set('starting_after', startingAfter)
+                  url = `${nestedPath}?${qs.toString()}`
+                }
+                await this.postgresClient.waitForRateLimit(this.rateLimit)
+                const body = (await this.stripe.rawRequest('GET', url, undefined)) as unknown as {
+                  data: { id?: string; object?: string }[]
+                  has_more: boolean
+                }
+
+                if (body.data.length > 0) {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  await this.upsertAny(body.data as { [Key: string]: any }[], this.accountId, false)
+                  synced_nested[synced_nested.length - 1].count += body.data.length
+                }
+
+                hasMore = nested.supportsPagination && body.has_more
+                if (hasMore && body.data.length > 0) {
+                  startingAfter = body.data[body.data.length - 1].id
+                } else {
+                  hasMore = false
+                }
+              }
+            } catch (err) {
+              console.error('Failed to fetch nested resource', err)
+              this.config.logger?.error(
+                { err, parent: task.object, nested: nested.tableName, parentId },
+                'Failed to fetch nested resource; skipping'
+              )
+            }
+          }
+        }
+      }
+    }
+    await this.updateTaskProgress(task, data, has_more, synced_nested)
     return { hasMore: has_more, processed: data.length, runStartedAt: this.runKey.runStartedAt }
   }
 

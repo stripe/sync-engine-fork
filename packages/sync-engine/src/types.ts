@@ -47,7 +47,7 @@ export type StripeSyncConfig = {
   schemaName?: string
 
   /**
-   * Postgres schema name for sync metadata tables (accounts, _sync_runs, _managed_webhooks, etc.).
+   * Postgres schema name for sync metadata tables (_accounts, _sync_runs, _managed_webhooks, etc.).
    * Defaults to schemaName when not provided.
    */
   syncTablesSchemaName?: string
@@ -277,6 +277,14 @@ export type BaseResourceConfig = {
   isFinalState?: (entity: any) => boolean
 }
 
+export type NestedResource = {
+  tableName: string
+  resourceId: string
+  apiPath: string
+  parentParamName: string
+  supportsPagination: boolean
+}
+
 export type StripeListResourceConfig = BaseResourceConfig & {
   /** Function to list items from Stripe API */
   listFn: (params: Stripe.PaginationParams & { created?: Stripe.RangeQueryParam }) => Promise<{
@@ -288,6 +296,10 @@ export type StripeListResourceConfig = BaseResourceConfig & {
   retrieveFn: (id: string) => Promise<Stripe.Response<any>>
   /** Optional list of sub-resources to expand during upsert/fetching (e.g. 'refunds', 'listLineItems') */
   listExpands?: Record<string, (id: string) => Promise<Stripe.ApiList<{ id?: string }>>>[]
+  /** Nested child resources discovered from the OpenAPI spec (e.g. persons under accounts) */
+  nestedResources?: NestedResource[]
+  /** For nested resources: the parent's path parameter name (e.g. 'customer' for /v1/customers/{customer}/tax_ids) */
+  parentParamName?: string
   /** discriminator */
   sigma?: undefined
 }

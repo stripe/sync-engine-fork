@@ -22,11 +22,30 @@ export type OpenApiReferenceObject = {
 
 export type OpenApiSchemaOrReference = OpenApiSchemaObject | OpenApiReferenceObject
 
+export type OpenApiResponseContent = {
+  schema?: OpenApiSchemaObject
+}
+
+export type OpenApiResponse = {
+  content?: {
+    'application/json'?: OpenApiResponseContent
+  }
+}
+
+export type OpenApiOperationObject = {
+  operationId?: string
+  parameters?: { name?: string; in?: string; required?: boolean; schema?: OpenApiSchemaOrReference }[]
+  responses?: Record<string, OpenApiResponse>
+}
+
+export type OpenApiPathItem = Record<string, OpenApiOperationObject>
+
 export type OpenApiSpec = {
   openapi: string
   info?: {
     version?: string
   }
+  paths?: Record<string, OpenApiPathItem>
   components?: {
     schemas?: Record<string, OpenApiSchemaOrReference>
   }
@@ -61,9 +80,15 @@ export type ParseSpecOptions = {
   resourceAliases?: Record<string, string>
   /**
    * Restrict parsing to these table names.
-   * If omitted, all resolvable x-resourceId entries are parsed.
+   * If omitted, listable resources are discovered from the spec's paths.
    */
   allowedTables?: string[]
+  /**
+   * Table names to exclude from parsing, even if discovered or allowed.
+   * Used to avoid collisions with tables managed outside of the OpenAPI adapter
+   * (e.g. the bootstrap `_accounts` table).
+   */
+  excludedTables?: string[]
 }
 
 export type ResolveSpecConfig = {

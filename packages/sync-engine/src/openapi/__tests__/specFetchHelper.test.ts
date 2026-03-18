@@ -35,7 +35,7 @@ describe('resolveOpenApiSpec', () => {
 
   it('uses cache by api version when available', async () => {
     const tempDir = await createTempDir('openapi-cache')
-    const cachePath = path.join(tempDir, '2020-08-27.spec3.json')
+    const cachePath = path.join(tempDir, '2020-08-27.spec3.sdk.json')
     await fs.writeFile(cachePath, JSON.stringify(minimalStripeOpenApiSpec), 'utf8')
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
@@ -70,7 +70,7 @@ describe('resolveOpenApiSpec', () => {
     expect(result.source).toBe('github')
     expect(result.commitSha).toBe('abc123def456')
 
-    const cached = await fs.readFile(path.join(tempDir, '2020-08-27.spec3.json'), 'utf8')
+    const cached = await fs.readFile(path.join(tempDir, '2020-08-27.spec3.sdk.json'), 'utf8')
     expect(JSON.parse(cached)).toMatchObject({ openapi: '3.0.0' })
     expect(fetchMock).toHaveBeenCalledTimes(2)
     await fs.rm(tempDir, { recursive: true, force: true })

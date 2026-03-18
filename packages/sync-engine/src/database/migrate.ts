@@ -13,11 +13,13 @@ import type { SigmaIngestionConfig } from '../sigma/sigmaIngestion'
 import {
   OPENAPI_RESOURCE_TABLE_ALIASES,
   PostgresAdapter,
-  RUNTIME_REQUIRED_TABLES,
   SpecParser,
   WritePathPlanner,
   resolveOpenApiSpec,
+  discoverListEndpoints,
+  discoverNestedEndpoints,
 } from '../openapi'
+import type { NestedEndpoint } from '../openapi'
 import type { EmbeddedMigration } from './migrations-embedded'
 
 const DEFAULT_STRIPE_API_VERSION = '2020-08-27'
@@ -38,7 +40,7 @@ type MigrationConfig = {
   openApiSpecPath?: string
   openApiCacheDir?: string
   schemaName?: string
-  /** Schema for sync metadata tables (accounts, _sync_runs, etc.). Defaults to schemaName. */
+  /** Schema for sync metadata tables (_accounts, _sync_runs, etc.). Defaults to schemaName. */
   syncTablesSchemaName?: string
 }
 
@@ -231,7 +233,7 @@ async function ensureSigmaTableMetadata(
   await client.query(`
     ALTER TABLE "${schema}"."${tableName}"
     ADD CONSTRAINT "${fkName}"
-    FOREIGN KEY ("_account_id") REFERENCES ${stripeSchemaIdent}."accounts" (id);
+    FOREIGN KEY ("_account_id") REFERENCES ${stripeSchemaIdent}."_accounts" (id);
   `)
 
   await client.query(`
@@ -335,8 +337,14 @@ async function runSqlAdditive(client: Client, sql: string, logger?: Logger): Pro
     await client.query(sql)
   } catch (err: unknown) {
     const code = (err as { code?: string })?.code
-    // 42P07=duplicate_table, 42710=duplicate_object (index/constraint), 42P16=invalid_table_definition
-    if (code === '42P07' || code === '42710' || code === '42P16' || code === '42701') {
+    // 42P07=duplicate_table, 42710=duplicate_object (index/constraint), 42P16=invalid_table_definition, 42703=undefined_column
+    if (
+      code === '42P07' ||
+      code === '42710' ||
+      code === '42P16' ||
+      code === '42701' ||
+      code === '42703'
+    ) {
       logger?.info?.({ code }, 'Skipping already-existing object (additive apply)')
       return
     }
@@ -427,6 +435,52 @@ async function listOpenApiMarkersForVersion(
     .filter((marker): marker is string => typeof marker === 'string')
 }
 
+async function populateSyncNestedObjects(
+  client: Client,
+  schema: string,
+  nestedEndpoints: NestedEndpoint[],
+  logger?: Logger
+): Promise<void> {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}"."_sync_nested_objects" (
+      "parent_table" text NOT NULL,
+      "nested_table" text NOT NULL,
+      "api_path" text NOT NULL,
+      "parent_param_name" text NOT NULL,
+      "supports_pagination" boolean NOT NULL DEFAULT false,
+      "enabled" boolean NOT NULL DEFAULT false,
+      PRIMARY KEY ("parent_table", "nested_table")
+    )
+  `)
+
+  if (nestedEndpoints.length === 0) return
+
+  const values: string[] = []
+  const params: unknown[] = []
+  let idx = 1
+  for (const ep of nestedEndpoints) {
+    values.push(`($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4})`)
+    params.push(ep.parentTableName, ep.tableName, ep.apiPath, ep.parentParamName, ep.supportsPagination)
+    idx += 5
+  }
+
+  await client.query(
+    `INSERT INTO "${schema}"."_sync_nested_objects"
+       ("parent_table", "nested_table", "api_path", "parent_param_name", "supports_pagination")
+     VALUES ${values.join(', ')}
+     ON CONFLICT ("parent_table", "nested_table") DO UPDATE SET
+       "api_path" = EXCLUDED."api_path",
+       "parent_param_name" = EXCLUDED."parent_param_name",
+       "supports_pagination" = EXCLUDED."supports_pagination"`,
+    params
+  )
+
+  logger?.info(
+    { count: nestedEndpoints.length },
+    'Populated _sync_nested_objects table'
+  )
+}
+
 async function applyOpenApiSchema(
   client: Client,
   config: MigrationConfig,
@@ -493,7 +547,6 @@ async function applyOpenApiSchema(
   const parser = new SpecParser()
   const parsedSpec = parser.parse(resolvedSpec.spec, {
     resourceAliases: OPENAPI_RESOURCE_TABLE_ALIASES,
-    allowedTables: [...RUNTIME_REQUIRED_TABLES],
   })
   const adapter = new PostgresAdapter({
     schemaName: dataSchema,
@@ -506,12 +559,17 @@ async function applyOpenApiSchema(
 
   await insertMigrationMarker(client, syncSchema, markerColumn, marker, fingerprint)
 
+  const endpoints = discoverListEndpoints(resolvedSpec.spec, OPENAPI_RESOURCE_TABLE_ALIASES)
+  const nestedEndpoints = discoverNestedEndpoints(resolvedSpec.spec, endpoints, OPENAPI_RESOURCE_TABLE_ALIASES)
+  await populateSyncNestedObjects(client, dataSchema, nestedEndpoints, config.logger)
+
   const planner = new WritePathPlanner()
   const writePlans = planner.buildPlans(parsedSpec.tables)
   config.logger?.info(
     {
       tableCount: parsedSpec.tables.length,
       writePlanCount: writePlans.length,
+      nestedObjectCount: nestedEndpoints.length,
       marker,
     },
     'Applied OpenAPI-generated Stripe tables'

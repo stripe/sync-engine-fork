@@ -53,7 +53,7 @@ describe('PostgresAdapter', () => {
       statements.some((stmt) => stmt.includes('ADD COLUMN IF NOT EXISTS "expires_at" text'))
     ).toBe(true)
     expect(statements[5]).toContain(
-      'FOREIGN KEY ("_account_id") REFERENCES "stripe"."accounts" (id)'
+      'FOREIGN KEY ("_account_id") REFERENCES "stripe"."_accounts" (id)'
     )
     expect(statements[7]).toContain('DROP TRIGGER IF EXISTS handle_updated_at')
     expect(statements[8]).toContain('EXECUTE FUNCTION set_updated_at()')
@@ -83,7 +83,7 @@ describe('PostgresAdapter', () => {
     const statements = adapter.buildAllStatements([SAMPLE_TABLE])
     expect(statements[0]).toContain('CREATE TABLE "stripe_data"."customers"')
     expect(statements[5]).toContain(
-      'FOREIGN KEY ("_account_id") REFERENCES "stripe_sync"."accounts" (id)'
+      'FOREIGN KEY ("_account_id") REFERENCES "stripe_sync"."_accounts" (id)'
     )
   })
 })

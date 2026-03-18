@@ -89,13 +89,13 @@ async function tryWriteCache(cachePath: string, spec: OpenApiSpec): Promise<void
 
 function getCachePath(cacheDir: string, apiVersion: string): string {
   const safeVersion = apiVersion.replace(/[^0-9a-zA-Z_-]/g, '_')
-  return path.join(cacheDir, `${safeVersion}.spec3.json`)
+  return path.join(cacheDir, `${safeVersion}.spec3.sdk.json`)
 }
 
 async function resolveCommitShaForApiVersion(apiVersion: string): Promise<string | null> {
   const until = `${apiVersion}T23:59:59Z`
   const url = new URL('https://api.github.com/repos/stripe/openapi/commits')
-  url.searchParams.set('path', 'openapi/spec3.json')
+  url.searchParams.set('path', 'latest/openapi.spec3.sdk.json')
   url.searchParams.set('until', until)
   url.searchParams.set('per_page', '1')
 
@@ -112,7 +112,7 @@ async function resolveCommitShaForApiVersion(apiVersion: string): Promise<string
 }
 
 async function fetchSpecForCommit(commitSha: string): Promise<OpenApiSpec> {
-  const url = `https://raw.githubusercontent.com/stripe/openapi/${commitSha}/openapi/spec3.json`
+  const url = `https://raw.githubusercontent.com/stripe/openapi/${commitSha}/latest/openapi.spec3.sdk.json`
   const response = await fetch(url, { headers: githubHeaders() })
   if (!response.ok) {
     throw new Error(

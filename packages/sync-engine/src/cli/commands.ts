@@ -1,6 +1,9 @@
 import chalk from 'chalk'
 import express from 'express'
+import fs from 'node:fs'
+import path from 'node:path'
 import http from 'node:http'
+import { fileURLToPath } from 'node:url'
 import dotenv from 'dotenv'
 import { type PoolConfig } from 'pg'
 import { loadConfig, type CliOptions, type ListenMode } from './config'
@@ -10,10 +13,19 @@ import {
   createStripeWebSocketClient,
   type StripeWebSocketClient,
   type StripeWebhookEvent,
+  ResourceConfig,
+  StripeListResourceConfig,
 } from '../index'
 import { createTunnel, type NgrokTunnel } from './ngrok'
 import { type StripeObject } from '../resourceRegistry'
 import { install, uninstall } from '../supabase'
+import {
+  SpecParser,
+  PostgresAdapter,
+  resolveOpenApiSpec,
+  OPENAPI_RESOURCE_TABLE_ALIASES,
+  canResolveSdkResource,
+} from '../openapi'
 
 /**
  * Monitor command - live display of table row counts.
@@ -468,7 +480,18 @@ export async function fullSyncCommand(
     }
 
     const startTime = Date.now()
-    const tables = entityName !== 'all' ? [entityName as StripeObject] : undefined
+    let tables = entityName !== 'all' ? [entityName as StripeObject] : undefined
+    console.log('entityName: ', entityName)
+    if (entityName !== 'all') {
+      const config: StripeListResourceConfig = stripeSync.resourceRegistry[
+        entityName
+      ] as StripeListResourceConfig
+      console.log('config: ', config)
+      if (config.parentParamName !== undefined) {
+        tables = [config.parentParamName, entityName]
+      }
+    }
+
     const result = await stripeSync.fullSync(
       tables,
       true,
@@ -707,6 +730,198 @@ export async function uninstallCommand(options: DeployOptions): Promise<void> {
   } catch (error) {
     if (error instanceof Error) {
       console.error(chalk.red(`\n✗ Uninstall failed: ${error.message}`))
+    }
+    process.exit(1)
+  }
+}
+
+export interface GenerateSchemaOptions {
+  apiVersion?: string
+  specPath?: string
+  output?: string
+}
+
+const __cli_filename = fileURLToPath(import.meta.url)
+
+function findPackageRoot(startDir: string): string {
+  let dir = startDir
+  while (dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, 'package.json'))) return dir
+    dir = path.dirname(dir)
+  }
+  throw new Error('Could not find package root (no package.json found)')
+}
+
+const DEFAULT_MIGRATIONS_DIR = path.join(
+  findPackageRoot(path.dirname(__cli_filename)),
+  'src/database/migrations'
+)
+
+/**
+ * Generate schema command - resolves the Stripe OpenAPI spec, generates DDL,
+ * and writes it to the migrations folder as a SQL file.
+ */
+export async function generateSchemaCommand(options: GenerateSchemaOptions): Promise<void> {
+  try {
+    dotenv.config()
+
+    const apiVersion = options.apiVersion || process.env.STRIPE_API_VERSION || '2020-08-27'
+
+    console.log(chalk.blue(`Resolving OpenAPI spec for API version ${apiVersion}...`))
+    const resolvedSpec = await resolveOpenApiSpec({
+      apiVersion,
+      openApiSpecPath: options.specPath,
+    })
+    console.log(
+      chalk.gray(`  Source: ${resolvedSpec.source}`) +
+        (resolvedSpec.commitSha ? chalk.gray(` (${resolvedSpec.commitSha.slice(0, 8)})`) : '')
+    )
+
+    const parser = new SpecParser()
+    const parsedSpec = parser.parse(resolvedSpec.spec, {
+      resourceAliases: OPENAPI_RESOURCE_TABLE_ALIASES,
+    })
+
+    const adapter = new PostgresAdapter({ schemaName: 'stripe' })
+    const statements = adapter.buildAllStatements(parsedSpec.tables)
+    const sql = statements.join('\n\n') + '\n'
+
+    const outputPath =
+      options.output ?? path.join(DEFAULT_MIGRATIONS_DIR, '0001_openapi_schema.sql')
+
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+    fs.writeFileSync(outputPath, sql, 'utf8')
+
+    console.log(chalk.green(`✓ Generated schema with ${parsedSpec.tables.length} tables`))
+    console.log(chalk.gray(`  Written to: ${outputPath}`))
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(chalk.red(error.message))
+    }
+    process.exit(1)
+  }
+}
+
+export interface InspectResourcesOptions {
+  apiVersion?: string
+  specPath?: string
+  output?: string
+  stripeKey?: string
+}
+
+/**
+ * Inspect resources command - scans the OpenAPI spec and produces a JSON file
+ * showing every list endpoint, grouped by top-level vs nested, with SDK
+ * resolution status.
+ */
+export async function inspectResourcesCommand(options: InspectResourcesOptions): Promise<void> {
+  try {
+    dotenv.config()
+
+    const apiVersion = options.apiVersion || process.env.STRIPE_API_VERSION || '2020-08-27'
+    const stripeKey =
+      options.stripeKey || process.env.STRIPE_API_KEY || process.env.STRIPE_SECRET_KEY || ''
+
+    console.log(chalk.blue(`Resolving OpenAPI spec for API version ${apiVersion}...`))
+    const resolvedSpec = await resolveOpenApiSpec({
+      apiVersion,
+      openApiSpecPath: options.specPath,
+    })
+
+    const stripe = stripeKey
+      ? new (await import('stripe')).default(stripeKey, { apiVersion: apiVersion as never })
+      : null
+
+    const spec = resolvedSpec.spec
+    const paths = spec.paths ?? {}
+    const schemas = spec.components?.schemas ?? {}
+
+    type ResourceEntry = {
+      resourceId: string | null
+      path: string
+      sdkResolvable: boolean | null
+    }
+
+    const topLevel: ResourceEntry[] = []
+    const nested: ResourceEntry[] = []
+
+    for (const [apiPath, pathItem] of Object.entries(paths)) {
+      const getOp = (pathItem as Record<string, unknown>).get as
+        | { responses?: Record<string, unknown> }
+        | undefined
+      if (!getOp?.responses) continue
+
+      const resp = getOp.responses as Record<
+        string,
+        { content?: Record<string, { schema?: Record<string, unknown> }> }
+      >
+      const responseSchema = resp['200']?.content?.['application/json']?.schema
+      if (!responseSchema) continue
+
+      const objectProp = responseSchema.properties as
+        | Record<string, { enum?: unknown[] }>
+        | undefined
+      if (!objectProp?.object?.enum || !Array.from(objectProp.object.enum).includes('list'))
+        continue
+
+      const dataProp = responseSchema.properties as
+        | Record<string, { type?: string; items?: { $ref?: string } }>
+        | undefined
+      if (!dataProp?.data || dataProp.data.type !== 'array') continue
+
+      const ref = dataProp.data.items?.$ref
+      if (!ref || !ref.startsWith('#/components/schemas/')) continue
+
+      const schemaName = ref.slice('#/components/schemas/'.length)
+      const schema = schemas[schemaName]
+      const resourceId =
+        schema && !('$ref' in schema)
+          ? ((schema as Record<string, unknown>)['x-resourceId'] as string | undefined)
+          : null
+
+      const isNested = apiPath.includes('{')
+      const sdkResolvable = stripe ? canResolveSdkResource(stripe, apiPath) : null
+
+      const entry: ResourceEntry = {
+        resourceId: resourceId ?? null,
+        path: apiPath,
+        sdkResolvable,
+      }
+      ;(isNested ? nested : topLevel).push(entry)
+    }
+
+    const result = {
+      apiVersion,
+      source: resolvedSpec.source,
+      topLevel: topLevel.sort((a, b) => a.path.localeCompare(b.path)),
+      nested: nested.sort((a, b) => a.path.localeCompare(b.path)),
+      summary: {
+        topLevelCount: topLevel.length,
+        nestedCount: nested.length,
+        sdkResolvableTopLevel: stripe ? topLevel.filter((e) => e.sdkResolvable).length : null,
+      },
+    }
+
+    const outputPath =
+      options.output ??
+      path.join(findPackageRoot(path.dirname(__cli_filename)), 'src/openapi/stripe-resources.json')
+
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+    fs.writeFileSync(outputPath, JSON.stringify(result, null, 2) + '\n', 'utf8')
+
+    console.log(
+      chalk.green(`✓ Found ${topLevel.length} top-level and ${nested.length} nested list endpoints`)
+    )
+    if (stripe) {
+      const resolvable = topLevel.filter((e) => e.sdkResolvable).length
+      console.log(
+        chalk.green(`  ${resolvable}/${topLevel.length} top-level resources resolve in the SDK`)
+      )
+    }
+    console.log(chalk.gray(`  Written to: ${outputPath}`))
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(chalk.red(error.message))
     }
     process.exit(1)
   }

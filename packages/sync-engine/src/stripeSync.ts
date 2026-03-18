@@ -2,7 +2,14 @@ import Stripe from 'stripe'
 import { pg as sql } from 'yesql'
 import pkg from '../package.json' with { type: 'json' }
 import { PostgresClient } from './database/postgres'
-import { type Logger, StripeSyncConfig, Sync, SyncObject, type ResourceConfig } from './types'
+import {
+  type Logger,
+  StripeSyncConfig,
+  Sync,
+  SyncObject,
+  type ResourceConfig,
+  type StripeListResourceConfig,
+} from './types'
 import { type PoolConfig } from 'pg'
 import { hashApiKey } from './utils/hashApiKey'
 import { expandEntity } from './utils/expandEntity'
@@ -17,6 +24,7 @@ import {
   StripeObject,
 } from './resourceRegistry'
 import { StripeSyncWorker } from './stripeSyncWorker'
+import { resolveOpenApiSpec } from './openapi'
 
 /**
  * Identifies a specific sync run.
@@ -52,8 +60,8 @@ export class StripeSync {
   stripe: Stripe
   postgresClient: PostgresClient
   config: StripeSyncConfig
-  readonly resourceRegistry: Record<StripeObject, ResourceConfig>
-  readonly sigmaRegistry: Record<string, ResourceConfig>
+  resourceRegistry!: Record<StripeObject, ResourceConfig>
+  sigmaRegistry!: Record<string, ResourceConfig>
   webhook!: StripeSyncWebhook
   readonly sigma: SigmaSyncProcessor
   accountId!: string
@@ -125,9 +133,6 @@ export class StripeSync {
       sigmaSchemaName: config.sigmaSchemaName,
       logger: this.config.logger,
     })
-
-    this.resourceRegistry = buildResourceRegistry(this.stripe)
-    this.sigmaRegistry = buildSigmaRegistry(this.sigma, this.resourceRegistry)
   }
 
   /**
@@ -136,6 +141,12 @@ export class StripeSync {
    */
   static async create(config: StripeSyncConfig): Promise<StripeSync> {
     const instance = new StripeSync(config)
+
+    const { spec } = await resolveOpenApiSpec({
+      apiVersion: config.stripeApiVersion ?? '2020-08-27',
+    })
+    instance.resourceRegistry = buildResourceRegistry(instance.stripe, spec)
+    instance.sigmaRegistry = buildSigmaRegistry(instance.sigma, instance.resourceRegistry)
     if (config.stripeAccountId) {
       instance.accountId = config.stripeAccountId
       // Ensure the account row exists in the database so FK constraints are satisfied.
@@ -318,12 +329,6 @@ export class StripeSync {
       (c): c is { object: StripeObject; oldest: number } => c !== null
     )
     const chunkCursors: Record<string, number[]> = {}
-    const nonChunkCursors = objects.filter(
-      (obj) => !validCursors.some((c) => c.object === obj) && !failedObjectKeys.has(obj)
-    )
-    const nonChunkTables = nonChunkCursors.map((obj) =>
-      getTableName(obj, this.getRegistryForObject(obj))
-    )
     const now = Math.floor(Date.now() / 1000)
     for (const { object: obj, oldest } of validCursors) {
       const tableName = getTableName(obj, this.getRegistryForObject(obj))
@@ -337,7 +342,21 @@ export class StripeSync {
       }
 
       chunkCursors[tableName] = timestamps
+
+      const config = this.resourceRegistry[obj] as StripeListResourceConfig
+      if (config.nestedResources) {
+        for (const nested of config.nestedResources) {
+          if (objects.includes(nested.tableName)) {
+            chunkCursors[nested.tableName] = timestamps
+          }
+        }
+      }
     }
+
+    const nonChunkTables = objects
+      .filter((obj) => !validCursors.some((c) => c.object === obj) && !failedObjectKeys.has(obj))
+      .map((obj) => getTableName(obj, this.getRegistryForObject(obj)))
+      .filter((t) => !chunkCursors[t])
 
     return { chunkCursors, nonChunkTables, failedObjects }
   }
@@ -451,6 +470,7 @@ export class StripeSync {
   }> {
     const objects = tables && tables.length > 0 ? tables : this.getSupportedSyncObjects()
     const tableNames = objects.map((obj) => getTableName(obj, this.getRegistryForObject(obj)))
+
     const runKey = await this.reconciliationSync(
       objects,
       tableNames,

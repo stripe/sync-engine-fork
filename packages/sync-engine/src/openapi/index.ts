@@ -10,3 +10,12 @@ export { PostgresAdapter } from './postgresAdapter'
 export { WritePathPlanner } from './writePathPlanner'
 export { resolveOpenApiSpec } from './specFetchHelper'
 export type { DialectAdapter } from './dialectAdapter'
+export {
+  getListFn,
+  buildListFn,
+  buildRetrieveFn,
+  discoverListEndpoints,
+  discoverNestedEndpoints,
+  canResolveSdkResource,
+} from './listFnResolver'
+export type { NestedEndpoint } from './listFnResolver'

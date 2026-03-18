@@ -13,6 +13,8 @@ import {
   OPENAPI_RESOURCE_TABLE_ALIASES as DEFAULT_OPENAPI_RESOURCE_TABLE_ALIASES,
 } from './runtimeMappings'
 
+const SCHEMA_REF_PREFIX = '#/components/schemas/'
+
 const RESERVED_COLUMNS = new Set([
   'id',
   '_raw_data',
@@ -41,7 +43,10 @@ export class SpecParser {
     }
 
     const aliases = { ...OPENAPI_RESOURCE_TABLE_ALIASES, ...(options.resourceAliases ?? {}) }
-    const allowedTables = new Set(options.allowedTables ?? RUNTIME_REQUIRED_TABLES)
+    const excluded = new Set(options.excludedTables ?? [])
+    const allowedTables = options.allowedTables
+      ? new Set(options.allowedTables.filter((t) => !excluded.has(t)))
+      : this.discoverAllowedTables(spec, aliases, excluded)
     const tableMap = new Map<
       string,
       {
@@ -138,6 +143,74 @@ export class SpecParser {
       apiVersion: spec.info?.version ?? spec.openapi ?? 'unknown',
       tables,
     }
+  }
+
+  /**
+   * Scan the spec's `paths` for GET endpoints that return Stripe list objects,
+   * and resolve each listed resource's x-resourceId into a table name.
+   */
+  private discoverAllowedTables(
+    spec: OpenApiSpec,
+    aliases: Record<string, string>,
+    excluded: Set<string>
+  ): Set<string> {
+    const resourceIds = this.discoverListableResourceIds(spec, {
+      includeNested: true,
+    })
+    const tables = new Set<string>()
+    for (const resourceId of resourceIds) {
+      const tableName = this.resolveTableName(resourceId, aliases)
+      if (!excluded.has(tableName)) {
+        tables.add(tableName)
+      }
+    }
+    return tables
+  }
+
+  /**
+   * Extract x-resourceId values for every schema that is returned by a list
+   * endpoint (GET with a response whose `object` enum is `["list"]`).
+   */
+  discoverListableResourceIds(
+    spec: OpenApiSpec,
+    options: { includeNested: boolean } = { includeNested: false }
+  ): Set<string> {
+    const resourceIds = new Set<string>()
+    const paths = spec.paths
+    if (!paths) {
+      return resourceIds
+    }
+
+    for (const [apiPath, pathItem] of Object.entries(paths)) {
+      if (!options.includeNested && apiPath.includes('{')) continue
+
+      const getOp = pathItem.get
+      if (!getOp?.responses) continue
+
+      const responseSchema = getOp.responses['200']?.content?.['application/json']?.schema
+      if (!responseSchema) continue
+
+      const objectProp = responseSchema.properties?.object
+      if (!objectProp || !('enum' in objectProp) || !objectProp.enum?.includes('list')) continue
+
+      const dataProp = responseSchema.properties?.data
+      if (!dataProp || !('type' in dataProp) || dataProp.type !== 'array') continue
+
+      const itemsRef = dataProp.items
+      if (!itemsRef || !this.isReference(itemsRef)) continue
+      if (!itemsRef.$ref.startsWith(SCHEMA_REF_PREFIX)) continue
+
+      const schemaName = itemsRef.$ref.slice(SCHEMA_REF_PREFIX.length)
+      const schema = spec.components?.schemas?.[schemaName]
+      if (!schema || '$ref' in schema) continue
+
+      const resourceId = schema['x-resourceId']
+      if (resourceId && typeof resourceId === 'string') {
+        resourceIds.add(resourceId)
+      }
+    }
+
+    return resourceIds
   }
 
   private resolveTableName(resourceId: string, aliases: Record<string, string>): string {
@@ -315,11 +388,10 @@ export class SpecParser {
       return schemaOrRef
     }
 
-    const prefix = '#/components/schemas/'
-    if (!schemaOrRef.$ref.startsWith(prefix)) {
+    if (!schemaOrRef.$ref.startsWith(SCHEMA_REF_PREFIX)) {
       throw new Error(`Unsupported OpenAPI reference: ${schemaOrRef.$ref}`)
     }
-    const schemaName = schemaOrRef.$ref.slice(prefix.length)
+    const schemaName = schemaOrRef.$ref.slice(SCHEMA_REF_PREFIX.length)
     const resolved = spec.components?.schemas?.[schemaName]
     if (!resolved) {
       throw new Error(`Failed to resolve OpenAPI schema reference: ${schemaOrRef.$ref}`)

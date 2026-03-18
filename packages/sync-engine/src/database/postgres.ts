@@ -4,7 +4,7 @@ import { QueryUtils, type InsertColumn } from './QueryUtils'
 
 type PostgresConfig = {
   schema: string
-  /** Schema for metadata tables (accounts, _sync_runs, etc.). Defaults to schema when not provided. */
+  /** Schema for metadata tables (_accounts, _sync_runs, etc.). Defaults to schema when not provided. */
   syncSchema?: string
   poolConfig: PoolConfig
 }
@@ -12,7 +12,7 @@ type PostgresConfig = {
 const DAY = 60 * 60 * 24
 
 //todo: move them into migrations. also think about what should be done with ORDERED_STRIPE_TABLES.
-const METADATA_TABLES = new Set(['accounts', '_managed_webhooks', '_sync_runs', '_sync_obj_runs'])
+const METADATA_TABLES = new Set(['_accounts', '_managed_webhooks', '_sync_runs', '_sync_obj_runs'])
 /**
  * All Stripe tables that store account-related data.
  * Ordered for safe cascade deletion: dependencies first, then parent tables last.
@@ -291,7 +291,7 @@ export class PostgresClient {
     // Upsert account and add API key hash to array if not already present
     // Note: id is auto-generated from _raw_data->>'id'
     await this.query(
-      `INSERT INTO "${this.syncSchema}"."accounts" ("_raw_data", "api_key_hashes", "first_synced_at", "_last_synced_at")
+      `INSERT INTO "${this.syncSchema}"."_accounts" ("_raw_data", "api_key_hashes", "first_synced_at", "_last_synced_at")
        VALUES ($1::jsonb, ARRAY[$2], now(), now())
        ON CONFLICT (id)
        DO UPDATE SET
@@ -299,7 +299,7 @@ export class PostgresClient {
          "api_key_hashes" = (
            SELECT ARRAY(
              SELECT DISTINCT unnest(
-               COALESCE("${this.syncSchema}"."accounts"."api_key_hashes", '{}') || ARRAY[$2]
+               COALESCE("${this.syncSchema}"."_accounts"."api_key_hashes", '{}') || ARRAY[$2]
              )
            )
          ),
@@ -312,7 +312,7 @@ export class PostgresClient {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getAllAccounts(): Promise<any[]> {
     const result = await this.query(
-      `SELECT _raw_data FROM "${this.syncSchema}"."accounts"
+      `SELECT _raw_data FROM "${this.syncSchema}"."_accounts"
        ORDER BY _last_synced_at DESC`
     )
     return result.rows.map((row) => row._raw_data)
@@ -339,7 +339,7 @@ export class PostgresClient {
    */
   async getAccountIdByApiKeyHash(apiKeyHash: string): Promise<string | null> {
     const result = await this.query(
-      `SELECT id FROM "${this.syncSchema}"."accounts"
+      `SELECT id FROM "${this.syncSchema}"."_accounts"
        WHERE $1 = ANY(api_key_hashes)
        LIMIT 1`,
       [apiKeyHash]
@@ -355,7 +355,7 @@ export class PostgresClient {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getAccountByApiKeyHash(apiKeyHash: string): Promise<any | null> {
     const result = await this.query(
-      `SELECT _raw_data FROM "${this.syncSchema}"."accounts"
+        `SELECT _raw_data FROM "${this.syncSchema}"."_accounts"
        WHERE $1 = ANY(api_key_hashes)
        LIMIT 1`,
       [apiKeyHash]
@@ -527,11 +527,11 @@ export class PostgresClient {
 
       // Finally, delete the account itself
       const accountResult = await this.query(
-        `DELETE FROM "${this.syncSchema}"."accounts"
+        `DELETE FROM "${this.syncSchema}"."_accounts"
          WHERE "id" = $1`,
         [accountId]
       )
-      deletionCounts['accounts'] = accountResult.rowCount || 0
+      deletionCounts['_accounts'] = accountResult.rowCount || 0
 
       if (useTransaction) {
         await this.query('COMMIT')
@@ -1019,7 +1019,7 @@ export class PostgresClient {
     if (!run) return null
 
     await this.query(`SELECT "${this.syncSchema}".check_rate_limit($1, $2, $3)`, [
-      'claimNextTask',
+      'stripe',
       rateLimit,
       1,
     ])
@@ -1545,6 +1545,27 @@ export class PostgresClient {
       [accountId, runStartedAt]
     )
     return parseInt(result.rows[0].count)
+  }
+
+  async waitForRateLimit(maxRequests: number): Promise<void> {
+    const sleepMs = 50
+    while (true) {
+      try {
+        await this.query(`SELECT "${this.syncSchema}".check_rate_limit($1, $2, $3)`, [
+          'stripe',
+          maxRequests,
+          1,
+        ])
+        return
+      } catch (err) {
+        const msg = (err as Error)?.message ?? ''
+        if (msg.includes('Rate limit exceeded')) {
+          await new Promise((r) => setTimeout(r, sleepMs))
+          continue
+        }
+        throw err
+      }
+    }
   }
 
   /**

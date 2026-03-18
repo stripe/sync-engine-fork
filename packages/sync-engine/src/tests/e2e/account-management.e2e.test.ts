@@ -55,7 +55,7 @@ describe('Account Management E2E', () => {
 
       const dbCount = await queryDbCount(
         pool,
-        `SELECT COUNT(*) FROM stripe.accounts WHERE id = '${accountId}'`
+        `SELECT COUNT(*) FROM stripe._accounts WHERE id = '${accountId}'`
       )
       expect(dbCount).toBe(1)
     })
@@ -63,7 +63,7 @@ describe('Account Management E2E', () => {
     it('should have raw_data column populated', async () => {
       const row = await queryDbSingle<{ _raw_data: object }>(
         pool,
-        `SELECT _raw_data FROM stripe.accounts WHERE id = '${accountId}'`
+        `SELECT _raw_data FROM stripe._accounts WHERE id = '${accountId}'`
       )
       expect(row).not.toBeNull()
       expect(row!._raw_data).not.toBeNull()
@@ -120,7 +120,7 @@ describe('Account Management E2E', () => {
       )
       const accountsBefore = await queryDbCount(
         pool,
-        `SELECT COUNT(*) FROM stripe.accounts WHERE id = '${accountId}'`
+        `SELECT COUNT(*) FROM stripe._accounts WHERE id = '${accountId}'`
       )
 
       const result = await sync.postgresClient.dangerouslyDeleteSyncedAccountData(accountId, {
@@ -128,7 +128,7 @@ describe('Account Management E2E', () => {
       })
       expect(result.deletedAccountId).toBe(accountId)
       expect(result.deletedRecordCounts.products).toBe(productsBefore)
-      expect(result.deletedRecordCounts.accounts).toBe(accountsBefore)
+      expect(result.deletedRecordCounts._accounts).toBe(accountsBefore)
 
       const productsAfter = await queryDbCount(
         pool,
@@ -138,7 +138,7 @@ describe('Account Management E2E', () => {
 
       const accountsAfter = await queryDbCount(
         pool,
-        `SELECT COUNT(*) FROM stripe.accounts WHERE id = '${accountId}'`
+        `SELECT COUNT(*) FROM stripe._accounts WHERE id = '${accountId}'`
       )
       expect(accountsAfter).toBe(0)
     })
@@ -150,7 +150,7 @@ describe('Account Management E2E', () => {
           dryRun: false,
         }
       )
-      expect(result.deletedRecordCounts.accounts).toBe(0)
+      expect(result.deletedRecordCounts._accounts).toBe(0)
     })
   })
 })

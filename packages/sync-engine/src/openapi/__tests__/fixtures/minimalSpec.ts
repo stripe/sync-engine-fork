@@ -1,9 +1,44 @@
-import type { OpenApiSpec } from '../../types'
+import type { OpenApiSpec, OpenApiPathItem } from '../../types'
+
+function listPath(schemaRef: string): OpenApiPathItem {
+  return {
+    get: {
+      responses: {
+        '200': {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  object: { type: 'string', enum: ['list'] },
+                  data: { type: 'array', items: { $ref: `#/components/schemas/${schemaRef}` } },
+                  has_more: { type: 'boolean' },
+                  url: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }
+}
 
 export const minimalStripeOpenApiSpec: OpenApiSpec = {
   openapi: '3.0.0',
   info: {
     version: '2020-08-27',
+  },
+  paths: {
+    '/v1/customers': listPath('customer'),
+    '/v1/plans': listPath('plan'),
+    '/v1/prices': listPath('price'),
+    '/v1/products': listPath('product'),
+    '/v1/subscription_items': listPath('subscription_item'),
+    '/v1/checkout/sessions': listPath('checkout_session'),
+    '/v1/radar/early_fraud_warnings': listPath('early_fraud_warning'),
+    '/v1/entitlements/active_entitlements': listPath('active_entitlement'),
+    '/v1/entitlements/features': listPath('entitlements_feature'),
   },
   components: {
     schemas: {

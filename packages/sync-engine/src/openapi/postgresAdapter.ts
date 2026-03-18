@@ -7,7 +7,7 @@ const PG_IDENTIFIER_MAX_BYTES = 63
 
 type PostgresAdapterOptions = {
   schemaName?: string
-  /** Schema for accounts table (FK target). Defaults to schemaName when not provided. */
+  /** Schema for _accounts table (FK target). Defaults to schemaName when not provided. */
   accountSchema?: string
   materializeTemporalAsText?: boolean
 }
@@ -56,7 +56,7 @@ export class PostgresAdapter implements DialectAdapter {
       ...generatedColumnAlters,
       `ALTER TABLE ${quotedSchema}.${quotedTable} ADD CONSTRAINT ${this.quoteIdent(
         fkName
-      )} FOREIGN KEY ("_account_id") REFERENCES ${quotedAccountSchema}."accounts" (id);`,
+      )} FOREIGN KEY ("_account_id") REFERENCES ${quotedAccountSchema}."_accounts" (id);`,
       `CREATE INDEX ${this.quoteIdent(accountIdxName)} ON ${quotedSchema}.${quotedTable} ("_account_id");`,
       `DROP TRIGGER IF EXISTS handle_updated_at ON ${quotedSchema}.${quotedTable};`,
       `CREATE TRIGGER handle_updated_at BEFORE UPDATE ON ${quotedSchema}.${quotedTable} FOR EACH ROW EXECUTE FUNCTION set_updated_at();`,

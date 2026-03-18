@@ -26,7 +26,7 @@ describe('Pagination regression tests', () => {
       const sync = await createMockedStripeSync()
       const registry = sync.resourceRegistry
 
-      const coreObjectsExpectedFalse = ['payment_method', 'tax_id']
+      const coreObjectsExpectedFalse = ['payment_method', 'payment_methods', 'tax_id', 'tax_ids']
 
       for (const [objectName, config] of Object.entries(registry)) {
         const resourceConfig = config as { supportsCreatedFilter: boolean }
