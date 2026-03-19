@@ -1,6 +1,6 @@
 {
   "name": "@stripe/sync-engine",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": false,
   "description": "DEPRECATED - This package has moved to https://github.com/stripe/sync-engine",
   "type": "module",
@@ -51,9 +51,16 @@
     "papaparse": "5.4.1",
     "pg": "^8.16.3",
     "stripe": "^17.7.0",
-    "supabase-management-js": "^2.0.2",
     "ws": "^8.18.0",
     "yesql": "^7.0.0"
+  },
+  "peerDependencies": {
+    "supabase-management-js": "^2.0.2"
+  },
+  "peerDependenciesMeta": {
+    "supabase-management-js": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
@@ -65,6 +72,7 @@
     "@types/yesql": "^4.1.4",
     "@vitest/ui": "^4.0.9",
     "esbuild": "^0.27.2",
+    "supabase-management-js": "^2.0.2",
     "tsx": "^4.19.2",
     "vitest": "^3.2.4"
   },

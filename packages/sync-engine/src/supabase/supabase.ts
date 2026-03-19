@@ -1,4 +1,3 @@
-import { SupabaseManagementAPI } from 'supabase-management-js'
 import {
   setupFunctionCode,
   webhookFunctionCode,
@@ -21,8 +20,29 @@ export interface ProjectInfo {
   region: string
 }
 
+async function createSupabaseManagementApi(options: DeployClientOptions) {
+  try {
+    const { SupabaseManagementAPI } = await import('supabase-management-js')
+
+    return new SupabaseManagementAPI({
+      accessToken: options.accessToken,
+      baseUrl: options.supabaseManagementUrl,
+    })
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+
+    throw new Error(
+      'Supabase support requires the optional dependency "supabase-management-js". ' +
+        'Install it to use @stripe/sync-engine/supabase or the install/uninstall CLI commands. ' +
+        `Original error: ${reason}`
+    )
+  }
+}
+
+type SupabaseManagementApi = Awaited<ReturnType<typeof createSupabaseManagementApi>>
+
 export class SupabaseSetupClient {
-  api: SupabaseManagementAPI
+  private apiPromise?: Promise<SupabaseManagementApi>
   private projectRef: string
   private projectBaseUrl: string
   private supabaseManagementUrl?: string
@@ -30,10 +50,6 @@ export class SupabaseSetupClient {
   private workerSecret: string
 
   constructor(options: DeployClientOptions) {
-    this.api = new SupabaseManagementAPI({
-      accessToken: options.accessToken,
-      baseUrl: options.supabaseManagementUrl,
-    })
     this.projectRef = options.projectRef
     this.projectBaseUrl = options.projectBaseUrl || process.env.SUPABASE_BASE_URL || 'supabase.co'
     this.supabaseManagementUrl = options.supabaseManagementUrl
@@ -41,12 +57,25 @@ export class SupabaseSetupClient {
     this.workerSecret = crypto.randomUUID()
   }
 
+  private getApi(): Promise<SupabaseManagementApi> {
+    this.apiPromise ??= createSupabaseManagementApi({
+      accessToken: this.accessToken,
+      projectRef: this.projectRef,
+      projectBaseUrl: this.projectBaseUrl,
+      supabaseManagementUrl: this.supabaseManagementUrl,
+    })
+
+    return this.apiPromise
+  }
+
   /**
    * Deploy an Edge Function
    */
   async deployFunction(name: string, code: string, verifyJwt = false): Promise<void> {
+    const api = await this.getApi()
+
     // Create or update function
-    await this.api.deployAFunction(
+    await api.deployAFunction(
       this.projectRef,
       {
         file: [
@@ -82,14 +111,17 @@ export class SupabaseSetupClient {
    * Set secrets for Edge Functions
    */
   async setSecrets(secrets: { name: string; value: string }[]): Promise<void> {
-    await this.api.bulkCreateSecrets(this.projectRef, secrets)
+    const api = await this.getApi()
+
+    await api.bulkCreateSecrets(this.projectRef, secrets)
   }
 
   /**
    * Run SQL against the database
    */
   async runSQL(sql: string): Promise<unknown> {
-    const { data } = await this.api.runAQuery(this.projectRef, {
+    const api = await this.getApi()
+    const { data } = await api.runAQuery(this.projectRef, {
       query: sql,
     })
     return data
@@ -250,7 +282,8 @@ export class SupabaseSetupClient {
    * Get the anon key for this project (needed for Realtime subscriptions)
    */
   async getAnonKey(): Promise<string | null | undefined> {
-    const { data: apiKeys } = await this.api.getProjectApiKeys(this.projectRef)
+    const api = await this.getApi()
+    const { data: apiKeys } = await api.getProjectApiKeys(this.projectRef)
     const anonKey = apiKeys?.find((k) => k.name === 'anon')
     if (!anonKey) {
       throw new Error('Could not find anon API key')

@@ -149,9 +149,6 @@ importers:
       stripe:
         specifier: ^17.7.0
         version: 17.7.0
-      supabase-management-js:
-        specifier: ^2.0.2
-        version: 2.0.2
       ws:
         specifier: ^8.18.0
         version: 8.18.3
@@ -186,6 +183,9 @@ importers:
       esbuild:
         specifier: ^0.27.2
         version: 0.27.3
+      supabase-management-js:
+        specifier: ^2.0.2
+        version: 2.0.2
       tsx:
         specifier: ^4.19.2
         version: 4.20.6
