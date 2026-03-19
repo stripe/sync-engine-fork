@@ -34,17 +34,12 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Prepare the environment
-      - name: Prepare environment
-        run: |
-          cp .env.example .env
-
       # Generate image tags and labels
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: stripe/librechat
+          images: stripe/sdb
           tags: |
             type=sha,format=long,prefix=
             type=ref,event=branch
