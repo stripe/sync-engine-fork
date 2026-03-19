@@ -1018,6 +1018,9 @@ export class PostgresClient {
     const run = await this.getSyncRun(accountId, runStartedAt)
     if (!run) return null
 
+    const runningCount = await this.countRunningObjects(accountId, runStartedAt)
+    if (runningCount >= run.maxConcurrent) return null
+
     await this.query(`SELECT "${this.syncSchema}".check_rate_limit($1, $2, $3)`, [
       'claimNextTask',
       rateLimit,

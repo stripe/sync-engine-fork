@@ -16,6 +16,7 @@ export class StripeSyncWorker {
   private running = false
   private loopPromise: Promise<void> | null = null
   private tasksCompleted = 0
+  private consecutiveRateLimitErrors = 0
 
   constructor(
     private readonly stripe: Stripe,
@@ -57,39 +58,115 @@ export class StripeSyncWorker {
       let task: SyncTask | null = null
       try {
         task = await this.getNextTask()
-        if (!task) {
-          this.running = false
-          break
+      } catch (err) {
+        if (this.isRateLimitError(err)) {
+          await this.handleRateLimit(err, null)
+        } else {
+          this.config.logger?.error({ err }, 'Task claim failed; sleeping 1s before retry')
+          await this.sleep(1000)
         }
+        continue
+      }
+
+      if (!task) {
+        this.running = false
+        break
+      }
+
+      try {
         await this.processSingleTask(task)
         this.tasksCompleted++
+        this.consecutiveRateLimitErrors = 0
       } catch (err) {
-        const isRateLimit = err instanceof Error && err.message.includes('Rate limit exceeded')
-        if (isRateLimit) {
-          const randomWait = Math.random() * 200 // 0 - 200ms random wait
-          this.config.logger?.warn(
-            `Rate limited on claimNextTask, backing off ${Math.round(randomWait)}ms`
-          )
-          await new Promise((r) => setTimeout(r, randomWait))
+        if (this.isRateLimitError(err)) {
+          await this.handleRateLimit(err, task)
         } else {
-          if (task) {
-            await this.postgresClient.updateSyncObject(
-              this.accountId,
-              this.runKey.runStartedAt,
-              task.object,
-              task.created_gte,
-              task.created_lte,
-              {
-                status: 'error',
-                errorMessage: `Task processing failed: ${String(err)}`,
-              }
-            )
-          }
+          await this.postgresClient.updateSyncObject(
+            this.accountId,
+            this.runKey.runStartedAt,
+            task.object,
+            task.created_gte,
+            task.created_lte,
+            {
+              status: 'error',
+              errorMessage: `Task processing failed: ${String(err)}`,
+            }
+          )
           this.config.logger?.error({ err }, 'Task processing failed; sleeping 1s before retry')
-          await new Promise((r) => setTimeout(r, 1000))
+          await this.sleep(1000)
         }
       }
     }
+  }
+
+  private isRateLimitError(err: unknown): err is Error {
+    return err instanceof Error && err.message.includes('Rate limit exceeded')
+  }
+
+  private isClaimRateLimitError(err: unknown): err is Error {
+    return err instanceof Error && err.message.includes('Rate limit exceeded for claimNextTask')
+  }
+
+  private async handleRateLimit(err: unknown, task: SyncTask | null): Promise<void> {
+    if (task) {
+      await this.requeueRateLimitedTask(task)
+    }
+
+    const waitMs = this.getRateLimitBackoffMs(err)
+    const source = task ? 'processSingleTask' : 'claimNextTask'
+
+    this.config.logger?.warn(
+      { object: task?.object, waitMs, source },
+      `Rate limited on ${source}, backing off ${Math.round(waitMs)}ms`
+    )
+    await this.sleep(waitMs)
+  }
+
+  private async requeueRateLimitedTask(task: SyncTask): Promise<void> {
+    try {
+      await this.postgresClient.updateSyncObject(
+        this.accountId,
+        this.runKey.runStartedAt,
+        task.object,
+        task.created_gte,
+        task.created_lte,
+        {
+          status: 'pending',
+          cursor: task.cursor,
+          pageCursor: task.pageCursor,
+        }
+      )
+    } catch (err) {
+      this.config.logger?.error({ err, object: task.object }, 'Failed to requeue rate-limited task')
+    }
+  }
+
+  private getRateLimitBackoffMs(err: unknown): number {
+    const retryAfterMs = this.getRetryAfterMs(err)
+    if (retryAfterMs != null) return retryAfterMs
+
+    this.consecutiveRateLimitErrors++
+    const attempt = Math.min(this.consecutiveRateLimitErrors, 5)
+    const baseMs = this.isClaimRateLimitError(err) ? 250 : 1000
+    const jitterMs = this.isClaimRateLimitError(err) ? 250 : 500
+    return Math.round(baseMs * 2 ** (attempt - 1) + Math.random() * jitterMs)
+  }
+
+  private getRetryAfterMs(err: unknown): number | null {
+    if (!(err instanceof Stripe.errors.StripeRateLimitError)) return null
+
+    const headers = (err as { headers?: Record<string, string | string[] | undefined> }).headers
+    const retryAfterHeader = headers?.['retry-after'] ?? headers?.['Retry-After']
+    const retryAfterValue = Array.isArray(retryAfterHeader) ? retryAfterHeader[0] : retryAfterHeader
+    const retryAfterSeconds = retryAfterValue ? Number.parseFloat(retryAfterValue) : NaN
+
+    return Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? Math.ceil(retryAfterSeconds * 1000)
+      : null
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms))
   }
 
   async waitUntilDone(): Promise<void> {

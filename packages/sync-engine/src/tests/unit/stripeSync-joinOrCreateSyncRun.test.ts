@@ -124,3 +124,75 @@ describe('joinOrCreateSyncRun', () => {
     })
   })
 })
+
+describe('claimNextTask', () => {
+  let postgresClient: PostgresClient
+
+  beforeEach(() => {
+    postgresClient = new PostgresClient({
+      schema: 'stripe',
+      poolConfig: {},
+    })
+  })
+
+  it('returns null without hitting the rate limiter when max_concurrent is already reached', async () => {
+    const runStartedAt = new Date('2024-01-01T00:00:00Z')
+
+    postgresClient.getSyncRun = vi.fn().mockResolvedValue({
+      accountId: 'acct_123',
+      runStartedAt,
+      maxConcurrent: 3,
+      closedAt: null,
+    })
+    postgresClient.countRunningObjects = vi.fn().mockResolvedValue(3)
+    postgresClient.query = vi.fn()
+
+    const result = await postgresClient.claimNextTask('acct_123', runStartedAt)
+
+    expect(result).toBeNull()
+    expect(postgresClient.query).not.toHaveBeenCalled()
+  })
+
+  it('checks the rate limiter only when capacity is available', async () => {
+    const runStartedAt = new Date('2024-01-01T00:00:00Z')
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            object: 'customers',
+            cursor: null,
+            page_cursor: null,
+            created_gte: 0,
+            created_lte: 0,
+          },
+        ],
+        rowCount: 1,
+      })
+
+    postgresClient.getSyncRun = vi.fn().mockResolvedValue({
+      accountId: 'acct_123',
+      runStartedAt,
+      maxConcurrent: 3,
+      closedAt: null,
+    })
+    postgresClient.countRunningObjects = vi.fn().mockResolvedValue(1)
+    postgresClient.query = query
+
+    const result = await postgresClient.claimNextTask('acct_123', runStartedAt, 60)
+
+    expect(query).toHaveBeenNthCalledWith(1, 'SELECT "stripe".check_rate_limit($1, $2, $3)', [
+      'claimNextTask',
+      60,
+      1,
+    ])
+    expect(result).toEqual({
+      object: 'customers',
+      cursor: null,
+      pageCursor: null,
+      created_gte: 0,
+      created_lte: 0,
+    })
+  })
+})
