@@ -38,12 +38,12 @@ export type MigrationConfig = {
   openApiSpecPath?: string
   openApiCacheDir?: string
   schemaName?: string
-  /** Schema for sync metadata tables (accounts, _sync_runs, etc.). Defaults to schemaName. */
+  /** Schema for sync metadata tables (_sync_accounts, _sync_runs, etc.). Defaults to schemaName. */
   syncTablesSchemaName?: string
   /**
    * Table filtering mode for OpenAPI schema migration:
    * - 'runtime_required': Only migrate tables in RUNTIME_REQUIRED_TABLES (default)
-   * - 'all_projected': Migrate all resolvable tables from the OpenAPI spec
+   * - 'all_projected': Migrate the GET-retrievable projected table superset
    */
   tableMode?: 'runtime_required' | 'all_projected'
 }
@@ -237,7 +237,7 @@ async function ensureSigmaTableMetadata(
   await client.query(`
     ALTER TABLE "${schema}"."${tableName}"
     ADD CONSTRAINT "${fkName}"
-    FOREIGN KEY ("_account_id") REFERENCES ${stripeSchemaIdent}."accounts" (id);
+    FOREIGN KEY ("_account_id") REFERENCES ${stripeSchemaIdent}."_sync_accounts" (id);
   `)
 
   await client.query(`
@@ -498,20 +498,27 @@ async function applyOpenApiSchema(
 
   const parser = new SpecParser()
   const tableMode = config.tableMode ?? 'runtime_required'
-  const parseOptions: { resourceAliases: Record<string, string>; allowedTables?: string[] } = {
+  const parseOptions: {
+    resourceAliases: Record<string, string>
+    allowedTables?: string[]
+    resourceScope?: 'get_backed'
+  } = {
     resourceAliases: OPENAPI_RESOURCE_TABLE_ALIASES,
   }
 
   // In 'runtime_required' mode, restrict to RUNTIME_REQUIRED_TABLES.
-  // In 'all_projected' mode, omit allowedTables to parse all resolvable tables.
+  // In 'all_projected' mode, parse the GET-retrievable resource superset.
   if (tableMode === 'runtime_required') {
     parseOptions.allowedTables = [...RUNTIME_REQUIRED_TABLES]
+  } else {
+    parseOptions.resourceScope = 'get_backed'
   }
 
   const parsedSpec = parser.parse(resolvedSpec.spec, parseOptions)
   const adapter = new PostgresAdapter({
     schemaName: dataSchema,
     accountSchema: syncSchema,
+    accountTableName: '_sync_accounts',
   })
   const statements = adapter.buildAllStatements(parsedSpec.tables)
   for (const statement of statements) {

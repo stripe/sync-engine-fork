@@ -1,0 +1,10 @@
+.vercel
+.next
+.env*.local
+tsconfig.tsbuildinfo
+public/explorer-data/bootstrap.sql
+public/explorer-data/manifest.json
+public/explorer-data/*/projection.json
+public/explorer-data/*/bootstrap.sql
+public/explorer-data/*/manifest.json
+public/explorer-data/index.json
