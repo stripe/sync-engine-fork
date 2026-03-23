@@ -93,6 +93,54 @@ export function runCliCommand(
   return result
 }
 
+/**
+ * Non-blocking variant of `runCliCommand`. Uses `spawn` so the event loop stays
+ * alive (avoids Vitest worker RPC timeouts and ECONNRESET on long-running syncs).
+ */
+export function runCliCommandAsync(
+  command: string,
+  args: string[],
+  options: {
+    cwd: string
+    env?: Record<string, string>
+    timeout?: number
+  }
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const { cwd, env = {}, timeout = 120000 } = options
+
+  return new Promise((resolve, reject) => {
+    const child = spawn('node', ['dist/cli/index.js', command, ...args], {
+      cwd,
+      env: { ...process.env, ...env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    const stdoutChunks: Buffer[] = []
+    const stderrChunks: Buffer[] = []
+    child.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk))
+    child.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
+
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      reject(new Error(`runCliCommandAsync timed out after ${timeout}ms`))
+    }, timeout)
+
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      resolve({
+        stdout: Buffer.concat(stdoutChunks).toString('utf-8'),
+        stderr: Buffer.concat(stderrChunks).toString('utf-8'),
+        exitCode: code ?? 1,
+      })
+    })
+
+    child.on('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+  })
+}
+
 export function buildCli(cwd: string): void {
   execSync('npm run build', { cwd, stdio: 'pipe' })
 }
