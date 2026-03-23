@@ -551,12 +551,18 @@ export class SupabaseSetupClient {
         await this.setupSigmaPgCronJob()
       }
 
+      // Set the comment status to installed here before invoking stripe-worker
+      // edge function because the installation is effectively done at this time
+      await this.updateComment({ status: 'installed', oldVersion })
+
       // Invoke stripe-worker immediately to trigger first sync for better UX on Supabase
       // dashboard. We want to see the first sync run immediately after an installation.
+      // This is done after marking the installation as completed in the comment because
+      // running the `stripe-worker` might take some time and timeout the actual installation
+      // if done before. This is fine because even if this invocation fails for some reason
+      // the installation is still completed and this is invoked on a a best effort basis
+      // to improve UX.
       await this.invokeFunction('stripe-worker', 'POST', this.workerSecret)
-
-      // Set final version comment
-      await this.updateComment({ status: 'installed', oldVersion })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       try {
