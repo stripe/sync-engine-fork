@@ -5,10 +5,8 @@ export {
   RUNTIME_RESOURCE_ALIASES,
 } from './specParser.js'
 export { OPENAPI_COMPATIBILITY_COLUMNS } from './runtimeMappings.js'
-export { PostgresAdapter } from './postgresAdapter.js'
 export { WritePathPlanner } from './writePathPlanner.js'
 export { resolveOpenApiSpec } from './specFetchHelper.js'
-export type { DialectAdapter } from './dialectAdapter.js'
 export {
   buildListFn,
   buildRetrieveFn,
