@@ -1,13 +1,11 @@
-import Stripe from 'stripe'
 import type { ResourceConfig } from './types.js'
 import type { OpenApiSpec, NestedEndpoint } from '@stripe/openapi'
 import {
   discoverListEndpoints,
   discoverNestedEndpoints,
+  isV2Path,
   buildListFn,
   buildRetrieveFn,
-  canResolveSdkResource,
-  isV2Path,
   RUNTIME_REQUIRED_TABLES as OPENAPI_RUNTIME_REQUIRED_TABLES,
 } from '@stripe/openapi'
 
@@ -65,7 +63,6 @@ export const RESOURCE_TABLE_NAME_MAP: Record<string, string> = Object.fromEntrie
  * All resources get list + retrieve functions derived dynamically from the spec paths.
  */
 export function buildResourceRegistry(
-  stripe: Stripe,
   spec: OpenApiSpec,
   apiKey: string
 ): Record<string, ResourceConfig> {
@@ -76,7 +73,6 @@ export function buildResourceRegistry(
 
   for (const [tableName, endpoint] of endpoints) {
     const v2 = isV2Path(endpoint.apiPath)
-    if (!v2 && !canResolveSdkResource(stripe, endpoint.apiPath)) continue
 
     const children = nestedEndpoints
       .filter((n: NestedEndpoint) => n.parentTableName === tableName)
@@ -95,8 +91,8 @@ export function buildResourceRegistry(
       supportsLimit: endpoint.supportsLimit,
       sync: true,
       dependencies: [],
-      listFn: buildListFn(stripe, endpoint.apiPath, apiKey),
-      retrieveFn: buildRetrieveFn(stripe, endpoint.apiPath, apiKey),
+      listFn: buildListFn(apiKey, endpoint.apiPath),
+      retrieveFn: buildRetrieveFn(apiKey, endpoint.apiPath),
       nestedResources: children.length > 0 ? children : undefined,
     }
     registry[tableName] = config
