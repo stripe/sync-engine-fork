@@ -55,7 +55,6 @@ export type ResourceConfig = BaseResourceConfig & {
   parentParamName?: string
 }
 
-
 export type RevalidateEntity = RevalidateEntityName
 
 export const SUPPORTED_WEBHOOK_EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = [

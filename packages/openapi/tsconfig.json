@@ -10,10 +10,6 @@
     "strict": true,
     "resolveJsonModule": true
   },
-  "include": [
-    "*.ts"
-  ],
-  "exclude": [
-    "__tests__"
-  ]
+  "include": ["*.ts"],
+  "exclude": ["__tests__"]
 }

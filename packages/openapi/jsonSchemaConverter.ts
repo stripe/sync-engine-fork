@@ -9,9 +9,7 @@ const SCALAR_TYPE_TO_JSON_SCHEMA: Record<ScalarType, { type: string; format?: st
   timestamptz: { type: 'string', format: 'date-time' },
 }
 
-export function parsedTableToJsonSchema(
-  table: ParsedResourceTable
-): Record<string, unknown> {
+export function parsedTableToJsonSchema(table: ParsedResourceTable): Record<string, unknown> {
   const properties: Record<string, unknown> = {
     id: { type: 'string' },
   }
