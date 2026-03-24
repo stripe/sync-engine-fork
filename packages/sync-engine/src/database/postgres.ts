@@ -1542,23 +1542,17 @@ export class PostgresClient {
   }
 
   async waitForRateLimit(maxRate: number): Promise<void> {
-    const sleepMs = Math.floor(Math.random() * 31) + 20
     while (true) {
-      try {
-        await this.query(`SELECT "${this.syncSchema}".check_rate_limit($1, $2, $3)`, [
-          'stripe',
-          maxRate,
-          1,
-        ])
+      const result = await this.query(`SELECT "${this.syncSchema}".check_rate_limit($1, $2, $3)`, [
+        'stripe',
+        maxRate,
+        1,
+      ])
+      if (result.rows[0].check_rate_limit === 1) {
         return
-      } catch (err) {
-        const msg = (err as Error)?.message ?? ''
-        if (msg.includes('Rate limit exceeded')) {
-          await new Promise((r) => setTimeout(r, sleepMs))
-          continue
-        }
-        throw err
       }
+      const sleepMs = Math.floor(Math.random() * 31) + 20
+      await new Promise((r) => setTimeout(r, sleepMs))
     }
   }
 }

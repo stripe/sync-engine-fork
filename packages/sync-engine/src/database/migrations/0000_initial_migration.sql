@@ -169,14 +169,13 @@ CREATE OR REPLACE FUNCTION {{sync_schema}}.check_rate_limit(
   max_requests INTEGER,
   window_seconds INTEGER
 )
-RETURNS VOID AS $$
+RETURNS INTEGER AS $$
 DECLARE
   now TIMESTAMPTZ := clock_timestamp();
   window_length INTERVAL := make_interval(secs => window_seconds);
   current_count INTEGER;
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtext(rate_key));
-
   INSERT INTO {{sync_schema}}."_rate_limits" (key, count, window_start)
   VALUES (rate_key, 1, now)
   ON CONFLICT (key) DO UPDATE
@@ -190,12 +189,11 @@ BEGIN
                          THEN now
                          ELSE "_rate_limits".window_start
                      END;
-
   SELECT count INTO current_count FROM {{sync_schema}}."_rate_limits" WHERE key = rate_key;
-
   IF current_count > max_requests THEN
-    RAISE EXCEPTION 'Rate limit exceeded for %', rate_key;
+    RETURN 0;
   END IF;
+  RETURN 1;
 END;
 $$ LANGUAGE plpgsql;
 
