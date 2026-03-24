@@ -44,6 +44,7 @@ echo ""
 echo "--- Step 1: Packing packages ---"
 
 PROTOCOL_TGZ=$(cd "$REPO_ROOT" && pnpm --filter @stripe/sync-protocol pack 2>/dev/null | tail -1)
+OPENAPI_TGZ=$(cd "$REPO_ROOT" && pnpm --filter @stripe/openapi pack 2>/dev/null | tail -1)
 ENGINE_TGZ=$(cd "$REPO_ROOT" && pnpm --filter @stripe/sync-engine pack 2>/dev/null | tail -1)
 SOURCE_TGZ=$(cd "$REPO_ROOT" && pnpm --filter @stripe/sync-source-stripe pack 2>/dev/null | tail -1)
 DEST_TGZ=$(cd "$REPO_ROOT" && pnpm --filter @stripe/sync-destination-postgres pack 2>/dev/null | tail -1)
@@ -52,7 +53,7 @@ STATE_PG_TGZ=$(cd "$REPO_ROOT" && pnpm --filter @stripe/sync-state-postgres pack
 UTIL_PG_TGZ=$(cd "$REPO_ROOT" && pnpm --filter @stripe/sync-util-postgres pack 2>/dev/null | tail -1)
 TSCLI_TGZ=$(cd "$REPO_ROOT" && pnpm --filter @stripe/sync-ts-cli pack 2>/dev/null | tail -1)
 
-for tgz in "$PROTOCOL_TGZ" "$ENGINE_TGZ" "$SOURCE_TGZ" "$DEST_TGZ" "$DEST_SHEETS_TGZ" \
+for tgz in "$PROTOCOL_TGZ" "$OPENAPI_TGZ" "$ENGINE_TGZ" "$SOURCE_TGZ" "$DEST_TGZ" "$DEST_SHEETS_TGZ" \
            "$STATE_PG_TGZ" "$UTIL_PG_TGZ" "$TSCLI_TGZ"; do
   if [ ! -f "$tgz" ]; then
     echo "FAIL: tarball not found: $tgz"
@@ -84,6 +85,7 @@ cat > package.json <<EOF
   "pnpm": {
     "overrides": {
       "@stripe/sync-protocol": "$PROTOCOL_TGZ",
+      "@stripe/openapi": "$OPENAPI_TGZ",
       "@stripe/sync-engine": "$ENGINE_TGZ",
       "@stripe/sync-source-stripe": "$SOURCE_TGZ",
       "@stripe/sync-destination-postgres": "$DEST_TGZ",
@@ -96,7 +98,7 @@ cat > package.json <<EOF
 }
 EOF
 
-pnpm add "$PROTOCOL_TGZ" "$ENGINE_TGZ" "$SOURCE_TGZ" "$DEST_TGZ" "$DEST_SHEETS_TGZ" \
+pnpm add "$PROTOCOL_TGZ" "$OPENAPI_TGZ" "$ENGINE_TGZ" "$SOURCE_TGZ" "$DEST_TGZ" "$DEST_SHEETS_TGZ" \
          "$STATE_PG_TGZ" "$UTIL_PG_TGZ" "$TSCLI_TGZ" \
          2>&1 | tail -5
 echo ""
