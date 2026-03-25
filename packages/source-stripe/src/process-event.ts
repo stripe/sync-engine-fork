@@ -47,8 +47,7 @@ export function fromWebhookEvent(
     | undefined
   if (!dataObject?.object) return null
 
-  // Find config by matching registry keys to the Stripe object type
-  const objectType = dataObject.object
+  const objectType = normalizeStripeObjectName(dataObject.object)
   const config = registry[objectType]
   if (!config) return null
 
@@ -147,7 +146,7 @@ export async function* processStripeEvent(
   // 5. Revalidation — re-fetch from Stripe API if configured
   let data: Record<string, unknown> = dataObject
   if (
-    config.revalidate_objects?.includes(objectType) &&
+    config.revalidate_objects?.some((r) => normalizeStripeObjectName(r) === objectType) &&
     resourceConfig.isFinalState &&
     !resourceConfig.isFinalState(dataObject)
   ) {
@@ -158,7 +157,7 @@ export async function* processStripeEvent(
   yield toRecordMessage(resourceConfig.tableName, data)
 
   // 7. Yield subscription items if applicable
-  if (objectType === 'subscription' && (data as { items?: { data?: unknown[] } }).items?.data) {
+  if (objectType === 'subscriptions' && (data as { items?: { data?: unknown[] } }).items?.data) {
     for (const item of (data as { items: { data: Record<string, unknown>[] } }).items.data) {
       yield toRecordMessage('subscription_items', item)
     }

@@ -96,11 +96,10 @@ export function buildResourceRegistry(
       nestedResources: children.length > 0 ? children : undefined,
     }
     registry[tableName] = config
-    registry[endpoint.resourceId] = config
   }
 
   for (const nested of nestedEndpoints) {
-    if (!nested.parentTableName || registry[nested.tableName] || registry[nested.resourceId]) {
+    if (!nested.parentTableName || registry[nested.tableName]) {
       continue
     }
     if (seenNested.has(nested.tableName)) {
@@ -122,7 +121,6 @@ export function buildResourceRegistry(
     }
 
     registry[nested.tableName] = config
-    registry[nested.resourceId] = config
   }
 
   return registry
@@ -137,7 +135,10 @@ export const STRIPE_OBJECT_TO_SYNC_OBJECT_ALIASES: Record<string, string> = {
 }
 
 export function normalizeStripeObjectName(stripeObjectName: string): string {
-  return STRIPE_OBJECT_TO_SYNC_OBJECT_ALIASES[stripeObjectName] ?? stripeObjectName
+  return resolveTableName(stripeObjectName, {
+    ...OPENAPI_RESOURCE_TABLE_ALIASES,
+    ...STRIPE_OBJECT_TO_SYNC_OBJECT_ALIASES,
+  })
 }
 
 export const PREFIX_RESOURCE_MAP: Record<string, string> = {
