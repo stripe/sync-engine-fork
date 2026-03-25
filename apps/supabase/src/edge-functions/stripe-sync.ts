@@ -718,6 +718,14 @@ async function handleSync(req: Request): Promise<Response> {
 
 // ---------------------------------------------------------------------------
 // Route: POST /backfill — per-stream backfill worker
+//
+// Future optimizations:
+// - Make the initial /sync invocation in install() fire-and-forget so install
+//   returns faster (currently blocks for up to 30s waiting for coordinator).
+// - Tune PAGES_PER_INVOCATION based on observed cold-start times.
+// - Consider returning a streaming response so the caller can observe progress.
+// - Add exponential backoff on rate-limit errors instead of failing the stream.
+// - Pool pg connections across invocations (module-level singleton).
 // ---------------------------------------------------------------------------
 
 const PAGES_PER_INVOCATION = Number(Deno.env.get('PAGES_PER_INVOCATION')) || 10
