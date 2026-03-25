@@ -150,7 +150,7 @@ export async function* processStripeEvent(
     resourceConfig.isFinalState &&
     !resourceConfig.isFinalState(dataObject)
   ) {
-    data = (await resourceConfig.retrieveFn(dataObject.id)) as Record<string, unknown>
+    data = (await resourceConfig.retrieveFn!(dataObject.id)) as Record<string, unknown>
   }
 
   // 6. Yield main record

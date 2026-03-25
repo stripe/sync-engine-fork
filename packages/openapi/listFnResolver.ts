@@ -1,5 +1,5 @@
-import type { OpenApiSchemaObject, OpenApiSpec } from './types'
-import { OPENAPI_RESOURCE_TABLE_ALIASES } from './runtimeMappings'
+import type { OpenApiSchemaObject, OpenApiSpec } from './types.js'
+import { OPENAPI_RESOURCE_TABLE_ALIASES } from './runtimeMappings.js'
 
 const SCHEMA_REF_PREFIX = '#/components/schemas/'
 

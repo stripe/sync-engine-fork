@@ -3,16 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "./dist/index.cjs",
   "exports": {
     ".": {
       "types": "./index.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": "./index.ts",
+      "default": "./index.ts"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
     }
   },
   "scripts": {
-    "build": "tsup index.ts --format esm,cjs --dts",
+    "build": "tsc",
     "test": "vitest --passWithNoTests"
   },
   "files": [

@@ -13,5 +13,5 @@
     "rootDir": "src"
   },
   "include": ["src/**/*"],
-  "exclude": ["src/server", "src/**/*.test.ts", "src/**/__tests__/**"]
+  "exclude": ["src/server", "src/openapi", "src/**/*.test.ts", "src/**/__tests__/**"]
 }

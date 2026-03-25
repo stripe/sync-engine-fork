@@ -6,8 +6,8 @@ import type {
   ParsedColumn,
   ParsedOpenApiSpec,
   ScalarType,
-} from './types'
-import { OPENAPI_COMPATIBILITY_COLUMNS, OPENAPI_RESOURCE_TABLE_ALIASES } from './runtimeMappings'
+} from './types.js'
+import { OPENAPI_COMPATIBILITY_COLUMNS, OPENAPI_RESOURCE_TABLE_ALIASES } from './runtimeMappings.js'
 
 const SCHEMA_REF_PREFIX = '#/components/schemas/'
 

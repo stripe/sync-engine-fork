@@ -1,4 +1,4 @@
-import type { ParsedResourceTable, ScalarType } from './types'
+import type { ParsedResourceTable, ScalarType } from './types.js'
 
 const SCALAR_TYPE_TO_JSON_SCHEMA: Record<ScalarType, { type: string; format?: string }> = {
   text: { type: 'string' },

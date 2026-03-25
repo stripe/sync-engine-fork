@@ -1,4 +1,4 @@
-import type { ParsedColumn } from './types'
+import type { ParsedColumn } from './types.js'
 
 /**
  * Overrides for x-resourceId values whose table name cannot be inferred by the

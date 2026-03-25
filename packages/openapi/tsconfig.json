@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
     "target": "esnext",
-    "module": "esnext",
-    "moduleResolution": "bundler",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "declaration": true,
+    "declarationMap": true,
     "outDir": "dist",
     "esModuleInterop": true,
     "skipLibCheck": true,
