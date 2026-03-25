@@ -523,7 +523,7 @@ export async function fullSyncCommand(
 /**
  * Install command - installs Stripe sync Edge Functions to Supabase.
  * 1. Validates Supabase project access
- * 2. Deploys stripe-setup, stripe-webhook, and stripe-worker Edge Functions
+ * 2. Deploys the stripe-sync consolidated Edge Function
  * 3. Sets required secrets (STRIPE_SECRET_KEY)
  * 4. Runs the setup function to create webhook and run migrations
  */
@@ -644,7 +644,7 @@ export async function installCommand(options: DeployOptions): Promise<void> {
  * Uninstall command - removes Stripe sync Edge Functions and resources from Supabase.
  * 1. Validates Supabase project access
  * 2. Deletes Stripe webhooks
- * 3. Deletes Edge Functions (stripe-setup, stripe-webhook, stripe-worker)
+ * 3. Deletes Edge Functions (stripe-sync + legacy functions)
  * 4. Deletes secrets and pg_cron jobs
  * 5. Drops the stripe schema
  */

@@ -1,10 +1,5 @@
 import { SupabaseManagementAPI } from 'supabase-management-js'
-import {
-  setupFunctionCode,
-  webhookFunctionCode,
-  workerFunctionCode,
-  sigmaWorkerFunctionCode,
-} from './edge-function-code'
+import { syncFunctionCode } from './edge-function-code'
 import pkg from '../../package.json' with { type: 'json' }
 import { parseSchemaComment, StripeSchemaComment } from './schemaComment'
 
@@ -165,7 +160,7 @@ export class SupabaseSetupClient {
         '${schedule}',
         $$
         SELECT net.http_post(
-          url := 'https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/stripe-worker',
+          url := 'https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/stripe-sync/sync',
           headers := jsonb_build_object(
             'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'stripe_sync_worker_secret')
           )
@@ -186,7 +181,7 @@ export class SupabaseSetupClient {
    * Creates secret, self-trigger function, and cron job
    */
   async setupSigmaPgCronJob(): Promise<void> {
-    // Generate a unique secret for sigma-data-worker authentication
+    // Generate a unique secret for sigma worker authentication
     const sigmaWorkerSecret = crypto.randomUUID()
     const escapedSigmaWorkerSecret = sigmaWorkerSecret.replace(/'/g, "''")
 
@@ -208,7 +203,7 @@ export class SupabaseSetupClient {
       AS $$
       BEGIN
         PERFORM net.http_post(
-          url := 'https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/sigma-data-worker',
+          url := 'https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/stripe-sync/sigma',
           headers := jsonb_build_object(
             'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'stripe_sigma_worker_secret')
           )
@@ -228,7 +223,7 @@ export class SupabaseSetupClient {
         '0 */12 * * *',
         $$
         SELECT net.http_post(
-          url := 'https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/sigma-data-worker',
+          url := 'https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/stripe-sync/sigma',
           headers := jsonb_build_object(
             'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'stripe_sigma_worker_secret')
           )
@@ -243,7 +238,7 @@ export class SupabaseSetupClient {
    * Get the webhook URL for this project
    */
   getWebhookUrl(): string {
-    return `https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/stripe-webhook`
+    return `https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/stripe-sync/webhook`
   }
 
   /**
@@ -439,7 +434,7 @@ export class SupabaseSetupClient {
 
   /**
    * Uninstall stripe-sync from a Supabase project
-   * Invokes the stripe-setup edge function's DELETE endpoint which handles cleanup
+   * Invokes the stripe-sync edge function's DELETE /setup endpoint which handles cleanup
    * Tracks uninstallation progress via schema comments
    */
   async uninstall(startTime?: number): Promise<void> {
@@ -450,9 +445,8 @@ export class SupabaseSetupClient {
         await this.updateComment({ status: 'uninstalling', startTime })
       }
 
-      // Invoke the DELETE endpoint on stripe-setup function
-      // Use accessToken in Authorization header for Management API validation
-      const setupResult = await this.invokeFunction('stripe-setup', 'DELETE', this.accessToken)
+      // Invoke the DELETE endpoint on the consolidated stripe-sync function
+      const setupResult = await this.invokeFunction('stripe-sync/setup', 'DELETE', this.accessToken)
 
       if (!setupResult.success) {
         throw new Error(`Uninstall failed: ${setupResult.error}`)
@@ -504,7 +498,7 @@ export class SupabaseSetupClient {
       // Signal installation started
       await this.updateComment({ status: 'installing', oldVersion, startTime })
 
-      // Set secrets first -- stripe-setup needs STRIPE_SECRET_KEY to run
+      // Set secrets first -- stripe-sync needs STRIPE_SECRET_KEY to run
       const secrets = [{ name: 'STRIPE_SECRET_KEY', value: trimmedStripeKey }]
       if (this.supabaseManagementUrl) {
         secrets.push({ name: 'MANAGEMENT_API_URL', value: this.supabaseManagementUrl })
@@ -520,27 +514,15 @@ export class SupabaseSetupClient {
       }
       await this.setSecrets(secrets)
 
-      const versionedSetup = this.injectPackageVersion(setupFunctionCode, version)
-      await this.deployFunction('stripe-setup', versionedSetup, false)
+      // Deploy the single consolidated edge function
+      const versionedSync = this.injectPackageVersion(syncFunctionCode, version)
+      await this.deployFunction('stripe-sync', versionedSync, false)
 
-      // Run setup (migrations + webhook creation)
-      // Use accessToken for Management API validation
-      const setupResult = await this.invokeFunction('stripe-setup', 'POST', this.accessToken)
+      // Run setup (migrations + webhook creation) via the /setup path
+      const setupResult = await this.invokeFunction('stripe-sync/setup', 'POST', this.accessToken)
 
       if (!setupResult.success) {
         throw new Error(`Setup failed: ${setupResult.error}`)
-      }
-
-      // Now deploy the remaining edge functions -- schema is ready
-      const versionedWebhook = this.injectPackageVersion(webhookFunctionCode, version)
-      const versionedWorker = this.injectPackageVersion(workerFunctionCode, version)
-
-      await this.deployFunction('stripe-webhook', versionedWebhook, false)
-      await this.deployFunction('stripe-worker', versionedWorker, false)
-
-      if (enableSigma) {
-        const versionedSigmaWorker = this.injectPackageVersion(sigmaWorkerFunctionCode, version)
-        await this.deployFunction('sigma-data-worker', versionedSigmaWorker, false)
       }
 
       // Setup pg_cron - this is required for automatic syncing
@@ -551,22 +533,22 @@ export class SupabaseSetupClient {
         await this.setupSigmaPgCronJob()
       }
 
-      // Set the comment status to installed here before invoking stripe-worker
-      // edge function because the installation is effectively done at this time
+      // Set the comment status to installed here before invoking first sync
+      // because the installation is effectively done at this time
       await this.updateComment({ status: 'installed', oldVersion })
 
-      // Invoke stripe-worker immediately to trigger first sync for better UX on Supabase
+      // Invoke sync immediately to trigger first sync for better UX on Supabase
       // dashboard. We want to see the first sync run immediately after an installation.
       // This is done after marking the installation as completed in the comment because
-      // running the `stripe-worker` might take some time and timeout the actual installation
+      // running the sync might take some time and timeout the actual installation
       // if done before. This is fine because even if this invocation fails for some reason
       // the installation is still completed and this is invoked on a best effort basis
       // to improve UX.
       try {
-        await this.invokeFunction('stripe-worker', 'POST', this.workerSecret)
+        await this.invokeFunction('stripe-sync/sync', 'POST', this.workerSecret)
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
-        console.warn(`Failed to invoke stripe-worker: ${errorMessage}`)
+        console.warn(`Failed to invoke stripe-sync/sync: ${errorMessage}`)
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)

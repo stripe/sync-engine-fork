@@ -32,7 +32,7 @@ describe('SupabaseDeployClient', () => {
 
       expect(client.getProjectUrl()).toBe(`https://${mockProjectRef}.supabase.co`)
       expect(client.getWebhookUrl()).toBe(
-        `https://${mockProjectRef}.supabase.co/functions/v1/stripe-webhook`
+        `https://${mockProjectRef}.supabase.co/functions/v1/stripe-sync/webhook`
       )
     })
 
@@ -46,7 +46,7 @@ describe('SupabaseDeployClient', () => {
 
       expect(client.getProjectUrl()).toBe(`https://${mockProjectRef}.custom-domain.com`)
       expect(client.getWebhookUrl()).toBe(
-        `https://${mockProjectRef}.custom-domain.com/functions/v1/stripe-webhook`
+        `https://${mockProjectRef}.custom-domain.com/functions/v1/stripe-sync/webhook`
       )
     })
 
@@ -61,7 +61,7 @@ describe('SupabaseDeployClient', () => {
 
       expect(client.getProjectUrl()).toBe(`https://${mockProjectRef}.option-domain.com`)
       expect(client.getWebhookUrl()).toBe(
-        `https://${mockProjectRef}.option-domain.com/functions/v1/stripe-webhook`
+        `https://${mockProjectRef}.option-domain.com/functions/v1/stripe-sync/webhook`
       )
     })
 
@@ -74,7 +74,7 @@ describe('SupabaseDeployClient', () => {
 
       expect(client.getProjectUrl()).toBe(`https://${mockProjectRef}.my-custom.supabase.co`)
       expect(client.getWebhookUrl()).toBe(
-        `https://${mockProjectRef}.my-custom.supabase.co/functions/v1/stripe-webhook`
+        `https://${mockProjectRef}.my-custom.supabase.co/functions/v1/stripe-sync/webhook`
       )
     })
   })
@@ -98,7 +98,7 @@ describe('SupabaseDeployClient', () => {
       })
 
       expect(client.getWebhookUrl()).toBe(
-        `https://${mockProjectRef}.test-domain.com/functions/v1/stripe-webhook`
+        `https://${mockProjectRef}.test-domain.com/functions/v1/stripe-sync/webhook`
       )
     })
 
@@ -159,7 +159,7 @@ describe('SupabaseDeployClient', () => {
 
       // Verify it contains the custom base URL
       expect(executedSQL).toContain(
-        `https://${mockProjectRef}.test-domain.com/functions/v1/stripe-worker`
+        `https://${mockProjectRef}.test-domain.com/functions/v1/stripe-sync/sync`
       )
     })
 
@@ -185,7 +185,7 @@ describe('SupabaseDeployClient', () => {
 
       // Verify it contains the default base URL
       expect(executedSQL).toContain(
-        `https://${mockProjectRef}.supabase.co/functions/v1/stripe-worker`
+        `https://${mockProjectRef}.supabase.co/functions/v1/stripe-sync/sync`
       )
     })
 
