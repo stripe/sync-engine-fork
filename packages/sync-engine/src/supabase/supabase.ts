@@ -476,7 +476,8 @@ export class SupabaseSetupClient {
     enableSigma?: boolean,
     rateLimit?: number,
     syncIntervalSeconds?: number,
-    startTime?: number
+    startTime?: number,
+    skipInitialSync?: boolean
   ): Promise<void> {
     const trimmedStripeKey = stripeKey.trim()
     if (!trimmedStripeKey.startsWith('sk_') && !trimmedStripeKey.startsWith('rk_')) {
@@ -544,11 +545,13 @@ export class SupabaseSetupClient {
       // if done before. This is fine because even if this invocation fails for some reason
       // the installation is still completed and this is invoked on a best effort basis
       // to improve UX.
-      try {
-        await this.invokeFunction('stripe-sync/sync', 'POST', this.workerSecret)
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        console.warn(`Failed to invoke stripe-sync/sync: ${errorMessage}`)
+      if (!skipInitialSync) {
+        try {
+          await this.invokeFunction('stripe-sync/sync', 'POST', this.workerSecret)
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          console.warn(`Failed to invoke stripe-sync/sync: ${errorMessage}`)
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -574,6 +577,7 @@ export async function install(params: {
   rateLimit?: number
   syncIntervalSeconds?: number
   startTime?: number
+  skipInitialSync?: boolean
 }): Promise<void> {
   const {
     supabaseAccessToken,
@@ -585,6 +589,7 @@ export async function install(params: {
     rateLimit,
     syncIntervalSeconds,
     startTime,
+    skipInitialSync,
   } = params
 
   const client = new SupabaseSetupClient({
@@ -601,7 +606,8 @@ export async function install(params: {
     enableSigma,
     rateLimit,
     syncIntervalSeconds,
-    startTime
+    startTime,
+    skipInitialSync
   )
 }
 

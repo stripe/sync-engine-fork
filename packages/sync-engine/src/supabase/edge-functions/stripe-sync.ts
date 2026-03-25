@@ -581,9 +581,9 @@ async function handleSync(req: Request): Promise<Response> {
   )
   const MAX_EXECUTION_MS = 20_000
   workers.forEach((worker) => worker.start())
-  await Promise.race([
-    Promise.all(workers.map((w) => w.waitUntilDone())),
-    new Promise((resolve) => setTimeout(resolve, MAX_EXECUTION_MS)),
+  const allDone = await Promise.race([
+    Promise.all(workers.map((w) => w.waitUntilDone())).then(() => true),
+    new Promise<false>((resolve) => setTimeout(() => resolve(false), MAX_EXECUTION_MS)),
   ])
   workers.forEach((w) => w.shutdown())
   const totals = await stripeSync.postgresClient.getObjectSyncedCounts(
@@ -596,7 +596,30 @@ async function handleSync(req: Request): Promise<Response> {
   )
   console.log(`Finished: ${totalSynced} objects synced`, totals)
 
-  return jsonResponse({ totals })
+  // Self-reinvoke if there's still pending work (fire-and-forget)
+  let selfReinvoked = false
+  if (!allDone) {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    if (supabaseUrl) {
+      const authHeader = req.headers.get('Authorization')
+      try {
+        // Fire-and-forget: don't await
+        fetch(`${supabaseUrl}/functions/v1/stripe-sync/sync`, {
+          method: 'POST',
+          headers: {
+            ...(authHeader ? { Authorization: authHeader } : {}),
+            'Content-Type': 'application/json',
+          },
+        }).catch((err) => console.warn('Self-reinvoke fetch failed:', err))
+        selfReinvoked = true
+        console.log('Self-reinvoked /sync for remaining work')
+      } catch (err) {
+        console.warn('Failed to self-reinvoke:', err)
+      }
+    }
+  }
+
+  return jsonResponse({ totals, selfReinvoked })
 }
 
 // ---------------------------------------------------------------------------
