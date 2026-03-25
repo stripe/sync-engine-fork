@@ -579,6 +579,12 @@ async function handleSync(req: Request): Promise<Response> {
         syncRateLimit
       )
   )
+  // 20s budget leaves ~10s headroom before Supabase's ~30s edge function limit.
+  // Future optimizations:
+  // - Make the initial /sync invocation in install() fire-and-forget so install
+  //   returns faster (currently blocks for up to 20s waiting for first batch).
+  // - Tune MAX_EXECUTION_MS based on observed cold-start times.
+  // - Consider returning a streaming response so the caller can observe progress.
   const MAX_EXECUTION_MS = 20_000
   workers.forEach((worker) => worker.start())
   const allDone = await Promise.race([
