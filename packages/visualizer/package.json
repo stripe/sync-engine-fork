@@ -1,5 +1,5 @@
 {
-  "name": "@supabase/stripe-sync-visualizer",
+  "name": "@stripe/sync-visualizer",
   "version": "0.0.1",
   "private": true,
   "scripts": {

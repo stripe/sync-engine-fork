@@ -13,7 +13,7 @@
     "lint": "pnpm -r run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "visualizer": "pnpm --filter @supabase/stripe-sync-visualizer dev",
+    "visualizer": "pnpm --filter @stripe/sync-visualizer dev",
     "explorer:build": "bun run scripts/explorer-build.ts"
   },
   "dependencies": {
