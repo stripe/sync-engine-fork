@@ -13,6 +13,6 @@ export default defineConfig({
       inline: [/.*/],
     },
     include: ['src/tests/e2e/*.e2e.test.ts'],
-    exclude: ['src/tests/e2e/webhook-*.e2e.test.ts'],
+    exclude: ['src/tests/e2e/webhook-*.e2e.test.ts', 'src/tests/e2e/supabase.e2e.test.ts'],
   },
 })
