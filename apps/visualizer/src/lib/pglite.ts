@@ -19,21 +19,12 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 type PGliteInstance = InstanceType<typeof PGlite>
 type QueryResult = Awaited<ReturnType<PGliteInstance['query']>>
 
-// Manifest structure from explorer-seed.ts
+// Manifest structure from scripts/explorer-generate.ts
 interface ExplorerManifest {
-  timestamp: string
-  seed: number
+  generatedAt: string
   apiVersion: string
   totalTables: number
-  coreTables: string[]
-  longTailTables: string[]
-  manifest: Record<string, number>
-  failedTables: Array<{ table: string; reason: string }>
-  verification: {
-    allTablesSeeded: boolean
-    tablesWithData: number
-    emptyTables: string[]
-  }
+  tables: string[]
 }
 
 type DatabaseStatus = 'idle' | 'loading' | 'ready' | 'error'

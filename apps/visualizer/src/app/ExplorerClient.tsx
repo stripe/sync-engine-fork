@@ -305,7 +305,7 @@ export default function ExplorerClient() {
 
   const totalRecords =
     isTableMode && tableName
-      ? (manifest?.manifest[tableName] ?? queryResult?.rows.length ?? 0)
+      ? (queryResult?.rows.length ?? 0)
       : (queryResult?.rowCount ?? queryResult?.rows.length ?? 0)
 
   const pageCount = isTableMode ? Math.max(1, Math.ceil(totalRecords / rowsPerPage)) : 1
@@ -390,7 +390,7 @@ export default function ExplorerClient() {
     )
   }
 
-  const tables = manifest?.manifest ? Object.entries(manifest.manifest) : []
+  const tables = manifest?.tables ? manifest.tables.map((t) => [t, 0] as const) : []
   const columns =
     queryResult?.fields.map((field, index) => {
       const columnKey = getColumnKey(field.name, index)
