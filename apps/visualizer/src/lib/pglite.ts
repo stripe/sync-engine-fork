@@ -1,38 +1,38 @@
+'use client'
+
 /**
  * PGlite Database Hydration Hook
  *
- * Provides client-side Postgres database powered by PGlite (WASM).
- * Hydrates from static JSON/SQL artifacts in the public directory.
+ * Fetches the Stripe OpenAPI spec from GitHub, generates CREATE TABLE DDL
+ * in-browser using SpecParser, and loads it into a PGlite (WASM Postgres)
+ * instance. No static files, no build step.
  *
- * Usage:
- *   const { db, status, error, query } = usePGlite();
- *
- *   if (status === 'loading') return <div>Loading database...</div>;
- *   if (status === 'error') return <div>Error: {error}</div>;
- *
- *   const result = await query('SELECT * FROM stripe.customers LIMIT 10');
+ * The spec (~3 MB) is cached in sessionStorage after the first fetch.
  */
 
 import { PGlite } from '@electric-sql/pglite'
 import { useEffect, useState, useCallback, useRef } from 'react'
+import {
+  SpecParser,
+  OPENAPI_RESOURCE_TABLE_ALIASES,
+  type ParsedResourceTable,
+} from '@stripe/sync-source-stripe'
 
 type PGliteInstance = InstanceType<typeof PGlite>
 type QueryResult = Awaited<ReturnType<PGliteInstance['query']>>
 
-// Manifest structure from scripts/explorer-generate.ts
-interface ExplorerManifest {
-  generatedAt: string
+const STRIPE_OPENAPI_URL =
+  'https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.json'
+const SESSION_CACHE_KEY = 'stripe-explorer-schema-v1'
+
+export interface ExplorerManifest {
   apiVersion: string
   totalTables: number
   tables: string[]
 }
 
 type DatabaseStatus = 'idle' | 'loading' | 'ready' | 'error'
-
-type InitializedDatabase = {
-  db: PGliteInstance
-  manifest: ExplorerManifest
-}
+type InitializedDatabase = { db: PGliteInstance; manifest: ExplorerManifest }
 
 let sharedDatabasePromise: Promise<InitializedDatabase> | null = null
 
@@ -50,28 +50,25 @@ export function usePGlite(): UsePGliteResult {
   const [status, setStatus] = useState<DatabaseStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [manifest, setManifest] = useState<ExplorerManifest | null>(null)
-
   const currentPromiseRef = useRef<Promise<InitializedDatabase> | null>(null)
 
   useEffect(() => {
     let cancelled = false
-
     setStatus('loading')
     setError(null)
 
     currentPromiseRef.current ??= getOrCreateDatabase()
-
     currentPromiseRef.current
       .then(({ db: initializedDb, manifest: initializedManifest }) => {
         if (cancelled) return
-        setManifest(initializedManifest)
         setDb(initializedDb)
+        setManifest(initializedManifest)
         setStatus('ready')
       })
       .catch((err) => {
         console.error('[PGlite] Initialization error:', err)
         if (cancelled) return
-        setError(err instanceof Error ? err.message : 'Unknown error during initialization')
+        setError(err instanceof Error ? err.message : 'Unknown initialization error')
         setStatus('error')
       })
 
@@ -82,180 +79,154 @@ export function usePGlite(): UsePGliteResult {
 
   const query = useCallback(
     async (sql: string, params?: unknown[]): Promise<QueryResult> => {
-      if (status !== 'ready' || !db) {
-        throw new Error('Database not ready. Current status: ' + status)
-      }
-
-      try {
-        const result = await db.query(sql, params)
-        return result
-      } catch (err) {
-        console.error('[PGlite] Query error:', err)
-        throw err
-      }
+      if (status !== 'ready' || !db) throw new Error('Database not ready: ' + status)
+      return db.query(sql, params)
     },
     [db, status]
   )
 
   const exec = useCallback(
     async (sql: string): Promise<void> => {
-      if (status !== 'ready' || !db) {
-        throw new Error('Database not ready. Current status: ' + status)
-      }
-
-      try {
-        await db.exec(sql)
-      } catch (err) {
-        console.error('[PGlite] Exec error:', err)
-        throw err
-      }
+      if (status !== 'ready' || !db) throw new Error('Database not ready: ' + status)
+      await db.exec(sql)
     },
     [db, status]
   )
 
-  return {
-    db,
-    status,
-    error,
-    query,
-    exec,
-    manifest,
-  }
-}
-
-async function hydrateSqlBootstrap(db: PGliteInstance, sqlPath: string): Promise<void> {
-  console.log(`[PGlite] Fetching SQL bootstrap from ${sqlPath}`)
-
-  const response = await fetch(sqlPath)
-  if (!response.ok) {
-    throw new Error(`Failed to fetch SQL bootstrap: ${response.status} ${response.statusText}`)
-  }
-
-  const sqlContent = await response.text()
-  console.log(`[PGlite] SQL bootstrap size: ${(sqlContent.length / 1024).toFixed(2)} KB`)
-
-  try {
-    console.log(`[PGlite] Attempting to execute SQL as single multi-statement block...`)
-    await db.exec(sqlContent)
-    console.log('[PGlite] SQL bootstrap executed successfully')
-    return
-  } catch (err) {
-    console.warn(
-      '[PGlite] Multi-statement execution failed, falling back to statement-by-statement execution'
-    )
-    console.warn('[PGlite] Error was:', err instanceof Error ? err.message : String(err))
-  }
-
-  const cleanedSql = sqlContent
-    .split('\n')
-    .filter((line) => {
-      const trimmed = line.trim()
-      return trimmed && !trimmed.startsWith('--')
-    })
-    .join('\n')
-
-  const statements = cleanedSql
-    .split(';')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0)
-    .map((s) => s + ';')
-
-  console.log(`[PGlite] Executing ${statements.length} SQL statements individually...`)
-
-  for (let i = 0; i < statements.length; i++) {
-    const statement = statements[i]
-    try {
-      await db.exec(statement)
-
-      if ((i + 1) % 100 === 0) {
-        console.log(`[PGlite] Progress: ${i + 1}/${statements.length} statements`)
-      }
-    } catch (err) {
-      const preview = statement.length > 200 ? statement.substring(0, 200) + '...' : statement
-      console.error(`[PGlite] Error executing statement ${i + 1}:`, preview)
-      console.error('[PGlite] Full error:', err)
-      throw new Error(
-        `Failed to execute SQL statement ${i + 1}: ${err instanceof Error ? err.message : String(err)}`
-      )
-    }
-  }
-
-  console.log('[PGlite] SQL bootstrap executed successfully (statement-by-statement mode)')
-}
-
-async function hydrateJsonBootstrap(
-  db: PGliteInstance,
-  jsonPath: string,
-  _manifest: ExplorerManifest
-): Promise<void> {
-  console.log(`[PGlite] Fetching JSON bootstrap from ${jsonPath}`)
-
-  const response = await fetch(jsonPath)
-  if (!response.ok) {
-    throw new Error(`Failed to fetch JSON bootstrap: ${response.status} ${response.statusText}`)
-  }
-
-  const jsonData = await response.json()
-  console.log(
-    `[PGlite] JSON bootstrap size: ${(JSON.stringify(jsonData).length / 1024).toFixed(2)} KB`
-  )
-
-  const tables = Object.keys(jsonData)
-  console.log(`[PGlite] Hydrating ${tables.length} tables...`)
-
-  for (const tableName of tables) {
-    const rows = jsonData[tableName]
-    if (!Array.isArray(rows) || rows.length === 0) {
-      console.log(`[PGlite] Skipping empty table: ${tableName}`)
-      continue
-    }
-
-    console.log(`[PGlite] Inserting ${rows.length} rows into stripe.${tableName}...`)
-
-    for (const row of rows) {
-      try {
-        await db.query(`INSERT INTO stripe.${tableName} (_raw_data, _account_id) VALUES ($1, $2)`, [
-          JSON.stringify(row._raw_data),
-          row._account_id,
-        ])
-      } catch (err) {
-        console.error(`[PGlite] Error inserting row into ${tableName}:`, err)
-      }
-    }
-  }
-
-  console.log('[PGlite] JSON bootstrap loaded successfully')
-}
-
-export async function createPGliteDatabase(): Promise<{
-  db: PGliteInstance
-  manifest: ExplorerManifest
-}> {
-  const manifestResponse = await fetch('/explorer-data/manifest.json')
-  if (!manifestResponse.ok) {
-    throw new Error(`Failed to fetch manifest: ${manifestResponse.status}`)
-  }
-  const manifest: ExplorerManifest = await manifestResponse.json()
-
-  const db = await PGlite.create()
-
-  const sqlCheckResponse = await fetch('/explorer-data/bootstrap.sql', { method: 'HEAD' })
-  if (sqlCheckResponse.ok) {
-    await hydrateSqlBootstrap(db, '/explorer-data/bootstrap.sql')
-  } else {
-    await hydrateJsonBootstrap(db, '/explorer-data/bootstrap.json', manifest)
-  }
-
-  return { db, manifest }
+  return { db, status, error, query, exec, manifest }
 }
 
 async function getOrCreateDatabase(): Promise<InitializedDatabase> {
   if (!sharedDatabasePromise) {
-    sharedDatabasePromise = createPGliteDatabase().catch((error) => {
+    sharedDatabasePromise = buildDatabase().catch((err) => {
       sharedDatabasePromise = null
-      throw error
+      throw err
     })
   }
-
   return sharedDatabasePromise
+}
+
+async function buildDatabase(): Promise<InitializedDatabase> {
+  // Try sessionStorage cache first (avoids re-fetching the 3 MB spec on reload)
+  let sql: string
+  let manifest: ExplorerManifest
+  const cached =
+    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(SESSION_CACHE_KEY) : null
+
+  if (cached) {
+    console.log('[PGlite] Using cached schema from sessionStorage')
+    ;({ sql, manifest } = JSON.parse(cached) as { sql: string; manifest: ExplorerManifest })
+  } else {
+    console.log('[PGlite] Fetching Stripe OpenAPI spec...')
+    const response = await fetch(STRIPE_OPENAPI_URL)
+    if (!response.ok) throw new Error(`Failed to fetch OpenAPI spec: ${response.status}`)
+    const spec = await response.json()
+    console.log('[PGlite] Parsing schema...')
+    ;({ sql, manifest } = generateSchema(spec))
+    try {
+      sessionStorage.setItem(SESSION_CACHE_KEY, JSON.stringify({ sql, manifest }))
+    } catch {
+      // sessionStorage full — continue without caching
+    }
+  }
+
+  console.log(`[PGlite] Creating database (${manifest.totalTables} tables)...`)
+  const db = await PGlite.create()
+  await db.exec(sql)
+  console.log('[PGlite] Ready')
+  return { db, manifest }
+}
+
+// ---------------------------------------------------------------------------
+// Schema generation — runs in the browser, no Node.js deps
+// ---------------------------------------------------------------------------
+
+function generateSchema(spec: Record<string, unknown>): {
+  sql: string
+  manifest: ExplorerManifest
+} {
+  const schemas =
+    (spec as { components?: { schemas?: Record<string, unknown> } }).components?.schemas ?? {}
+
+  // Discover all table names from x-resourceId fields
+  const allTableNames = new Set<string>()
+  for (const schemaDef of Object.values(schemas)) {
+    const resourceId = (schemaDef as Record<string, unknown>)['x-resourceId']
+    if (!resourceId || typeof resourceId !== 'string') continue
+    const alias = OPENAPI_RESOURCE_TABLE_ALIASES[resourceId]
+    if (alias) {
+      allTableNames.add(alias)
+    } else {
+      const normalized = resourceId.toLowerCase().replace(/\./g, '_')
+      allTableNames.add(normalized.endsWith('s') ? normalized : `${normalized}s`)
+    }
+  }
+
+  const parser = new SpecParser()
+  const parsed = parser.parse(spec as Parameters<SpecParser['parse']>[0], {
+    allowedTables: Array.from(allTableNames),
+  })
+
+  const lines: string[] = [`CREATE SCHEMA IF NOT EXISTS "stripe";`, '']
+  for (const table of parsed.tables) {
+    lines.push(buildTableSql('stripe', table))
+    lines.push('')
+  }
+
+  const manifest: ExplorerManifest = {
+    apiVersion: parsed.apiVersion,
+    totalTables: parsed.tables.length,
+    tables: parsed.tables.map((t) => t.tableName),
+  }
+
+  return { sql: lines.join('\n'), manifest }
+}
+
+function buildTableSql(schema: string, table: ParsedResourceTable): string {
+  const qt = (s: string) => `"${s.replaceAll('"', '""')}"`
+
+  const cols: string[] = [
+    '"_raw_data" jsonb NOT NULL',
+    '"_last_synced_at" timestamptz',
+    '"_updated_at" timestamptz NOT NULL DEFAULT now()',
+    '"_account_id" text NOT NULL',
+    `"id" text GENERATED ALWAYS AS ((_raw_data->>'id')::text) STORED`,
+  ]
+
+  for (const col of table.columns) {
+    const p = col.name.replace(/'/g, "''")
+    const pg = scalartypeToPg(col.type)
+    let expr: string
+    if (col.expandableReference) {
+      expr = `CASE WHEN jsonb_typeof(_raw_data->'${p}') = 'object' AND _raw_data->'${p}' ? 'id' THEN (_raw_data->'${p}'->>'id') ELSE (_raw_data->>'${p}') END`
+    } else if (pg === 'jsonb') {
+      expr = `(_raw_data->'${p}')::jsonb`
+    } else if (pg === 'text') {
+      expr = `(_raw_data->>'${p}')::text`
+    } else {
+      expr = `(NULLIF(_raw_data->>'${p}', ''))::${pg}`
+    }
+    cols.push(`${qt(col.name)} ${pg} GENERATED ALWAYS AS (${expr}) STORED`)
+  }
+
+  cols.push('PRIMARY KEY ("id")')
+
+  return `CREATE TABLE IF NOT EXISTS ${qt(schema)}.${qt(table.tableName)} (\n  ${cols.join(',\n  ')}\n);`
+}
+
+function scalartypeToPg(type: string): string {
+  switch (type) {
+    case 'bigint':
+      return 'bigint'
+    case 'numeric':
+      return 'numeric'
+    case 'boolean':
+      return 'boolean'
+    case 'json':
+      return 'jsonb'
+    case 'timestamptz':
+      return 'timestamptz'
+    default:
+      return 'text'
+  }
 }

@@ -75,7 +75,7 @@ importers:
         version: link:../../packages/destination-google-sheets
       '@stripe/sync-destination-postgres':
         specifier: workspace:*
-        version: link:../../packages/destination-postgres
+        version: file:packages/destination-postgres(@aws-sdk/client-sts@3.1013.0)(@aws-sdk/rds-signer@3.1013.0)
       '@stripe/sync-protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -84,7 +84,7 @@ importers:
         version: link:../../packages/source-stripe
       '@stripe/sync-state-postgres':
         specifier: workspace:*
-        version: link:../../packages/state-postgres
+        version: file:packages/state-postgres
       '@stripe/sync-ts-cli':
         specifier: workspace:*
         version: link:../../packages/ts-cli
@@ -136,7 +136,7 @@ importers:
         version: 0.6.0(hono@4.12.8)
       '@stripe/sync-engine':
         specifier: workspace:*
-        version: link:../engine
+        version: file:apps/engine(@aws-sdk/client-sts@3.1013.0)(@aws-sdk/rds-signer@3.1013.0)
       '@stripe/sync-ts-cli':
         specifier: workspace:*
         version: link:../../packages/ts-cli
@@ -180,10 +180,10 @@ importers:
     dependencies:
       '@stripe/sync-destination-postgres':
         specifier: workspace:*
-        version: link:../../packages/destination-postgres
+        version: file:packages/destination-postgres(@aws-sdk/client-sts@3.1013.0)(@aws-sdk/rds-signer@3.1013.0)
       '@stripe/sync-engine':
         specifier: workspace:*
-        version: link:../engine
+        version: file:apps/engine(@aws-sdk/client-sts@3.1013.0)(@aws-sdk/rds-signer@3.1013.0)
       '@stripe/sync-protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -192,7 +192,7 @@ importers:
         version: link:../../packages/source-stripe
       '@stripe/sync-state-postgres':
         specifier: workspace:*
-        version: link:../../packages/state-postgres
+        version: file:packages/state-postgres
       supabase-management-js:
         specifier: ^2.0.2
         version: 2.0.2
@@ -221,6 +221,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.2.0
         version: 0.2.17
+      '@stripe/sync-source-stripe':
+        specifier: workspace:*
+        version: link:../../packages/source-stripe
       codemirror:
         specifier: ^6.0.1
         version: 6.0.2
@@ -269,10 +272,10 @@ importers:
         version: link:../packages/destination-google-sheets
       '@stripe/sync-destination-postgres':
         specifier: workspace:*
-        version: link:../packages/destination-postgres
+        version: file:packages/destination-postgres(@aws-sdk/client-sts@3.1013.0)(@aws-sdk/rds-signer@3.1013.0)
       '@stripe/sync-engine':
         specifier: workspace:*
-        version: link:../apps/engine
+        version: file:apps/engine(@aws-sdk/client-sts@3.1013.0)(@aws-sdk/rds-signer@3.1013.0)
       '@stripe/sync-protocol':
         specifier: workspace:*
         version: link:../packages/protocol
@@ -324,7 +327,7 @@ importers:
         version: link:../protocol
       '@stripe/sync-util-postgres':
         specifier: workspace:*
-        version: link:../util-postgres
+        version: file:packages/util-postgres
       pg:
         specifier: ^8.16.3
         version: 8.16.3
@@ -390,7 +393,7 @@ importers:
     dependencies:
       '@stripe/sync-util-postgres':
         specifier: workspace:*
-        version: link:../util-postgres
+        version: file:packages/util-postgres
       pg:
         specifier: ^8.16.3
         version: 8.16.3
@@ -433,58 +436,6 @@ importers:
       vitest:
         specifier: ^3.2.1
         version: 3.2.4(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.1)
-
-  packages/visualizer:
-    dependencies:
-      '@codemirror/lang-sql':
-        specifier: ^6.7.0
-        version: 6.10.0
-      '@codemirror/state':
-        specifier: ^6.4.0
-        version: 6.6.0
-      '@codemirror/view':
-        specifier: ^6.26.0
-        version: 6.40.0
-      '@electric-sql/pglite':
-        specifier: ^0.2.0
-        version: 0.2.17
-      codemirror:
-        specifier: ^6.0.1
-        version: 6.0.2
-      next:
-        specifier: ^15
-        version: 15.5.14(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      react:
-        specifier: ^19
-        version: 19.2.4
-      react-dom:
-        specifier: ^19
-        version: 19.2.4(react@19.2.4)
-    devDependencies:
-      '@tailwindcss/postcss':
-        specifier: ^4.2.1
-        version: 4.2.2
-      '@types/node':
-        specifier: ^22
-        version: 22.19.15
-      '@types/react':
-        specifier: ^19
-        version: 19.2.14
-      '@types/react-dom':
-        specifier: ^19
-        version: 19.2.3(@types/react@19.2.14)
-      autoprefixer:
-        specifier: ^10.4.27
-        version: 10.4.27(postcss@8.5.8)
-      postcss:
-        specifier: ^8.5.8
-        version: 8.5.8
-      tailwindcss:
-        specifier: ^4.2.1
-        version: 4.2.2
-      typescript:
-        specifier: ^5
-        version: 5.9.3
 
 packages:
 
@@ -1912,6 +1863,42 @@ packages:
   '@smithy/uuid@1.1.2':
     resolution: {integrity: sha512-O/IEdcCUKkubz60tFbGA7ceITTAJsty+lBjNoorP4Z6XRqaFb/OjQjZODophEcuq68nKm6/0r+6/lLQ+XVpk8g==}
     engines: {node: '>=18.0.0'}
+
+  '@stripe/sync-destination-google-sheets@file:packages/destination-google-sheets':
+    resolution: {directory: packages/destination-google-sheets, type: directory}
+    hasBin: true
+
+  '@stripe/sync-destination-postgres@file:packages/destination-postgres':
+    resolution: {directory: packages/destination-postgres, type: directory}
+    hasBin: true
+    peerDependencies:
+      '@aws-sdk/client-sts': ^3
+      '@aws-sdk/rds-signer': ^3
+    peerDependenciesMeta:
+      '@aws-sdk/client-sts':
+        optional: true
+      '@aws-sdk/rds-signer':
+        optional: true
+
+  '@stripe/sync-engine@file:apps/engine':
+    resolution: {directory: apps/engine, type: directory}
+    hasBin: true
+
+  '@stripe/sync-protocol@file:packages/protocol':
+    resolution: {directory: packages/protocol, type: directory}
+
+  '@stripe/sync-source-stripe@file:packages/source-stripe':
+    resolution: {directory: packages/source-stripe, type: directory}
+    hasBin: true
+
+  '@stripe/sync-state-postgres@file:packages/state-postgres':
+    resolution: {directory: packages/state-postgres, type: directory}
+
+  '@stripe/sync-ts-cli@file:packages/ts-cli':
+    resolution: {directory: packages/ts-cli, type: directory}
+
+  '@stripe/sync-util-postgres@file:packages/util-postgres':
+    resolution: {directory: packages/util-postgres, type: directory}
 
   '@swc/core-darwin-arm64@1.15.21':
     resolution: {integrity: sha512-SA8SFg9dp0qKRH8goWsax6bptFE2EdmPf2YRAQW9WoHGf3XKM1bX0nd5UdwxmC5hXsBUZAYf7xSciCler6/oyA==}
@@ -5432,6 +5419,87 @@ snapshots:
   '@smithy/uuid@1.1.2':
     dependencies:
       tslib: 2.8.1
+
+  '@stripe/sync-destination-google-sheets@file:packages/destination-google-sheets':
+    dependencies:
+      '@stripe/sync-protocol': file:packages/protocol
+      googleapis: 148.0.0
+      zod: 4.3.6
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
+
+  '@stripe/sync-destination-postgres@file:packages/destination-postgres(@aws-sdk/client-sts@3.1013.0)(@aws-sdk/rds-signer@3.1013.0)':
+    dependencies:
+      '@stripe/sync-protocol': file:packages/protocol
+      '@stripe/sync-util-postgres': file:packages/util-postgres
+      pg: 8.20.0
+      zod: 4.3.6
+    optionalDependencies:
+      '@aws-sdk/client-sts': 3.1013.0
+      '@aws-sdk/rds-signer': 3.1013.0
+    transitivePeerDependencies:
+      - pg-native
+
+  '@stripe/sync-engine@file:apps/engine(@aws-sdk/client-sts@3.1013.0)(@aws-sdk/rds-signer@3.1013.0)':
+    dependencies:
+      '@hono/node-server': 1.19.11(hono@4.12.8)
+      '@hono/zod-openapi': 1.2.2(hono@4.12.8)(zod@4.3.6)
+      '@scalar/hono-api-reference': 0.6.0(hono@4.12.8)
+      '@stripe/sync-destination-google-sheets': file:packages/destination-google-sheets
+      '@stripe/sync-destination-postgres': file:packages/destination-postgres(@aws-sdk/client-sts@3.1013.0)(@aws-sdk/rds-signer@3.1013.0)
+      '@stripe/sync-protocol': file:packages/protocol
+      '@stripe/sync-source-stripe': file:packages/source-stripe
+      '@stripe/sync-state-postgres': file:packages/state-postgres
+      '@stripe/sync-ts-cli': file:packages/ts-cli
+      citty: 0.1.6
+      dotenv: 16.6.1
+      googleapis: 148.0.0
+      hono: 4.12.8
+      pg: 8.20.0
+      stripe: 17.7.0
+      ws: 8.18.3
+      zod: 4.3.6
+    transitivePeerDependencies:
+      - '@aws-sdk/client-sts'
+      - '@aws-sdk/rds-signer'
+      - bufferutil
+      - encoding
+      - pg-native
+      - supports-color
+      - utf-8-validate
+
+  '@stripe/sync-protocol@file:packages/protocol':
+    dependencies:
+      citty: 0.1.6
+      zod: 4.3.6
+
+  '@stripe/sync-source-stripe@file:packages/source-stripe':
+    dependencies:
+      '@stripe/sync-protocol': file:packages/protocol
+      stripe: 17.7.0
+      ws: 8.18.3
+      zod: 4.3.6
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  '@stripe/sync-state-postgres@file:packages/state-postgres':
+    dependencies:
+      '@stripe/sync-util-postgres': file:packages/util-postgres
+      pg: 8.20.0
+    transitivePeerDependencies:
+      - pg-native
+
+  '@stripe/sync-ts-cli@file:packages/ts-cli':
+    dependencies:
+      citty: 0.1.6
+
+  '@stripe/sync-util-postgres@file:packages/util-postgres':
+    dependencies:
+      pg: 8.20.0
+    transitivePeerDependencies:
+      - pg-native
 
   '@swc/core-darwin-arm64@1.15.21':
     optional: true

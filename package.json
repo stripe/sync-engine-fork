@@ -13,9 +13,7 @@
     "lint": "pnpm -r run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "visualizer": "pnpm --filter @stripe/sync-visualizer dev",
-    "visualizer:with-data": "pnpm explorer:build && pnpm visualizer",
-    "explorer:build": "bun run scripts/explorer-generate.ts"
+    "visualizer": "pnpm --filter @stripe/sync-visualizer dev"
   },
   "dependencies": {
     "pino": "^10.0.0"

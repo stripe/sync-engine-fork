@@ -2,5 +2,3 @@
 .next
 .env*.local
 tsconfig.tsbuildinfo
-public/explorer-data/bootstrap.sql
-public/explorer-data/manifest.json
