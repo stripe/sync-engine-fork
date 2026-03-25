@@ -7,7 +7,7 @@
  * 2. Connects to the harness Postgres database
  * 3. Introspects pg_catalog to discover the projected stripe schema
  * 4. Exports faithful CREATE TABLE DDL plus data, constraints, indexes, and triggers
- * 5. Writes the result to packages/visualizer/public/explorer-data/bootstrap.sql
+ * 5. Writes the result to apps/visualizer/public/explorer-data/bootstrap.sql
  * 6. Generates a fresh manifest.json with metadata
  *
  * Usage:
@@ -20,7 +20,7 @@ import * as path from 'path'
 
 const TMP_DIR = path.join(process.cwd(), '.tmp')
 const METADATA_FILE = path.join(TMP_DIR, 'schema-explorer-run.json')
-const OUTPUT_DIR = path.join(process.cwd(), 'packages/visualizer/public/explorer-data')
+const OUTPUT_DIR = path.join(process.cwd(), 'apps/visualizer/public/explorer-data')
 const BOOTSTRAP_FILE = path.join(OUTPUT_DIR, 'bootstrap.sql')
 const MANIFEST_FILE = path.join(OUTPUT_DIR, 'manifest.json')
 const STRIPE_SCHEMA = 'stripe'

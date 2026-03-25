@@ -10,7 +10,7 @@ The visualizer is a browser app backed by static artifacts:
 - `manifest.json` contains metadata and table counts.
 - PGlite hydrates those artifacts in the browser so the UI can run SQL locally.
 
-The generated files live in `packages/visualizer/public/explorer-data/`.
+The generated files live in `apps/visualizer/public/explorer-data/`.
 
 ## Common Commands
 
@@ -47,7 +47,7 @@ By default the root `visualizer` script runs the app on `http://localhost:3001`.
 After a successful build you should have:
 
 ```text
-packages/visualizer/public/explorer-data/
+apps/visualizer/public/explorer-data/
 ├── bootstrap.sql
 └── manifest.json
 ```
@@ -57,13 +57,13 @@ packages/visualizer/public/explorer-data/
 Typical local loop:
 
 1. Run `pnpm visualizer` while working on the UI.
-2. Edit files in `packages/visualizer/src/`.
+2. Edit files in `apps/visualizer/src/`.
 3. Re-run `pnpm explorer:build` when you need new data or a different API version.
 
 To verify the generated artifact:
 
 ```bash
-jq . packages/visualizer/public/explorer-data/manifest.json
+jq . apps/visualizer/public/explorer-data/manifest.json
 ```
 
 Look for:
@@ -78,17 +78,17 @@ Look for:
 Use the underlying scripts when you need to inspect one phase at a time:
 
 ```bash
-pnpm tsx scripts/explorer-harness.ts start
-pnpm tsx scripts/explorer-harness.ts status
-pnpm tsx scripts/explorer-migrate.ts --api-version=2020-08-27
-pnpm tsx scripts/explorer-seed.ts --api-version=2020-08-27 --seed=42
-pnpm tsx scripts/explorer-export.ts
-pnpm tsx scripts/explorer-harness.ts stop
+bun run scripts/explorer-harness.ts start
+bun run scripts/explorer-harness.ts status
+bun run scripts/explorer-migrate.ts --api-version=2020-08-27
+bun run scripts/explorer-seed.ts --api-version=2020-08-27 --seed=42
+bun run scripts/explorer-export.ts
+bun run scripts/explorer-harness.ts stop
 ```
 
 ## Deployment Notes
 
-Deploy `packages/visualizer` as the standalone UI package.
+Deploy `apps/visualizer` as the standalone UI package.
 
 Important:
 
@@ -102,16 +102,16 @@ If the harness does not start:
 
 - Make sure Docker is installed and running.
 - Check for stale containers with `docker ps -a | rg schema-explorer`.
-- Stop any leftover harness with `pnpm tsx scripts/explorer-harness.ts stop`.
+- Stop any leftover harness with `bun run scripts/explorer-harness.ts stop`.
 
 If export fails:
 
 - Confirm `.tmp/schema-explorer-run.json` exists.
-- Confirm `packages/visualizer/public/explorer-data/` is writable.
+- Confirm `apps/visualizer/public/explorer-data/` is writable.
 - Check that the harness is still reachable.
 
 If the visualizer loads with no data:
 
 - Verify `bootstrap.sql` contains inserts as well as schema DDL.
 - Check the browser console for hydration errors.
-- Confirm `manifest.json` and `bootstrap.sql` exist under `packages/visualizer/public/explorer-data/`.
+- Confirm `manifest.json` and `bootstrap.sql` exist under `apps/visualizer/public/explorer-data/`.

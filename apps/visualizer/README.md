@@ -5,12 +5,12 @@ This package contains the standalone browser UI for exploring generated Stripe s
 The visualizer has two parts:
 
 - `pnpm explorer:build` generates static artifacts.
-- `packages/visualizer` loads those artifacts into PGlite and lets you run SQL in the browser.
+- `apps/visualizer` loads those artifacts into PGlite and lets you run SQL in the browser.
 
 ## Generated artifacts
 
-- `packages/visualizer/public/explorer-data/bootstrap.sql`
-- `packages/visualizer/public/explorer-data/manifest.json`
+- `apps/visualizer/public/explorer-data/bootstrap.sql`
+- `apps/visualizer/public/explorer-data/manifest.json`
 
 These files are generated and should stay out of version control.
 
@@ -34,11 +34,11 @@ After hydration, all SQL runs locally in the browser against the generated Strip
 `pnpm explorer:build` is the normal command, but the underlying phase scripts still exist for debugging:
 
 ```bash
-pnpm tsx scripts/explorer-harness.ts start
-pnpm tsx scripts/explorer-migrate.ts --api-version=2020-08-27
-pnpm tsx scripts/explorer-seed.ts --api-version=2020-08-27 --seed=42
-pnpm tsx scripts/explorer-export.ts
-pnpm tsx scripts/explorer-harness.ts stop
+bun run scripts/explorer-harness.ts start
+bun run scripts/explorer-migrate.ts --api-version=2020-08-27
+bun run scripts/explorer-seed.ts --api-version=2020-08-27 --seed=42
+bun run scripts/explorer-export.ts
+bun run scripts/explorer-harness.ts stop
 ```
 
 ## Notes

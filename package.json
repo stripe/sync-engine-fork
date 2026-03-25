@@ -14,6 +14,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "visualizer": "pnpm --filter @stripe/sync-visualizer dev",
+    "visualizer:with-data": "pnpm explorer:build && pnpm visualizer",
     "explorer:build": "bun run scripts/explorer-build.ts"
   },
   "dependencies": {
@@ -23,11 +24,13 @@
     "@eslint/eslintrc": "^3.3.1",
     "@eslint/js": "^9.35.0",
     "@terrastruct/d2": "^0.1.33",
+    "@types/pg": "^8.20.0",
     "@typescript-eslint/eslint-plugin": "^8.44.0",
     "@typescript-eslint/parser": "^8.44.0",
     "eslint": "^9.35.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
+    "pg": "^8.20.0",
     "prettier": "^3.6.2",
     "rimraf": "^6.0.1",
     "tsx": "^4.21.0",

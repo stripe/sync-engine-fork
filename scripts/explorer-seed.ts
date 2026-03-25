@@ -25,12 +25,12 @@ import {
   SpecParser,
   resolveOpenApiSpec,
   OPENAPI_RESOURCE_TABLE_ALIASES,
-} from '../packages/sync-engine/src/openapi/index.js'
+} from '../packages/source-stripe/src/openapi/index.js'
 import type {
   ParsedResourceTable,
   ParsedColumn,
   ScalarType,
-} from '../packages/sync-engine/src/openapi/types.js'
+} from '../packages/source-stripe/src/openapi/types.js'
 
 const TMP_DIR = path.join(process.cwd(), '.tmp')
 const METADATA_FILE = path.join(TMP_DIR, 'schema-explorer-run.json')
