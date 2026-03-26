@@ -11,7 +11,7 @@ COPY . ./
 
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 ENV NODE_OPTIONS="--max-old-space-size=4096"
-RUN pnpm build
+RUN NEXT_TELEMETRY_DISABLED=1 pnpm build
 
 # Create standalone deployment with lockfile-pinned deps
 FROM build AS deploy
