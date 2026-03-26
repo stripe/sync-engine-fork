@@ -78,6 +78,19 @@ services:
       retries: 20
       start_period: 30s
 
+  # --- Smokescreen (HTTP CONNECT proxy) ---
+
+  smokescreen:
+    build: docker/smokescreen
+    ports:
+      - '4750:4750'
+    healthcheck:
+      test: ['CMD-SHELL', 'echo | nc -z localhost 4750']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles: [smokescreen]
+
   # --- Local npm registry (for publish testing) ---
 
   npm-registry:

@@ -43,6 +43,7 @@
     "@stripe/sync-state-postgres": "workspace:*",
     "@stripe/sync-ts-cli": "workspace:*",
     "citty": "^0.1.6",
+    "https-proxy-agent": "^7.0.6",
     "dotenv": "^16.4.7",
     "googleapis": "^148.0.0",
     "hono": "^4",

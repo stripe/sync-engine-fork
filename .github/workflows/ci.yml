@@ -288,6 +288,21 @@ jobs:
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           GOOGLE_SPREADSHEET_ID: ${{ vars.GOOGLE_SPREADSHEET_ID }}
 
+      - name: Smokescreen test
+        run: |
+          if [ -z "${STRIPE_API_KEY:-}" ]; then
+            echo "::warning::smokescreen.test.sh skipped — STRIPE_API_KEY not available"
+            exit 0
+          fi
+          bash e2e/smokescreen.test.sh
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          POSTGRES_URL: 'postgres://postgres:postgres@localhost:55432/postgres'
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GOOGLE_SPREADSHEET_ID: ${{ vars.GOOGLE_SPREADSHEET_ID }}
+
       - name: Publish test
         run: |
           if [ -z "${STRIPE_NPM_REGISTRY:-}" ]; then

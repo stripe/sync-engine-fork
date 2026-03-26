@@ -91,6 +91,9 @@ importers:
       hono:
         specifier: ^4
         version: 4.12.8
+      https-proxy-agent:
+        specifier: ^7.0.6
+        version: 7.0.6
       pg:
         specifier: ^8.16.3
         version: 8.16.3
