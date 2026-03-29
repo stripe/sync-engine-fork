@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildTransportOptions,
-  makeClientConfig,
-  type StripeClientConfigInput,
-} from './client.js'
+import { buildTransportOptions, makeClientConfig, type StripeClientConfigInput } from './client.js'
 import { getProxyUrl } from './transport.js'
 
 const config: StripeClientConfigInput = {
@@ -45,10 +41,7 @@ describe('buildTransportOptions', () => {
   })
 
   it('decomposes a localhost base_url', () => {
-    const options = buildTransportOptions(
-      { ...config, base_url: 'http://localhost:12111' },
-      {}
-    )
+    const options = buildTransportOptions({ ...config, base_url: 'http://localhost:12111' }, {})
 
     expect(options.host).toBe('localhost')
     expect(options.port).toBe(12111)
