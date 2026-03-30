@@ -104,10 +104,10 @@ echo "    Postgres ready"
 
 echo "==> src-stripe: read through smokescreen"
 READ_PARAMS=$(printf \
-  '{"source_name":"stripe","source_config":{"api_key":"%s","backfill_limit":5},"destination_name":"postgres","destination_config":{"url":"postgres://unused:5432/db","schema":"stripe"},"streams":[{"name":"products"}]}' \
+  '{"source":{"name":"stripe","api_key":"%s","backfill_limit":5},"destination":{"name":"postgres","url":"postgres://unused:5432/db","schema":"stripe"},"streams":[{"name":"products"}]}' \
   "$STRIPE_API_KEY")
 OUTPUT=$(curl -sf --max-time 30 -X POST "http://localhost:${ENGINE_PORT}/read" \
-  -H "X-Sync-Params: $READ_PARAMS")
+  -H "X-Pipeline: $READ_PARAMS")
 RECORD_COUNT=$(echo "$OUTPUT" | grep -c '"type":"record"' || true)
 echo "    Got $RECORD_COUNT record(s)"
 [ "$RECORD_COUNT" -gt 0 ] || { echo "FAIL: no records from Stripe"; exit 1; }
@@ -116,12 +116,12 @@ echo "    Got $RECORD_COUNT record(s)"
 
 echo "==> dest-pg: setup + write"
 PG_PARAMS=$(printf \
-  '{"source_name":"stripe","source_config":{"api_key":"%s"},"destination_name":"postgres","destination_config":{"url":"%s","schema":"stripe_smokescreen_test"}}' \
+  '{"source":{"name":"stripe","api_key":"%s"},"destination":{"name":"postgres","url":"%s","schema":"stripe_smokescreen_test"}}' \
   "$STRIPE_API_KEY" "$PG_URL")
 curl -sf --max-time 30 -X POST "http://localhost:${ENGINE_PORT}/setup" \
-  -H "X-Sync-Params: $PG_PARAMS" && echo "    setup OK"
+  -H "X-Pipeline: $PG_PARAMS" && echo "    setup OK"
 echo "$OUTPUT" | curl -sf --max-time 60 -X POST "http://localhost:${ENGINE_PORT}/write" \
-  -H "X-Sync-Params: $PG_PARAMS" \
+  -H "X-Pipeline: $PG_PARAMS" \
   -H "Content-Type: application/x-ndjson" \
   --data-binary @- | head -3 || true
 echo "    dest-pg OK"
@@ -131,10 +131,10 @@ echo "    dest-pg OK"
 if [ -n "${GOOGLE_CLIENT_ID:-}" ]; then
   echo "==> dest-sheets: write through smokescreen"
   SHEETS_PARAMS=$(printf \
-    '{"source_name":"stripe","source_config":{"api_key":"%s"},"destination_name":"google-sheets","destination_config":{"client_id":"%s","client_secret":"%s","access_token":"unused","refresh_token":"%s","spreadsheet_id":"%s"}}' \
+    '{"source":{"name":"stripe","api_key":"%s"},"destination":{"name":"google-sheets","client_id":"%s","client_secret":"%s","access_token":"unused","refresh_token":"%s","spreadsheet_id":"%s"}}' \
     "$STRIPE_API_KEY" "$GOOGLE_CLIENT_ID" "$GOOGLE_CLIENT_SECRET" "$GOOGLE_REFRESH_TOKEN" "$GOOGLE_SPREADSHEET_ID")
   echo "$OUTPUT" | curl -sf --max-time 60 -X POST "http://localhost:${ENGINE_PORT}/write" \
-    -H "X-Sync-Params: $SHEETS_PARAMS" \
+    -H "X-Pipeline: $SHEETS_PARAMS" \
     -H "Content-Type: application/x-ndjson" \
     --data-binary @- | head -3 || true
   echo "    dest-sheets OK"
