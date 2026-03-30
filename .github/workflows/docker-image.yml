@@ -1,5 +1,8 @@
 name: Stripe Build Image
 
+permissions:
+  contents: read
+
 on:
   # Manual trigger
   workflow_dispatch:
