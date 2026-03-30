@@ -22,7 +22,8 @@ import { ndjsonResponse } from '@stripe/sync-ts-cli/ndjson'
 import { logger } from '../logger.js'
 import { createStripeSource, DEFAULT_MAX_RPS } from '@stripe/sync-source-stripe'
 import type { RateLimiter } from '@stripe/sync-source-stripe'
-import { acquire, createRateLimiterTable } from '@stripe/sync-util-postgres'
+import { acquire, createRateLimiterTable, ident } from '@stripe/sync-util-postgres'
+import { createHash } from 'node:crypto'
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ function syncRequestContext(params: SyncParams) {
 async function createPgRateLimiter(
   pipeline: PipelineConfig
 ): Promise<{ rateLimiter: RateLimiter; close(): Promise<void> } | undefined> {
+  if (pipeline.source.name !== 'stripe') return undefined
   if (pipeline.destination.name !== 'postgres') return undefined
 
   const destConfig = pipeline.destination as Record<string, unknown>
@@ -62,14 +64,15 @@ async function createPgRateLimiter(
   const pool = new pg.Pool({ connectionString: connStr })
   const schema = destConfig.schema as string | undefined
   if (schema) {
-    await pool.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`)
+    await pool.query(`CREATE SCHEMA IF NOT EXISTS ${ident(schema)}`)
   }
   await createRateLimiterTable(pool, schema)
 
   const srcConfig = pipeline.source as Record<string, unknown>
   const apiKey = srcConfig.api_key as string
   const maxRps = (srcConfig.rate_limit as number | undefined) ?? DEFAULT_MAX_RPS
-  const opts = { key: `stripe:${apiKey}`, max_rps: maxRps, schema }
+  const keyHash = createHash('sha256').update(apiKey).digest('hex').slice(0, 16)
+  const opts = { key: `stripe:${keyHash}`, max_rps: maxRps, schema }
   const rateLimiter: RateLimiter = async (cost = 1) => acquire(pool, opts, cost)
 
   return { rateLimiter, close: () => pool.end() }
