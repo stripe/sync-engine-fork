@@ -26,8 +26,9 @@ Deno.serve(async (req) => {
   })
 
   try {
-    const rawBody = new Uint8Array(await req.arrayBuffer())
-    await stripeSync.webhook.processWebhook(rawBody, sig)
+    const rawBody = await req.arrayBuffer()
+    const bodyString = new TextDecoder().decode(rawBody)
+    await stripeSync.webhook.processWebhook(bodyString, sig)
     return new Response(JSON.stringify({ received: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
