@@ -76,7 +76,7 @@ async function* mergeAsync<T>(
 
 async function getAccountCreatedTimestamp(stripe: Stripe): Promise<number> {
   const account = await stripe.accounts.retrieve()
-  return account.created ?? Math.floor(Date.now() / 1000)
+  return account.created ?? 1293840000
 }
 
 // MARK: - Segment creation
