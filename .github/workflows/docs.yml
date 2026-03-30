@@ -7,6 +7,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     if: github.repository == 'supabase/stripe-sync-engine'
     steps:
       - uses: actions/checkout@v5
