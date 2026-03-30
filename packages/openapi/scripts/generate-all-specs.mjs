@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { execSync } from 'child_process'
-import { writeFileSync, mkdirSync } from 'fs'
-import { join } from 'path'
+import { execSync } from 'node:child_process'
+import { writeFileSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 
 const [repoPath, outputDir] = process.argv.slice(2)
 if (!repoPath || !outputDir) {

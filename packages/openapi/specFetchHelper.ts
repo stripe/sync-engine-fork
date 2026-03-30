@@ -6,6 +6,7 @@ import type { OpenApiSpec, ResolveSpecConfig, ResolvedOpenApiSpec } from './type
 import { fetchWithProxy } from './transport.js'
 
 const DEFAULT_CACHE_DIR = path.join(os.tmpdir(), 'stripe-sync-openapi-cache')
+const GENERATED_SPECS_DIR = fileURLToPath(new URL('./generated-specs', import.meta.url))
 
 // The spec bundled into this package at build time.
 // Update this constant and bundled-spec.json together when bumping.
@@ -97,11 +98,12 @@ async function tryLoadPreGeneratedSpec(
   try {
     if (generatedSpecManifest === null) return null
 
-    const generatedDir = fileURLToPath(new URL('./generated-specs', import.meta.url))
-
     if (generatedSpecManifest === undefined) {
       try {
-        const manifestRaw = await fs.readFile(path.join(generatedDir, 'manifest.json'), 'utf8')
+        const manifestRaw = await fs.readFile(
+          path.join(GENERATED_SPECS_DIR, 'manifest.json'),
+          'utf8'
+        )
         generatedSpecManifest = JSON.parse(manifestRaw) as Record<string, string>
       } catch {
         generatedSpecManifest = null
@@ -115,7 +117,7 @@ async function tryLoadPreGeneratedSpec(
     )
     if (!matchedKey) return null
 
-    const specPath = path.join(generatedDir, generatedSpecManifest[matchedKey])
+    const specPath = path.join(GENERATED_SPECS_DIR, generatedSpecManifest[matchedKey])
     const spec = await readSpecFromPath(specPath)
     return { spec, path: specPath }
   } catch {
