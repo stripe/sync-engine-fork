@@ -25,8 +25,8 @@ const installCmd = defineCommand({
     },
     workerInterval: {
       type: 'string',
-      default: '60',
-      description: 'Worker interval in seconds (default: 60)',
+      default: '30',
+      description: 'Worker interval in seconds (default: 30)',
     },
     managementUrl: {
       type: 'string',
