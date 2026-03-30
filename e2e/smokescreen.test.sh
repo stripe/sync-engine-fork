@@ -124,6 +124,15 @@ for i in $(seq 1 20); do
 done
 echo "    Postgres ready"
 
+# ── 0) Negative test: direct internet access must be blocked ─────────────────
+
+echo "==> Negative test: direct HTTPS must fail on isolated network"
+if ecurl -sf --max-time 10 https://api.stripe.com 2>/dev/null; then
+  echo "FAIL: curl container reached the internet directly (network isolation broken)"
+  exit 1
+fi
+echo "    Confirmed: no direct internet access from isolated network"
+
 # ── 1) Read from Stripe (HTTPS → smokescreen → api.stripe.com) ───────────────
 
 echo "==> src-stripe: read through smokescreen"
