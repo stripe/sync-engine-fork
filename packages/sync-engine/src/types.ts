@@ -192,6 +192,12 @@ export const SUPPORTED_WEBHOOK_EVENTS: Stripe.WebhookEndpointCreateParams.Enable
   'review.closed',
   'review.opened',
   'entitlements.active_entitlement_summary.updated',
+  'payout.canceled',
+  'payout.created',
+  'payout.failed',
+  'payout.paid',
+  'payout.reconciliation_completed',
+  'payout.updated',
 ]
 
 export interface Sync {
