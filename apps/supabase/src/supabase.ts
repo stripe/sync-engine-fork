@@ -94,7 +94,7 @@ export class SupabaseSetupClient {
    * Setup pg_cron job to invoke worker function
    * @param intervalSeconds - How often to run the worker (default: 60 seconds)
    */
-  async setupPgCronJob(intervalSeconds: number = 60): Promise<void> {
+  async setupPgCronJob(intervalSeconds: number = 30): Promise<void> {
     // Validate interval
     if (!Number.isInteger(intervalSeconds) || intervalSeconds < 1) {
       throw new Error(`Invalid interval: ${intervalSeconds}. Must be a positive integer.`)

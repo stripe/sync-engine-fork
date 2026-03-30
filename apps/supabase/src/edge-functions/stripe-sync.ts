@@ -603,7 +603,7 @@ async function handleWebhook(req: Request): Promise<Response> {
 // ---------------------------------------------------------------------------
 
 const SYNC_INTERVAL = Number(Deno.env.get('SYNC_INTERVAL')) || 60 * 60 * 24 * 7
-const PAGES_PER_INVOCATION = Number(Deno.env.get('PAGES_PER_INVOCATION')) || 10
+const PAGES_PER_INVOCATION = Number(Deno.env.get('PAGES_PER_INVOCATION')) || 1000
 
 async function handleSync(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
@@ -678,25 +678,48 @@ async function handleSync(req: Request): Promise<Response> {
 
     await destinationPostgres.setup({ config: destConfig, catalog })
 
+    let records = 0
     const sourceMessages = sourceStripe.read({ config: sourceConfig, catalog, state })
-    const destOutput = destinationPostgres.write({ config: destConfig, catalog }, sourceMessages)
+    const countedSource = (async function* () {
+      for await (const msg of sourceMessages) {
+        if (msg.type === 'record') records++
+        yield msg
+      }
+    })()
+    const destOutput = destinationPostgres.write({ config: destConfig, catalog }, countedSource)
 
+    const MAX_WALL_MS = 25_000
+    const startedAt = Date.now()
     let checkpoints = 0
+    let stopReason = 'complete'
     for await (const msg of destOutput) {
       if (msg.type === 'state' && msg.stream) {
         await stateStore.set(msg.stream, msg.data)
         checkpoints++
         if (checkpoints >= PAGES_PER_INVOCATION) {
-          console.log(`Reached ${PAGES_PER_INVOCATION} checkpoints, yielding to next cron tick`)
+          stopReason = 'checkpoint_limit'
+          break
+        }
+        if (Date.now() - startedAt >= MAX_WALL_MS) {
+          stopReason = 'time_limit'
           break
         }
       }
     }
 
+    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1)
     await pool.end()
-    console.log(`Sync pass done — ${checkpoints} checkpoints persisted`)
+    console.log(
+      `Sync pass done — ${records} rows, ${checkpoints} checkpoints, ${elapsed}s elapsed (${stopReason})`
+    )
 
-    return jsonResponse({ status: checkpoints > 0 ? 'syncing' : 'complete', checkpoints })
+    return jsonResponse({
+      status: stopReason === 'complete' ? 'complete' : 'syncing',
+      checkpoints,
+      records,
+      elapsed_s: Number(elapsed),
+      stop_reason: stopReason,
+    })
   } catch (error: unknown) {
     const err = error as Error
     console.error('Sync error:', error)
