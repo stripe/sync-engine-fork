@@ -55,6 +55,10 @@ describe('resolveOpenApiSpec', () => {
     const tempDir = await createTempDir('openapi-fetch')
     const fetchMock = vi.fn(async (input: URL | string) => {
       const url = String(input)
+      // CDN not deployed — fall through to GitHub
+      if (url.includes('stripe-sync.dev')) {
+        return new Response('not found', { status: 404 })
+      }
       if (url.includes('/commits')) {
         return new Response(JSON.stringify([{ sha: 'abc123def456' }]), { status: 200 })
       }
@@ -72,7 +76,8 @@ describe('resolveOpenApiSpec', () => {
 
     const cached = await fs.readFile(path.join(tempDir, '2020-08-27.spec3.sdk.json'), 'utf8')
     expect(JSON.parse(cached)).toMatchObject({ openapi: '3.0.0' })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // 1 CDN manifest (404) + 1 GitHub commits + 1 GitHub spec
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     await fs.rm(tempDir, { recursive: true, force: true })
   })
 
@@ -82,9 +87,12 @@ describe('resolveOpenApiSpec', () => {
     process.env.HTTPS_PROXY = 'http://proxy.example.test:8080'
 
     const fetchMock = vi.fn(async (input: URL | string, init?: RequestInit) => {
-      expect(init?.dispatcher).toBeDefined()
-
       const url = String(input)
+      // CDN not deployed — fall through to GitHub
+      if (url.includes('stripe-sync.dev')) {
+        return new Response('not found', { status: 404 })
+      }
+      expect(init?.dispatcher).toBeDefined()
       if (url.includes('/commits')) {
         return new Response(JSON.stringify([{ sha: 'abc123def456' }]), { status: 200 })
       }
@@ -99,7 +107,8 @@ describe('resolveOpenApiSpec', () => {
       })
 
       expect(result.source).toBe('github')
-      expect(fetchMock).toHaveBeenCalledTimes(2)
+      // 1 CDN manifest (404) + 1 GitHub commits + 1 GitHub spec
+      expect(fetchMock).toHaveBeenCalledTimes(3)
     } finally {
       if (originalHttpsProxy === undefined) {
         delete process.env.HTTPS_PROXY
