@@ -64,6 +64,7 @@ If there are fixable issues, fix them directly. If you made changes, end with a 
 If everything looks good, say "No issues found." for that section.'
 
 if $create_pr; then
+  base_branch="$(git rev-parse --abbrev-ref HEAD)"
   branch="chore/audit-$(date +%Y%m%d)"
   git checkout -b "$branch" 2>/dev/null || git checkout "$branch"
 
@@ -82,7 +83,7 @@ Do NOT push or create a PR — the calling script handles that."
     gh pr create \
       --title "chore: automated repo audit $(date +%Y-%m-%d)" \
       --body "Automated audit found and fixed issues. See commit messages for details." \
-      --base "$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null | sed 's|origin/||' || echo main)"
+      --base "$base_branch"
     echo "PR created."
   fi
 else

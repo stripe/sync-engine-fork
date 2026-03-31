@@ -155,3 +155,56 @@ describe('service isolation', () => {
     ).toBe(false)
   })
 })
+
+// MARK: - Standalone packages (no workspace dependencies)
+
+describe('standalone packages', () => {
+  const STANDALONE = ['util-postgres', 'openapi', 'ts-cli']
+
+  for (const dir of STANDALONE) {
+    it(`packages/${dir} does not import any @stripe/sync-* workspace package`, () => {
+      const srcDir = resolve(packagesDir, dir, 'src')
+      const files = collectSourceFiles(srcDir)
+      const violations: string[] = []
+      for (const file of files) {
+        for (const imp of extractImports(file)) {
+          if (imp.startsWith('@stripe/sync-')) {
+            const rel = relative(ROOT, file)
+            violations.push(`${rel} imports ${imp}`)
+          }
+        }
+      }
+      expect(
+        violations,
+        `LAYER VIOLATION: packages/${dir} must have zero workspace dependencies.\n` +
+          `See docs/architecture/packages.md\n` +
+          violations.join('\n')
+      ).toHaveLength(0)
+    })
+  }
+})
+
+// MARK: - App layer ordering
+
+describe('app layer ordering', () => {
+  it('apps/engine does not import from apps/service', () => {
+    const srcDir = resolve(appsDir, 'engine', 'src')
+    const files = collectSourceFiles(srcDir)
+    const violations: string[] = []
+    for (const file of files) {
+      for (const imp of extractImports(file)) {
+        if (imp.includes('@stripe/sync-service')) {
+          const rel = relative(ROOT, file)
+          violations.push(`${rel} imports ${imp}`)
+        }
+      }
+    }
+    expect(
+      violations,
+      `LAYER VIOLATION: apps/engine must not import from apps/service.\n` +
+        `Service depends on engine, not the reverse.\n` +
+        `See docs/architecture/packages.md\n` +
+        violations.join('\n')
+    ).toHaveLength(0)
+  })
+})
