@@ -70,7 +70,7 @@ describe('Stripe spec CDN', () => {
 
     // Use an isolated cache dir so we don't hit a pre-existing cache entry
     const cacheDir = path.join(os.tmpdir(), `openapi-cdn-test-${Date.now()}`)
-    const result = await resolveOpenApiSpec({ apiVersion: nonBundled, cacheDir })
+    const result = await resolveOpenApiSpec({ apiVersion: nonBundled, cacheDir }, fetch)
 
     expect(result.source).toBe('cdn')
     expect(result.apiVersion).toBe(nonBundled)
