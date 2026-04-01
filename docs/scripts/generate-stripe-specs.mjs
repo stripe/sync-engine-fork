@@ -33,7 +33,11 @@ const REPO_URL = 'https://github.com/stripe/openapi'
 const SPEC_PATHS = ['latest/openapi.spec3.sdk.json', 'openapi/spec3.json']
 
 function git(...args) {
-  return execFileSync('git', ['-C', repoDir, ...args], { encoding: 'utf8' })
+  // maxBuffer: Stripe specs are ~10 MB each; default 1 MB would silently truncate/throw.
+  return execFileSync('git', ['-C', repoDir, ...args], {
+    encoding: 'utf8',
+    maxBuffer: 50 * 1024 * 1024,
+  })
 }
 
 // Clone or use pre-cloned repo
