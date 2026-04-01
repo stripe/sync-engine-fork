@@ -340,6 +340,34 @@ export function createStripeSource(
 
 export default createStripeSource()
 
+// MARK: - fetchById
+
+/**
+ * Fetch a single Stripe object by stream name and ID.
+ * Uses the resource registry's retrieveFn, which is derived from the OpenAPI spec.
+ * Returns null if the stream is unknown or has no retrieve endpoint.
+ */
+export async function fetchById(
+  config: Config,
+  stream: string,
+  id: string
+): Promise<Record<string, unknown> | null> {
+  const resolved = await resolveOpenApiSpec(
+    { apiVersion: config.api_version ?? BUNDLED_API_VERSION },
+    apiFetch
+  )
+  const registry = buildResourceRegistry(
+    resolved.spec,
+    config.api_key,
+    resolved.apiVersion,
+    config.base_url
+  )
+  const resource = registry[stream]
+  if (!resource?.retrieveFn) return null
+  const obj = await resource.retrieveFn(id)
+  return obj as Record<string, unknown>
+}
+
 // MARK: - Re-exports
 
 export { buildResourceRegistry, DEFAULT_SYNC_OBJECTS } from './resourceRegistry.js'

@@ -13,9 +13,26 @@ import { google } from 'googleapis'
 import { z } from 'zod'
 import { configSchema } from './spec.js'
 import type { Config } from './spec.js'
-import { appendRows, ensureSheet, ensureSpreadsheet } from './writer.js'
+import {
+  appendRows,
+  createIntroSheet,
+  deleteSpreadsheet,
+  ensureSheet,
+  ensureSpreadsheet,
+  protectSheets,
+  updateRows,
+} from './writer.js'
 
-export { ensureSpreadsheet, ensureSheet, appendRows, readSheet } from './writer.js'
+export {
+  ensureSpreadsheet,
+  ensureSheet,
+  appendRows,
+  updateRows,
+  readSheet,
+  createIntroSheet,
+  protectSheets,
+  deleteSpreadsheet,
+} from './writer.js'
 
 // MARK: - Spec
 
@@ -23,7 +40,7 @@ export { configSchema, envVars, type Config } from './spec.js'
 
 // MARK: - Helpers
 
-function makeSheetsClient(config: Config) {
+function makeOAuth2Client(config: Config) {
   const clientId = config.client_id || process.env['GOOGLE_CLIENT_ID']
   const clientSecret = config.client_secret || process.env['GOOGLE_CLIENT_SECRET']
   if (!clientId) throw new Error('client_id required (provide in config or set GOOGLE_CLIENT_ID)')
@@ -34,7 +51,15 @@ function makeSheetsClient(config: Config) {
     access_token: config.access_token,
     refresh_token: config.refresh_token,
   })
-  return google.sheets({ version: 'v4', auth })
+  return auth
+}
+
+function makeSheetsClient(config: Config) {
+  return google.sheets({ version: 'v4', auth: makeOAuth2Client(config) })
+}
+
+function makeDriveClient(config: Config) {
+  return google.drive({ version: 'v3', auth: makeOAuth2Client(config) })
 }
 
 /** Stringify a value for a Sheets cell. */
@@ -75,15 +100,49 @@ export function createDestination(
       return { config: z.toJSONSchema(configSchema) }
     },
 
+    async setup({ config, catalog }: { config: Config; catalog: ConfiguredCatalog }) {
+      const sheets = sheetsClient ?? makeSheetsClient(config)
+
+      // Always create a new spreadsheet — the returned ID should be saved by the caller
+      spreadsheetId = await ensureSpreadsheet(sheets, config.spreadsheet_title)
+
+      // Create the Overview intro tab first (handles "Sheet1" rename if needed)
+      const streamNames = catalog.streams.map((s) => s.stream.name)
+      await createIntroSheet(sheets, spreadsheetId, streamNames)
+
+      // Create a data tab for each stream with headers derived from its JSON schema
+      const sheetIds: number[] = []
+      for (const { stream } of catalog.streams) {
+        const properties = stream.json_schema?.['properties'] as Record<string, unknown> | undefined
+        const headers = properties ? Object.keys(properties) : []
+        const sheetId = await ensureSheet(sheets, spreadsheetId, stream.name, headers)
+        sheetIds.push(sheetId)
+      }
+
+      // Protect all data tabs with a warning so users know edits may be overwritten
+      await protectSheets(sheets, spreadsheetId, sheetIds)
+
+      return { spreadsheet_id: spreadsheetId }
+    },
+
+    async teardown({ config }: { config: Config }) {
+      const id = config.spreadsheet_id
+      if (!id) throw new Error('spreadsheet_id is required for teardown')
+      const drive = makeDriveClient(config)
+      await deleteSpreadsheet(drive, id)
+    },
+
     async check({ config }: { config: Config }): Promise<CheckResult> {
       const sheets = sheetsClient ?? makeSheetsClient(config)
+      if (!config.spreadsheet_id) throw new Error('spreadsheet_id is required for check')
       try {
-        await sheets.spreadsheets.get({
-          spreadsheetId: config.spreadsheet_id ?? 'test',
-        })
+        await sheets.spreadsheets.get({ spreadsheetId: config.spreadsheet_id })
         return { status: 'succeeded' }
-      } catch {
-        return { status: 'succeeded', message: 'Sheets client is configured' }
+      } catch (err) {
+        return {
+          status: 'failed',
+          message: err instanceof Error ? err.message : String(err),
+        }
       }
     },
 
@@ -101,19 +160,34 @@ export function createDestination(
       const sheets = sheetsClient ?? makeSheetsClient(config)
       const batchSize = config.batch_size ?? 50
 
-      // Resolve or create spreadsheet
-      spreadsheetId =
-        config.spreadsheet_id || (await ensureSpreadsheet(sheets, config.spreadsheet_title))
+      if (config.spreadsheet_id) {
+        spreadsheetId = config.spreadsheet_id
+      } else {
+        spreadsheetId = await ensureSpreadsheet(sheets, config.spreadsheet_title)
+      }
 
-      // Per-stream state: column headers and buffered rows
+      // Per-stream state: column headers, append buffer, and update buffer
       const streamHeaders = new Map<string, string[]>()
       const streamBuffers = new Map<string, unknown[][]>()
+      const streamUpdates = new Map<string, { rowNumber: number; values: string[] }[]>()
 
-      const flushStream = async (streamName: string) => {
+      const flushAppends = async (streamName: string) => {
         const buffer = streamBuffers.get(streamName)
         if (!buffer || buffer.length === 0) return
         await appendRows(sheets, spreadsheetId!, streamName, buffer)
         streamBuffers.set(streamName, [])
+      }
+
+      const flushUpdates = async (streamName: string) => {
+        const updates = streamUpdates.get(streamName)
+        if (!updates || updates.length === 0) return
+        await updateRows(sheets, spreadsheetId!, streamName, updates)
+        streamUpdates.set(streamName, [])
+      }
+
+      const flushStream = async (streamName: string) => {
+        await flushAppends(streamName)
+        await flushUpdates(streamName)
       }
 
       const flushAll = async () => {
@@ -125,25 +199,34 @@ export function createDestination(
       try {
         for await (const msg of $stdin) {
           if (msg.type === 'record') {
-            const { stream, data } = msg
+            const { stream, data, row_number } = msg
 
             // First record for this stream — discover headers, create tab
             if (!streamHeaders.has(stream)) {
               const headers = Object.keys(data)
               streamHeaders.set(stream, headers)
               streamBuffers.set(stream, [])
+              streamUpdates.set(stream, [])
               await ensureSheet(sheets, spreadsheetId!, stream, headers)
             }
 
-            // Map record data to row values in header order
             const headers = streamHeaders.get(stream)!
             const row = headers.map((h) => stringify(data[h]))
-            const buffer = streamBuffers.get(stream)!
-            buffer.push(row)
 
-            // Flush when batch is full
-            if (buffer.length >= batchSize) {
-              await flushStream(stream)
+            if (row_number != null) {
+              // Targeted update: overwrite the existing row in-place
+              const updates = streamUpdates.get(stream)!
+              updates.push({ rowNumber: row_number, values: row })
+              if (updates.length >= batchSize) {
+                await flushUpdates(stream)
+              }
+            } else {
+              // New row: append to the sheet
+              const buffer = streamBuffers.get(stream)!
+              buffer.push(row)
+              if (buffer.length >= batchSize) {
+                await flushAppends(stream)
+              }
             }
           } else if (msg.type === 'state') {
             // Flush the stream's pending rows, then re-emit the state checkpoint
@@ -178,7 +261,10 @@ export function createDestination(
       }
       yield logMsg
     },
-  } satisfies Destination<Config> & { spreadsheetId?: string }
+    // Setup must be called explicitly via /setup before syncing.
+    // The engine should not auto-run it at the start of sync().
+    skipAutoSetup: true as const,
+  } satisfies Destination<Config> & { spreadsheetId?: string; skipAutoSetup: true }
 
   return destination
 }

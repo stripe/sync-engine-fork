@@ -19,6 +19,8 @@ import {
 import { takeStateCheckpoints } from '../lib/pipeline.js'
 import { ndjsonResponse } from '@stripe/sync-ts-cli/ndjson'
 import { logger } from '../logger.js'
+import { fetchById } from '@stripe/sync-source-stripe'
+import type { Config as StripeConfig } from '@stripe/sync-source-stripe'
 import {
   sslConfigFromConnectionString,
   stripSslParams,
@@ -403,6 +405,93 @@ export function createApp(resolver: ConnectorResolver) {
       const messages = parseNdjsonStream<Message>(c.req.raw.body!)
       return ndjsonResponse(
         logApiStream('Engine API /write', engine.write(messages), context, startedAt)
+      )
+    }) as any
+  )
+
+  const ThinEventSchema = z.array(
+    z.object({
+      stream: z.string(),
+      id: z.string(),
+      row_number: z.number().int().positive().optional(),
+    })
+  )
+
+  app.openapi(
+    createRoute({
+      operationId: 'writeEvents',
+      method: 'post',
+      path: '/write-events',
+      tags: ['Stateless Sync API'],
+      summary: 'Write thin events to destination',
+      description:
+        'Accepts an array of {stream, id, row_number?} objects, fetches full Stripe objects, and writes them to the destination.',
+      requestParams: { header: pipelineHeaders },
+      requestBody: {
+        required: true,
+        content: { 'application/json': { schema: ThinEventSchema } },
+      },
+      responses: {
+        200: {
+          description: 'NDJSON stream of write result messages',
+          content: { 'application/x-ndjson': { schema: DestinationOutputSchema } },
+        },
+        400: errorResponse,
+      },
+    }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (async (c: any) => {
+      const params = parseSyncParams(c)
+      const context = { path: '/write-events', ...syncRequestContext(params) }
+      const startedAt = Date.now()
+
+      let events: z.infer<typeof ThinEventSchema>
+      try {
+        events = ThinEventSchema.parse(await c.req.json())
+      } catch {
+        return c.json({ error: 'Body must be an array of {stream, id, row_number?}' }, 400)
+      }
+      if (events.length === 0) {
+        return c.json({ error: 'Events array must not be empty' }, 400)
+      }
+
+      logger.info({ ...context, eventCount: events.length }, 'Engine API /write-events started')
+
+      const sourceConfig = params.pipeline.source as unknown as StripeConfig
+      const now = Date.now()
+      const fetched = await Promise.all(
+        events.map(async (event) => {
+          const data = await fetchById(sourceConfig, event.stream, event.id)
+          return { event, data }
+        })
+      )
+
+      for (const { event, data } of fetched) {
+        if (!data) {
+          logger.warn(
+            { stream: event.stream, id: event.id },
+            'Engine API /write-events: fetchById returned null — skipping'
+          )
+        }
+      }
+
+      const records = fetched.filter(({ data }) => data != null)
+
+      async function* recordMessages(): AsyncIterable<import('@stripe/sync-protocol').DestinationInput> {
+        for (const { event, data } of records) {
+          yield {
+            type: 'record' as const,
+            stream: event.stream,
+            data: data!,
+            emitted_at: now,
+            row_number: event.row_number,
+          }
+        }
+      }
+
+      const engine = await createEngineFromParams(params.pipeline, resolver, readonlyStateStore())
+      return ndjsonResponse(
+        logApiStream('Engine API /write-events', engine.write(recordMessages()), context, startedAt)
       )
     }) as any
   )

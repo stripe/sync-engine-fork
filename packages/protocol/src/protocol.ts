@@ -111,6 +111,13 @@ export const RecordMessage = z
     stream: z.string(),
     data: z.record(z.string(), z.unknown()),
     emitted_at: z.number(),
+    /**
+     * 1-based row number in the destination sheet/table.
+     * When present, the destination should update the record in-place at this
+     * position rather than appending a new row. Used by live-event write paths
+     * (e.g. /write-events) where the orchestrator tracks row positions.
+     */
+    row_number: z.number().int().positive().optional(),
   })
   .meta({ id: 'RecordMessage' })
 export type RecordMessage = z.infer<typeof RecordMessage>
@@ -334,4 +341,11 @@ export interface Destination<TConfig extends Record<string, unknown> = Record<st
 
   /** Clean up downstream resources. Called when a sync is deleted. */
   teardown?(params: { config: TConfig }): Promise<void>
+
+  /**
+   * When true, the engine will NOT call setup() automatically at the start of sync().
+   * Use this for destinations that manage their own setup lifecycle externally
+   * (e.g. via a dedicated /setup endpoint call before syncing).
+   */
+  skipAutoSetup?: boolean
 }

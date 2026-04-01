@@ -76,6 +76,8 @@ export function createMemorySheets() {
         const ss = getSpreadsheet(params.spreadsheetId)
         const requests = (params.requestBody?.requests ?? []) as Record<string, unknown>[]
 
+        const replies: unknown[] = []
+
         for (const req of requests) {
           if (req.addSheet) {
             const props = (req.addSheet as { properties?: { title?: string } }).properties
@@ -83,10 +85,10 @@ export function createMemorySheets() {
             if (ss.sheets.has(name)) {
               throw Object.assign(new Error(`Sheet already exists: ${name}`), { code: 400 })
             }
-            ss.sheets.set(name, { sheetId: nextSheetId++, values: [] })
-          }
-
-          if (req.updateSheetProperties) {
+            const sheetId = nextSheetId++
+            ss.sheets.set(name, { sheetId, values: [] })
+            replies.push({ addSheet: { properties: { sheetId, title: name } } })
+          } else if (req.updateSheetProperties) {
             const update = req.updateSheetProperties as {
               properties: { sheetId: number; title: string }
               fields: string
@@ -99,10 +101,13 @@ export function createMemorySheets() {
                 break
               }
             }
+            replies.push({})
+          } else {
+            replies.push({})
           }
         }
 
-        return { data: {} }
+        return { data: { replies } }
       },
 
       values: {

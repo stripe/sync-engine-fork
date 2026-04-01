@@ -167,6 +167,25 @@ export function createEngine(
     return _catalog
   }
 
+  async function setupSource(catalog: ConfiguredCatalog): Promise<void> {
+    if (connectors.source.setup) {
+      await withLoggedStep('Engine source setup', baseContext, () =>
+        connectors.source.setup!({ config: sourceConfig, catalog })
+      )
+    }
+  }
+
+  async function setupDestination(
+    catalog: ConfiguredCatalog
+  ): Promise<Record<string, unknown> | undefined> {
+    if (connectors.destination.setup) {
+      const result = await withLoggedStep('Engine destination setup', baseContext, () =>
+        connectors.destination.setup!({ config: destConfig, catalog })
+      )
+      return result ?? undefined
+    }
+  }
+
   return {
     async setup() {
       const catalog = await getCatalog()
@@ -252,7 +271,14 @@ export function createEngine(
     },
 
     async *sync(input?: AsyncIterable<unknown>) {
-      await this.setup()
+      if (connectors.destination.skipAutoSetup) {
+        // Destination manages its own setup externally (e.g. via /setup endpoint).
+        // Only set up the source here.
+        const catalog = await getCatalog()
+        await setupSource(catalog)
+      } else {
+        await this.setup()
+      }
       yield* pipe(this.read(input), this.write, persistState(stateStore))
     },
   }
