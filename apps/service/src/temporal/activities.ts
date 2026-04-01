@@ -1,6 +1,6 @@
 import { heartbeat } from '@temporalio/activity'
 import { parseNdjsonStream } from '@stripe/sync-engine'
-import type { SyncActivities, RunResult } from './types.js'
+import type { RunResult } from './types.js'
 
 /**
  * Resolve a sync's config with credentials inlined from the service,
@@ -24,11 +24,11 @@ async function resolveParams(serviceUrl: string, pipelineId: string): Promise<st
   })
 }
 
-export function createActivities(opts: { serviceUrl: string; engineUrl: string }): SyncActivities {
+export function createActivities(opts: { serviceUrl: string; engineUrl: string }) {
   const { serviceUrl, engineUrl } = opts
 
   return {
-    async setup(pipelineId) {
+    async setup(pipelineId: string): Promise<void> {
       const params = await resolveParams(serviceUrl, pipelineId)
       const resp = await fetch(`${engineUrl}/setup`, {
         method: 'POST',
@@ -40,7 +40,7 @@ export function createActivities(opts: { serviceUrl: string; engineUrl: string }
       }
     },
 
-    async sync(pipelineId, input?) {
+    async sync(pipelineId: string, input?: unknown[]): Promise<RunResult> {
       const params = await resolveParams(serviceUrl, pipelineId)
       const headers: Record<string, string> = { 'X-Pipeline': params }
       let body: string | undefined
@@ -89,7 +89,7 @@ export function createActivities(opts: { serviceUrl: string; engineUrl: string }
       return { errors }
     },
 
-    async teardown(pipelineId) {
+    async teardown(pipelineId: string): Promise<void> {
       const params = await resolveParams(serviceUrl, pipelineId)
       const resp = await fetch(`${engineUrl}/teardown`, {
         method: 'POST',
@@ -102,3 +102,5 @@ export function createActivities(opts: { serviceUrl: string; engineUrl: string }
     },
   }
 }
+
+export type SyncActivities = ReturnType<typeof createActivities>

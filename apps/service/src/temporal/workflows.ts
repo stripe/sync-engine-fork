@@ -7,7 +7,8 @@ import {
   continueAsNew,
 } from '@temporalio/workflow'
 
-import type { SyncActivities, WorkflowStatus } from './types.js'
+import type { SyncActivities } from './activities.js'
+import type { WorkflowStatus } from './types.js'
 
 const CONTINUE_AS_NEW_THRESHOLD = 500
 const EVENT_BATCH_SIZE = 50
