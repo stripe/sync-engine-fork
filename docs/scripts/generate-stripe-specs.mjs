@@ -1,24 +1,23 @@
 #!/usr/bin/env node
 /**
- * Fetches every published Stripe REST API spec version from GitHub and writes
- * <version>.json + manifest.json to <outputDir>.
+ * Fetches every published Stripe REST API spec version from github.com/stripe/openapi
+ * and writes <version>.json + manifest.json to <outputDir>.
  *
  * Usage:
  *   node generate-stripe-specs.mjs <outputDir>
  *
- * The output lands at docs/out/stripe-api-specs/ during the Vercel build and
- * is served from stripe-sync.dev/stripe-api-specs — no GitHub rate limits for consumers.
+ * Uses a blobless git clone — no GitHub API rate limits, no auth required.
+ * Set STRIPE_OPENAPI_REPO to a pre-cloned path to skip the clone (e.g. from CI cache).
  *
  * These are the official Stripe REST API specs (github.com/stripe/openapi), NOT
  * the Sync Engine's own OpenAPI spec (which lives at /openapi/engine.json etc.).
  *
- * Uses the GitHub REST API + raw.githubusercontent.com (no git clone required).
- * Set GITHUB_TOKEN / GH_TOKEN to avoid the 60 req/h unauthenticated rate limit.
- *
  * No npm dependencies.
  */
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
 
 const [outputDir] = process.argv.slice(2)
 if (!outputDir) {
@@ -26,67 +25,65 @@ if (!outputDir) {
   process.exit(1)
 }
 
-const OWNER = 'stripe'
-const REPO = 'openapi'
-// Both historic and current spec paths in the stripe/openapi repo
-const SPEC_PATHS = ['latest/openapi.spec3.sdk.json', 'openapi/spec3.json']
-const TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN
-
-function githubHeaders() {
-  const h = {
-    Accept: 'application/vnd.github+json',
-    'User-Agent': 'stripe-sync-engine-spec-generator',
-  }
-  if (TOKEN) h['Authorization'] = `Bearer ${TOKEN}`
-  return h
-}
-
-async function githubApi(path) {
-  const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}${path}`, {
-    headers: githubHeaders(),
-  })
-  if (!res.ok) {
-    throw new Error(`GitHub API ${res.status} for ${path}: ${await res.text()}`)
-  }
-  return res.json()
-}
-
-async function fetchRaw(sha, specPath) {
-  const url = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${sha}/${specPath}`
-  const res = await fetch(url, { headers: { 'User-Agent': 'stripe-sync-engine-spec-generator' } })
-  return res.ok ? res.text() : null
-}
-
-// Collect all commits that touched either spec path (paginated).
+const REPO_URL = 'https://github.com/stripe/openapi'
 // stripe/openapi uses 'latest/openapi.spec3.sdk.json' for recent specs and
-// 'openapi/spec3.json' for historic ones — query both and deduplicate.
-console.error('Fetching commit list from GitHub API...')
-const seenShas = new Set()
-const allShas = []
-for (const specPath of SPEC_PATHS) {
-  for (let page = 1; ; page++) {
-    const commits = await githubApi(`/commits?path=${specPath}&per_page=100&page=${page}`)
-    for (const c of commits) {
-      if (!seenShas.has(c.sha)) {
-        seenShas.add(c.sha)
-        allShas.push(c.sha)
-      }
+// 'openapi/spec3.json' for historic ones.
+const SPEC_PATHS = ['latest/openapi.spec3.sdk.json', 'openapi/spec3.json']
+
+function git(...args) {
+  return execFileSync('git', ['-C', repoDir, ...args], { encoding: 'utf8' })
+}
+
+// Clone or use pre-cloned repo (STRIPE_OPENAPI_REPO lets CI inject a cached clone)
+const repoDir = process.env.STRIPE_OPENAPI_REPO ?? join(tmpdir(), 'stripe-openapi')
+if (!existsSync(join(repoDir, '.git'))) {
+  console.error(`Cloning ${REPO_URL} (blobless)...`)
+  execFileSync(
+    'git',
+    ['clone', '--filter=blob:none', '--no-tags', '--single-branch', REPO_URL, repoDir],
+    { stdio: 'inherit' }
+  )
+} else {
+  console.error(`Using pre-cloned repo at ${repoDir}`)
+}
+
+// Find all commits that touched either spec path.
+// ls-tree reads tree objects (included in blobless clone) — no network needed here.
+console.error('Finding relevant commits...')
+const commits = git('log', '--format=%H', '--', ...SPEC_PATHS).trim().split('\n').filter(Boolean)
+console.error(`  ${commits.length} commits`)
+
+// Collect unique blob SHAs via ls-tree (local, no network) to avoid re-fetching duplicates.
+// Two commits that share a blob SHA have identical content → only fetch once.
+const blobToPath = new Map() // blobSha -> specPath
+for (const commit of commits) {
+  for (const specPath of SPEC_PATHS) {
+    let ls
+    try {
+      ls = git('ls-tree', commit, specPath).trim()
+    } catch {
+      continue
     }
-    if (commits.length < 100) break
+    if (!ls) continue
+    const blobSha = ls.split(/\s+/)[2]
+    if (!blobToPath.has(blobSha)) {
+      blobToPath.set(blobSha, specPath)
+    }
+    break // one spec per commit is enough
   }
 }
-console.error(`  ${allShas.length} commits to scan`)
+console.error(`  ${blobToPath.size} unique blobs to fetch`)
 
 mkdirSync(outputDir, { recursive: true })
 
-const seen = new Map()
-for (const sha of allShas) {
-  let raw = null
-  for (const specPath of SPEC_PATHS) {
-    raw = await fetchRaw(sha, specPath)
-    if (raw) break
+const seen = new Map() // version -> filename
+for (const [blobSha] of blobToPath) {
+  let raw
+  try {
+    raw = git('cat-file', 'blob', blobSha) // fetches just this blob on-demand
+  } catch {
+    continue
   }
-  if (!raw) continue
 
   let version
   try {
@@ -144,4 +141,4 @@ ${rows}
 `
 )
 
-console.error(`\nDone: ${seen.size} spec versions from ${allShas.length} commits`)
+console.error(`\nDone: ${seen.size} spec versions from ${commits.length} commits`)
