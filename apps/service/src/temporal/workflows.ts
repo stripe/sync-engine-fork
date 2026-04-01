@@ -26,7 +26,7 @@ const { setup, teardown } = proxyActivities<SyncActivities>({
 })
 
 // Run: 10m with retry and heartbeat
-const { run } = proxyActivities<SyncActivities>({
+const { sync } = proxyActivities<SyncActivities>({
   startToCloseTimeout: '10m',
   heartbeatTimeout: '2m',
   retry: retryPolicy,
@@ -41,7 +41,7 @@ export const deleteSignal = defineSignal('delete')
 // Query
 export const statusQuery = defineQuery<WorkflowStatus>('status')
 
-export async function syncWorkflow(syncId: string, opts?: { phase?: string }): Promise<void> {
+export async function realtimePipelineWorkflow(pipelineId: string, opts?: { phase?: string }): Promise<void> {
   let paused = false
   let deleted = false
   const eventBuffer: unknown[] = []
@@ -81,16 +81,16 @@ export async function syncWorkflow(syncId: string, opts?: { phase?: string }): P
   async function tickIteration() {
     iteration++
     if (iteration >= CONTINUE_AS_NEW_THRESHOLD) {
-      await continueAsNew<typeof syncWorkflow>(syncId, { phase: 'running' })
+      await continueAsNew<typeof realtimePipelineWorkflow>(pipelineId, { phase: 'running' })
     }
   }
 
-  // --- Setup (first run only) ---
+  // --- Setup (first sync only) ---
 
   if (phase !== 'running') {
-    await setup(syncId)
+    await setup(pipelineId)
     if (deleted) {
-      await teardown(syncId)
+      await teardown(pipelineId)
       return
     }
   }
@@ -104,16 +104,16 @@ export async function syncWorkflow(syncId: string, opts?: { phase?: string }): P
     // 1. Drain buffered events
     if (eventBuffer.length > 0) {
       const batch = eventBuffer.splice(0, EVENT_BATCH_SIZE)
-      await run(syncId, batch)
+      await sync(pipelineId, batch)
       await tickIteration()
       continue // Re-check for more events before reconciliation
     }
 
     // 2. Reconciliation: backfill page (service manages state internally)
-    await run(syncId)
+    await sync(pipelineId)
     await tickIteration()
   }
 
   // Teardown on delete
-  await teardown(syncId)
+  await teardown(pipelineId)
 }

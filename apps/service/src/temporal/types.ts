@@ -3,9 +3,9 @@ export interface RunResult {
 }
 
 export interface SyncActivities {
-  setup(syncId: string): Promise<void>
-  run(syncId: string, input?: unknown[]): Promise<RunResult>
-  teardown(syncId: string): Promise<void>
+  setup(pipelineId: string): Promise<void>
+  sync(pipelineId: string, input?: unknown[]): Promise<RunResult>
+  teardown(pipelineId: string): Promise<void>
 }
 
 export interface WorkflowStatus {

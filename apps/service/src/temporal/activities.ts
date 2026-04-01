@@ -28,8 +28,8 @@ export function createActivities(opts: { serviceUrl: string; engineUrl: string }
   const { serviceUrl, engineUrl } = opts
 
   return {
-    async setup(syncId) {
-      const params = await resolveParams(serviceUrl, syncId)
+    async setup(pipelineId) {
+      const params = await resolveParams(serviceUrl, pipelineId)
       const resp = await fetch(`${engineUrl}/setup`, {
         method: 'POST',
         headers: { 'X-Pipeline': params },
@@ -40,8 +40,8 @@ export function createActivities(opts: { serviceUrl: string; engineUrl: string }
       }
     },
 
-    async run(syncId, input?) {
-      const params = await resolveParams(serviceUrl, syncId)
+    async sync(pipelineId, input?) {
+      const params = await resolveParams(serviceUrl, pipelineId)
       const headers: Record<string, string> = { 'X-Pipeline': params }
       let body: string | undefined
 
@@ -89,8 +89,8 @@ export function createActivities(opts: { serviceUrl: string; engineUrl: string }
       return { errors }
     },
 
-    async teardown(syncId) {
-      const params = await resolveParams(serviceUrl, syncId)
+    async teardown(pipelineId) {
+      const params = await resolveParams(serviceUrl, pipelineId)
       const resp = await fetch(`${engineUrl}/teardown`, {
         method: 'POST',
         headers: { 'X-Pipeline': params },

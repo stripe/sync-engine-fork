@@ -193,7 +193,7 @@ describeWithEnv('temporal e2e: stripe → postgres', ['STRIPE_API_KEY'], ({ STRI
     console.log(`  Pipeline: ${sync.id}`)
 
     // --- Start workflow + worker ---
-    const handle = await infra.client.workflow.start('syncWorkflow', {
+    const handle = await infra.client.workflow.start('realtimePipelineWorkflow', {
       args: [sync.id],
       workflowId: `pipe_${sync.id}`,
       taskQueue: 'pg-queue',
@@ -358,7 +358,7 @@ describeWithEnv(
       const sync = (await syncRes.json()) as { id: string }
       console.log(`  Pipeline: ${sync.id}`)
 
-      const handle = await infra.client.workflow.start('syncWorkflow', {
+      const handle = await infra.client.workflow.start('realtimePipelineWorkflow', {
         args: [sync.id],
         workflowId: `pipe_${sync.id}`,
         taskQueue: 'sheets-queue',

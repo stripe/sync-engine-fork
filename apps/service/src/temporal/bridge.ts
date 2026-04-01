@@ -30,13 +30,13 @@ export class TemporalBridge {
   }
 
   /**
-   * Start a `syncWorkflow` for the given pipeline.
+   * Start a `realtimePipelineWorkflow` for the given pipeline.
    * Uses deterministic workflow ID so one workflow per pipeline.
    * The workflow receives only the pipelineId — it calls the service API
    * which resolves config and state on each activity call.
    */
   async start(pipelineId: string): Promise<void> {
-    await this.client.start('syncWorkflow', {
+    await this.client.start('realtimePipelineWorkflow', {
       workflowId: this.workflowId(pipelineId),
       taskQueue: this.taskQueue,
       args: [pipelineId],
