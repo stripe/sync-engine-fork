@@ -24,9 +24,19 @@ npx @stripe/sync-engine sync \
   --schema stripe
 ```
 
+## Documentation
+
+- [Architecture & packages](/architecture/packages.html)
+- [Cloud architecture](/architecture/cloud.html)
+- [Engine internals](/engine/ARCHITECTURE.html)
+- [Service internals](/service/ARCHITECTURE.html)
+- [Plans & RFCs](/plans/)
+- [Guides](/guides/)
+
 ## API Reference
 
 - [Engine API](/engine.html) — HTTP API for running syncs
+- [Stripe API Specs](/stripe-api-specs/) — CDN mirror of official Stripe OpenAPI specs (all versions)
 
 ## Slides
 

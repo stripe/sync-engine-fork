@@ -3,16 +3,25 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { OpenApiSpec, ResolveSpecConfig, ResolvedOpenApiSpec } from './types.js'
-import { fetchWithProxy } from './transport.js'
 
 const DEFAULT_CACHE_DIR = path.join(os.tmpdir(), 'stripe-sync-openapi-cache')
 const GENERATED_SPECS_DIR = fileURLToPath(new URL('./generated-specs', import.meta.url))
+
+// CDN mirror of the official Stripe REST API specs (from github.com/stripe/openapi).
+// Served from stripe-sync.dev — no auth, no GitHub rate limits.
+// These are the upstream Stripe API specs, NOT the Sync Engine's own OpenAPI spec.
+// Override with STRIPE_SPEC_CDN_BASE_URL env var (e.g. in tests or self-hosting).
+const STRIPE_SPEC_CDN_BASE_URL =
+  process.env.STRIPE_SPEC_CDN_BASE_URL ?? 'https://stripe-sync.dev/stripe-api-specs'
 
 // The spec bundled into this package at build time.
 // Update this constant and latest-spec.json together when bumping.
 export const LATEST_BUNDLED_API_VERSION = '2026-03-25.dahlia'
 
-export async function resolveOpenApiSpec(config: ResolveSpecConfig): Promise<ResolvedOpenApiSpec> {
+export async function resolveOpenApiSpec(
+  config: ResolveSpecConfig,
+  fetch: typeof globalThis.fetch
+): Promise<ResolvedOpenApiSpec> {
   const apiVersion = config.apiVersion
   if (!apiVersion || !/^\d{4}-\d{2}-\d{2}(\.\w+)?$/.test(apiVersion)) {
     throw new Error(
@@ -66,9 +75,22 @@ export async function resolveOpenApiSpec(config: ResolveSpecConfig): Promise<Res
     }
   }
 
-  let commitSha = await resolveCommitShaForApiVersion(apiVersion)
+  // Try the Vercel CDN mirror before falling back to the GitHub API.
+  // The CDN serves spec versions without auth or rate limits.
+  const cdnSpec = await tryFetchFromCdn(apiVersion, fetch)
+  if (cdnSpec) {
+    await tryWriteCache(cachePath, cdnSpec)
+    return {
+      apiVersion,
+      spec: cdnSpec,
+      source: 'cdn',
+      cachePath,
+    }
+  }
+
+  let commitSha = await resolveCommitShaForApiVersion(apiVersion, fetch)
   if (!commitSha) {
-    commitSha = await resolveLatestCommitSha()
+    commitSha = await resolveLatestCommitSha(fetch)
   }
   if (!commitSha) {
     throw new Error(
@@ -76,7 +98,7 @@ export async function resolveOpenApiSpec(config: ResolveSpecConfig): Promise<Res
     )
   }
 
-  const spec = await fetchSpecForCommit(commitSha)
+  const spec = await fetchSpecForCommit(commitSha, fetch)
   validateOpenApiSpec(spec)
   await tryWriteCache(cachePath, spec)
 
@@ -159,6 +181,35 @@ async function tryWriteCache(cachePath: string, spec: OpenApiSpec): Promise<void
   }
 }
 
+async function tryFetchFromCdn(
+  apiVersion: string,
+  fetch: typeof globalThis.fetch
+): Promise<OpenApiSpec | null> {
+  // The CDN manifest maps "YYYY-MM-DD.codename" → "YYYY-MM-DD.codename.json".
+  // We match by date part so "2026-03-25" resolves to "2026-03-25.dahlia.json".
+  if (!STRIPE_SPEC_CDN_BASE_URL) return null
+  try {
+    const manifestUrl = `${STRIPE_SPEC_CDN_BASE_URL}/manifest.json`
+    const manifestRes = await fetch(manifestUrl)
+    if (!manifestRes.ok) return null
+
+    const manifest = (await manifestRes.json()) as Record<string, string>
+    const datePart = extractDatePart(apiVersion)
+    const filename = Object.keys(manifest).find((v) => extractDatePart(v) === datePart)
+    if (!filename) return null
+
+    const specUrl = `${STRIPE_SPEC_CDN_BASE_URL}/${manifest[filename]}`
+    const specRes = await fetch(specUrl)
+    if (!specRes.ok) return null
+
+    const spec = (await specRes.json()) as unknown
+    validateOpenApiSpec(spec)
+    return spec
+  } catch {
+    return null
+  }
+}
+
 function getCachePath(cacheDir: string, apiVersion: string): string {
   const safeVersion = apiVersion.replace(/[^0-9a-zA-Z_-]/g, '_')
   return path.join(cacheDir, `${safeVersion}.spec3.sdk.json`)
@@ -169,12 +220,12 @@ function extractDatePart(apiVersion: string): string {
   return match ? match[1] : apiVersion
 }
 
-async function resolveLatestCommitSha(): Promise<string | null> {
+async function resolveLatestCommitSha(fetch: typeof globalThis.fetch): Promise<string | null> {
   const url = new URL('https://api.github.com/repos/stripe/openapi/commits')
   url.searchParams.set('path', 'latest/openapi.spec3.sdk.json')
   url.searchParams.set('per_page', '1')
 
-  const response = await fetchWithProxy(url, { headers: githubHeaders() })
+  const response = await fetch(url, { headers: githubHeaders() })
   if (!response.ok) {
     throw new Error(
       `Failed to resolve latest Stripe OpenAPI commit (${response.status} ${response.statusText})`
@@ -186,14 +237,17 @@ async function resolveLatestCommitSha(): Promise<string | null> {
   return typeof commitSha === 'string' && commitSha.length > 0 ? commitSha : null
 }
 
-async function resolveCommitShaForApiVersion(apiVersion: string): Promise<string | null> {
+async function resolveCommitShaForApiVersion(
+  apiVersion: string,
+  fetch: typeof globalThis.fetch
+): Promise<string | null> {
   const until = `${extractDatePart(apiVersion)}T23:59:59Z`
   const url = new URL('https://api.github.com/repos/stripe/openapi/commits')
   url.searchParams.set('path', 'latest/openapi.spec3.sdk.json')
   url.searchParams.set('until', until)
   url.searchParams.set('per_page', '1')
 
-  const response = await fetchWithProxy(url, { headers: githubHeaders() })
+  const response = await fetch(url, { headers: githubHeaders() })
   if (!response.ok) {
     throw new Error(
       `Failed to resolve Stripe OpenAPI commit (${response.status} ${response.statusText})`
@@ -205,9 +259,12 @@ async function resolveCommitShaForApiVersion(apiVersion: string): Promise<string
   return typeof commitSha === 'string' && commitSha.length > 0 ? commitSha : null
 }
 
-async function fetchSpecForCommit(commitSha: string): Promise<OpenApiSpec> {
+async function fetchSpecForCommit(
+  commitSha: string,
+  fetch: typeof globalThis.fetch
+): Promise<OpenApiSpec> {
   const url = `https://raw.githubusercontent.com/stripe/openapi/${commitSha}/latest/openapi.spec3.sdk.json`
-  const response = await fetchWithProxy(url, { headers: githubHeaders() })
+  const response = await fetch(url, { headers: githubHeaders() })
   if (!response.ok) {
     throw new Error(
       `Failed to download Stripe OpenAPI spec for commit ${commitSha} (${response.status} ${response.statusText})`

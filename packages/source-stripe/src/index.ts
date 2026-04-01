@@ -10,6 +10,7 @@ import { buildResourceRegistry } from './resourceRegistry.js'
 import { catalogFromRegistry, catalogFromOpenApi } from './catalog.js'
 import {
   resolveOpenApiSpec,
+  BUNDLED_API_VERSION,
   SpecParser,
   OPENAPI_RESOURCE_TABLE_ALIASES,
 } from '@stripe/sync-openapi'
@@ -23,6 +24,10 @@ import type { ResourceConfig } from './types.js'
 import { makeClient } from './client.js'
 import type { RateLimiter } from './rate-limiter.js'
 import { createInMemoryRateLimiter, DEFAULT_MAX_RPS } from './rate-limiter.js'
+import { fetchWithProxy } from './transport.js'
+
+const apiFetch: typeof globalThis.fetch = (input, init) =>
+  fetchWithProxy(input as URL | string, init ?? {})
 
 // MARK: - Spec
 
@@ -148,9 +153,10 @@ export function createStripeSource(
     },
 
     async discover({ config }) {
-      const resolved = await resolveOpenApiSpec({
-        apiVersion: config.api_version ?? '2020-08-27',
-      })
+      const resolved = await resolveOpenApiSpec(
+        { apiVersion: config.api_version ?? BUNDLED_API_VERSION },
+        apiFetch
+      )
       const registry = buildResourceRegistry(
         resolved.spec,
         config.api_key,
@@ -210,9 +216,10 @@ export function createStripeSource(
       const rateLimiter =
         externalRateLimiter ?? createInMemoryRateLimiter(config.rate_limit ?? DEFAULT_MAX_RPS)
       const stripe = makeClient(config)
-      const resolved = await resolveOpenApiSpec({
-        apiVersion: config.api_version ?? '2020-08-27',
-      })
+      const resolved = await resolveOpenApiSpec(
+        { apiVersion: config.api_version ?? BUNDLED_API_VERSION },
+        apiFetch
+      )
       const registry = buildResourceRegistry(
         resolved.spec,
         config.api_key,
@@ -339,7 +346,7 @@ export default createStripeSource()
 
 // MARK: - Re-exports
 
-export { buildResourceRegistry } from './resourceRegistry.js'
+export { buildResourceRegistry, DEFAULT_SYNC_OBJECTS } from './resourceRegistry.js'
 export { catalogFromRegistry } from './catalog.js'
 export { SpecParser, OPENAPI_RESOURCE_TABLE_ALIASES } from './openapi/specParser.js'
 export type { ParsedResourceTable, ParsedOpenApiSpec } from './openapi/types.js'
