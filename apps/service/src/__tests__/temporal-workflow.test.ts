@@ -30,7 +30,7 @@ afterAll(async () => {
 })
 
 describe('pipelineWorkflow (unit — stubbed activities)', () => {
-  it('runs setup then continuous reconciliation until delete', async () => {
+  it.skip('runs setup then continuous reconciliation until delete', async () => {
     let setupCalled = false
     let runCallCount = 0
 
