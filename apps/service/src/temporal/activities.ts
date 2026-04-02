@@ -1,28 +1,58 @@
 import { heartbeat } from '@temporalio/activity'
-import { parseNdjsonStream } from '@stripe/sync-engine'
+import { createRemoteEngine } from '@stripe/sync-engine'
+import type { PipelineConfig, Message } from '@stripe/sync-protocol'
 import { Kafka } from 'kafkajs'
 import type { RunResult } from './types.js'
 
 /**
- * Resolve a sync's config with credentials inlined from the service,
- * then build the X-Pipeline header value for the engine API.
+ * Resolve a pipeline's config with credentials inlined from the service.
  */
-async function resolveParams(serviceUrl: string, pipelineId: string): Promise<string> {
+async function resolveConfig(serviceUrl: string, pipelineId: string): Promise<PipelineConfig> {
   const resp = await fetch(`${serviceUrl}/pipelines/${pipelineId}`)
   if (!resp.ok) {
     const text = await resp.text().catch(() => '')
     throw new Error(`Failed to resolve pipeline ${pipelineId} (${resp.status}): ${text}`)
   }
-  const config = (await resp.json()) as {
-    source: { name: string; [k: string]: unknown }
-    destination: { name: string; [k: string]: unknown }
-    streams?: Array<{ name: string; sync_mode?: string }>
+  return (await resp.json()) as PipelineConfig
+}
+
+/** Convert an array to an async iterable. */
+async function* asIterable<T>(items: T[]): AsyncIterable<T> {
+  for (const item of items) yield item
+}
+
+/** Iterate a message stream, collecting errors/state/records and heartbeating. */
+async function drainMessages(stream: AsyncIterable<Record<string, unknown>>): Promise<{
+  errors: RunResult['errors']
+  state: Record<string, unknown>
+  records: unknown[]
+}> {
+  const errors: RunResult['errors'] = []
+  const state: Record<string, unknown> = {}
+  const records: unknown[] = []
+  let count = 0
+
+  for await (const m of stream) {
+    count++
+    if (m.type === 'error') {
+      errors.push({
+        message:
+          (m.message as string) ||
+          ((m.data as Record<string, unknown>)?.message as string) ||
+          'Unknown error',
+        failure_type: m.failure_type as string | undefined,
+        stream: m.stream as string | undefined,
+      })
+    } else if (m.type === 'state' && typeof m.stream === 'string') {
+      state[m.stream] = m.data
+    } else if (m.type === 'record') {
+      records.push(m)
+    }
+    if (count % 50 === 0) heartbeat({ messages: count })
   }
-  return JSON.stringify({
-    source: config.source,
-    destination: config.destination,
-    streams: config.streams,
-  })
+  if (count % 50 !== 0) heartbeat({ messages: count })
+
+  return { errors, state, records }
 }
 
 export function createActivities(opts: {
@@ -58,75 +88,24 @@ export function createActivities(opts: {
 
   return {
     async setup(pipelineId: string): Promise<void> {
-      const params = await resolveParams(serviceUrl, pipelineId)
-      const resp = await fetch(`${engineUrl}/setup`, {
-        method: 'POST',
-        headers: { 'X-Pipeline': params },
-      })
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => '')
-        throw new Error(`Setup failed (${resp.status}): ${text}`)
-      }
+      const config = await resolveConfig(serviceUrl, pipelineId)
+      const engine = createRemoteEngine(engineUrl, config)
+      await engine.setup()
     },
 
     async sync(
       pipelineId: string,
       opts?: { input?: unknown[]; state?: Record<string, unknown>; stateLimit?: number }
     ): Promise<RunResult> {
-      const params = await resolveParams(serviceUrl, pipelineId)
-      const headers: Record<string, string> = { 'X-Pipeline': params }
-      let body: string | undefined
-
-      if (opts?.state && Object.keys(opts.state).length > 0) {
-        headers['X-State'] = JSON.stringify(opts.state)
-      }
-      if (opts?.stateLimit != null) {
-        headers['X-State-Checkpoint-Limit'] = String(opts.stateLimit)
-      }
-      if (opts?.input && opts.input.length > 0) {
-        headers['Content-Type'] = 'application/x-ndjson'
-        body = opts.input.map((item) => JSON.stringify(item)).join('\n') + '\n'
-      }
-
-      const resp = await fetch(`${engineUrl}/sync`, {
-        method: 'POST',
-        headers,
-        body,
+      const config = await resolveConfig(serviceUrl, pipelineId)
+      const engine = createRemoteEngine(engineUrl, config, {
+        state: opts?.state,
+        stateLimit: opts?.stateLimit,
       })
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => '')
-        throw new Error(`Sync failed (${resp.status}): ${text}`)
-      }
-
-      const errors: RunResult['errors'] = []
-      const state: Record<string, unknown> = {}
-      let messageCount = 0
-
-      for await (const msg of parseNdjsonStream(resp.body!)) {
-        const m = msg as Record<string, unknown>
-        messageCount++
-
-        if (m.type === 'error') {
-          errors.push({
-            message:
-              (m.message as string) ||
-              ((m.data as Record<string, unknown>)?.message as string) ||
-              'Unknown error',
-            failure_type: m.failure_type as string | undefined,
-            stream: m.stream as string | undefined,
-          })
-        } else if (m.type === 'state' && typeof m.stream === 'string') {
-          state[m.stream] = m.data
-        }
-
-        if (messageCount % 50 === 0) {
-          heartbeat({ messages: messageCount })
-        }
-      }
-      if (messageCount % 50 !== 0) {
-        heartbeat({ messages: messageCount })
-      }
-
+      const input = opts?.input?.length ? asIterable(opts.input) : undefined
+      const { errors, state } = await drainMessages(
+        engine.sync(input) as AsyncIterable<Record<string, unknown>>
+      )
       return { errors, state }
     },
 
@@ -134,42 +113,15 @@ export function createActivities(opts: {
       pipelineId: string,
       opts?: { input?: unknown[]; state?: Record<string, unknown>; stateLimit?: number }
     ): Promise<{ count: number; records: unknown[]; state: Record<string, unknown> }> {
-      const params = await resolveParams(serviceUrl, pipelineId)
-      const headers: Record<string, string> = { 'X-Pipeline': params }
-      let body: string | undefined
-
-      if (opts?.state && Object.keys(opts.state).length > 0) {
-        headers['X-State'] = JSON.stringify(opts.state)
-      }
-      if (opts?.stateLimit != null) {
-        headers['X-State-Checkpoint-Limit'] = String(opts.stateLimit)
-      }
-      if (opts?.input && opts.input.length > 0) {
-        headers['Content-Type'] = 'application/x-ndjson'
-        body = opts.input.map((item) => JSON.stringify(item)).join('\n') + '\n'
-      }
-
-      const resp = await fetch(`${engineUrl}/read`, { method: 'POST', headers, body })
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => '')
-        throw new Error(`Read failed (${resp.status}): ${text}`)
-      }
-
-      const records: unknown[] = []
-      const state: Record<string, unknown> = {}
-      let messageCount = 0
-
-      for await (const msg of parseNdjsonStream(resp.body!)) {
-        const m = msg as Record<string, unknown>
-        messageCount++
-        if (m.type === 'record') {
-          records.push(m)
-        } else if (m.type === 'state' && typeof m.stream === 'string') {
-          state[m.stream] = m.data
-        }
-        if (messageCount % 50 === 0) heartbeat({ messages: messageCount })
-      }
-      if (messageCount % 50 !== 0) heartbeat({ messages: messageCount })
+      const config = await resolveConfig(serviceUrl, pipelineId)
+      const engine = createRemoteEngine(engineUrl, config, {
+        state: opts?.state,
+        stateLimit: opts?.stateLimit,
+      })
+      const input = opts?.input?.length ? asIterable(opts.input) : undefined
+      const { records, state } = await drainMessages(
+        engine.read(input) as AsyncIterable<Record<string, unknown>>
+      )
 
       // If Kafka is configured, produce records to the pipeline topic
       if (kafkaBroker && records.length > 0) {
@@ -187,7 +139,7 @@ export function createActivities(opts: {
       pipelineId: string,
       opts?: { records?: unknown[]; maxBatch?: number }
     ): Promise<RunResult & { written: number }> {
-      const params = await resolveParams(serviceUrl, pipelineId)
+      const config = await resolveConfig(serviceUrl, pipelineId)
       let records: unknown[]
 
       if (kafkaBroker) {
@@ -223,54 +175,20 @@ export function createActivities(opts: {
         return { errors: [], state: {}, written: 0 }
       }
 
-      const headers: Record<string, string> = {
-        'X-Pipeline': params,
-        'Content-Type': 'application/x-ndjson',
-      }
-      const body = records.map((r) => JSON.stringify(r)).join('\n') + '\n'
-
-      const resp = await fetch(`${engineUrl}/write`, { method: 'POST', headers, body })
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => '')
-        throw new Error(`Write failed (${resp.status}): ${text}`)
-      }
-
-      const errors: RunResult['errors'] = []
-      const state: Record<string, unknown> = {}
-      let messageCount = 0
-
-      for await (const msg of parseNdjsonStream(resp.body!)) {
-        const m = msg as Record<string, unknown>
-        messageCount++
-        if (m.type === 'error') {
-          errors.push({
-            message:
-              (m.message as string) ||
-              ((m.data as Record<string, unknown>)?.message as string) ||
-              'Unknown error',
-            failure_type: m.failure_type as string | undefined,
-            stream: m.stream as string | undefined,
-          })
-        } else if (m.type === 'state' && typeof m.stream === 'string') {
-          state[m.stream] = m.data
-        }
-        if (messageCount % 50 === 0) heartbeat({ messages: messageCount })
-      }
-      if (messageCount % 50 !== 0) heartbeat({ messages: messageCount })
+      const engine = createRemoteEngine(engineUrl, config)
+      const { errors, state } = await drainMessages(
+        engine.write(asIterable(records) as AsyncIterable<Message>) as AsyncIterable<
+          Record<string, unknown>
+        >
+      )
 
       return { errors, state, written: records.length }
     },
 
     async teardown(pipelineId: string): Promise<void> {
-      const params = await resolveParams(serviceUrl, pipelineId)
-      const resp = await fetch(`${engineUrl}/teardown`, {
-        method: 'POST',
-        headers: { 'X-Pipeline': params },
-      })
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => '')
-        throw new Error(`Teardown failed (${resp.status}): ${text}`)
-      }
+      const config = await resolveConfig(serviceUrl, pipelineId)
+      const engine = createRemoteEngine(engineUrl, config)
+      await engine.teardown()
     },
   }
 }

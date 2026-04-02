@@ -28,6 +28,7 @@
     "@hono/zod-openapi": "^1.2",
     "@scalar/hono-api-reference": "^0.6",
     "@stripe/sync-engine": "workspace:*",
+    "@stripe/sync-protocol": "workspace:*",
     "@stripe/sync-ts-cli": "workspace:*",
     "citty": "^0.1.6",
     "dotenv": "^16.4.7",

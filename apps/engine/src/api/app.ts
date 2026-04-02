@@ -114,7 +114,7 @@ export function createApp(resolver: ConnectorResolver) {
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) {
-      return c.json({ error: err.message }, err.status as any)
+      return c.json({ error: err.message }, err.status)
     }
     logger.error({ err }, 'Unhandled error')
     return c.json({ error: 'Internal server error' }, 500)
