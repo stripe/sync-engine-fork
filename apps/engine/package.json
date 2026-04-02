@@ -61,7 +61,6 @@
     "pino-pretty": "^13",
     "stripe": "^17.7.0",
     "ws": "^8.18.0",
-    "zod": "^4.3.6",
     "zod": "^4.3.6"
   },
   "devDependencies": {

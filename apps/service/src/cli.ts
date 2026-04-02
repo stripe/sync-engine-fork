@@ -154,8 +154,7 @@ const webhookCmd = defineCommand({
 })
 
 export async function createProgram() {
-  // Create a temporary app just to generate the OpenAPI spec for CLI generation
-  // We need a mock temporal client for this — the CLI routes don't actually call it
+  // Mock client used only for OpenAPI spec generation (builds CLI structure)
   const mockClient = {
     start: async () => {},
     getHandle: () => ({
@@ -166,13 +165,28 @@ export async function createProgram() {
     list: async function* () {},
   } as any
 
-  const app = createApp({ temporal: { client: mockClient, taskQueue: 'cli' }, resolver })
-  const res = await app.request('/openapi.json')
+  const mockApp = createApp({ temporal: { client: mockClient, taskQueue: 'cli' }, resolver })
+  const res = await mockApp.request('/openapi.json')
   const spec = await res.json()
+
+  // Lazy real app — connects to Temporal on first CLI command execution
+  let realApp: ReturnType<typeof createApp> | null = null
+  async function getApp() {
+    if (!realApp) {
+      const address = process.env.TEMPORAL_ADDRESS || 'localhost:7233'
+      const taskQueue = process.env.TEMPORAL_TASK_QUEUE || 'sync-engine'
+      const temporal = await createTemporalClient(address, taskQueue)
+      realApp = createApp({ temporal, resolver })
+    }
+    return realApp
+  }
 
   const specCli = createCliFromSpec({
     spec,
-    handler: async (req) => app.fetch(req),
+    handler: async (req) => {
+      const app = await getApp()
+      return app.fetch(req)
+    },
     groupByTag: true,
     exclude: ['health'],
     ndjsonBodyStream: () =>
