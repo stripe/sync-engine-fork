@@ -115,7 +115,7 @@ describe('pipelines (integration)', () => {
     expect(deleted).toEqual({ id, deleted: true })
 
     // Wait for workflow to actually complete via Temporal handle
-    const handle = client.workflow.getHandle(`pipe_${id}`)
+    const handle = client.workflow.getHandle(id)
     await handle.result()
   }, 30_000)
 

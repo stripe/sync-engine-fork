@@ -20,7 +20,7 @@ export class TemporalBridge {
 
   /** Deterministic workflow ID for a given pipeline. */
   private workflowId(pipelineId: string): string {
-    return `pipe_${pipelineId}`
+    return pipelineId
   }
 
   /**
