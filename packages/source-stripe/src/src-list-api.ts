@@ -59,7 +59,12 @@ export function compactState(
  */
 export function expandState(state: BackfillState): SegmentState[] {
   // Collect all occupied intervals sorted by gte
-  type Interval = { gte: number; lt: number; status: 'complete' | 'pending'; pageCursor: string | null }
+  type Interval = {
+    gte: number
+    lt: number
+    status: 'complete' | 'pending'
+    pageCursor: string | null
+  }
   const occupied: Interval[] = [
     ...state.completed.map((r) => ({ ...r, status: 'complete' as const, pageCursor: null })),
     ...state.inFlight.map((r) => ({ ...r, status: 'pending' as const, pageCursor: r.pageCursor })),
@@ -79,7 +84,13 @@ export function expandState(state: BackfillState): SegmentState[] {
       }
     }
     // Add the occupied interval itself
-    segments.push({ index: idx, gte: interval.gte, lt: interval.lt, pageCursor: interval.pageCursor, status: interval.status })
+    segments.push({
+      index: idx,
+      gte: interval.gte,
+      lt: interval.lt,
+      pageCursor: interval.pageCursor,
+      status: interval.status,
+    })
     idx++
     cursor = interval.lt
   }
@@ -96,7 +107,12 @@ export function expandState(state: BackfillState): SegmentState[] {
 }
 
 /** Split a range into pending segments of approximately `segmentSize`. */
-function splitRange(gte: number, lt: number, segmentSize: number, startIndex: number): SegmentState[] {
+function splitRange(
+  gte: number,
+  lt: number,
+  segmentSize: number,
+  startIndex: number
+): SegmentState[] {
   const segments: SegmentState[] = []
   let cursor = gte
   let idx = startIndex
@@ -331,7 +347,15 @@ async function* sequentialBackfillStream(opts: {
 export async function* listApiBackfill(opts: {
   catalog: { streams: Array<{ stream: { name: string }; backfill_limit?: number | undefined }> }
   state:
-    | Record<string, { pageCursor: string | null; status: string; segments?: SegmentState[]; backfill?: BackfillState }>
+    | Record<
+        string,
+        {
+          pageCursor: string | null
+          status: string
+          segments?: SegmentState[]
+          backfill?: BackfillState
+        }
+      >
     | undefined
   registry: Record<string, ResourceConfig>
   stripe: Stripe

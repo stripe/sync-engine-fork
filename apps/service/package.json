@@ -18,7 +18,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run",
-    "test:integration": "vitest run --include '**/*.integration.test.ts'",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "generate:types": "openapi-typescript src/__generated__/openapi.json -o src/__generated__/openapi.d.ts"
   },
   "files": [

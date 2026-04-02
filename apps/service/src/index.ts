@@ -16,7 +16,6 @@ export type {
 export { createApp } from './api/app.js'
 export type { AppOptions } from './api/app.js'
 
-
 // Temporal workflow types (for consumers that need to reference them)
 export { createActivities } from './temporal/activities.js'
 export type { SyncActivities, RunResult } from './temporal/activities.js'

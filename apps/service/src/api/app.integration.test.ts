@@ -107,7 +107,9 @@ beforeAll(async () => {
 afterAll(async () => {
   worker?.shutdown()
   await workerRunning
-  await new Promise<void>((r, e) => engineServer?.close((err: Error | null) => (err ? e(err) : r())))
+  await new Promise<void>((r, e) =>
+    engineServer?.close((err: Error | null) => (err ? e(err) : r()))
+  )
   await new Promise<void>((r, e) =>
     serviceServer?.close((err: Error | null) => (err ? e(err) : r()))
   )
@@ -184,9 +186,7 @@ describe('pipelines (integration)', () => {
     expect(rows[0].n).toBeGreaterThan(0)
 
     // Verify data shape
-    const { rows: sample } = await pool.query(
-      `SELECT id FROM "${SCHEMA}"."products" LIMIT 1`
-    )
+    const { rows: sample } = await pool.query(`SELECT id FROM "${SCHEMA}"."products" LIMIT 1`)
     expect(sample[0].id).toMatch(/^prod_/)
 
     // Update — returns full pipeline with status

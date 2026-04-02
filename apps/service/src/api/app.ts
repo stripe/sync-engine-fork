@@ -375,7 +375,10 @@ export function createApp(options: AppOptions) {
       const { pipeline_id } = c.req.valid('param')
       const body = await c.req.text()
       const headers = Object.fromEntries(c.req.raw.headers.entries())
-      temporal.getHandle(pipeline_id).signal('stripe_event', { body, headers }).catch(() => {})
+      temporal
+        .getHandle(pipeline_id)
+        .signal('stripe_event', { body, headers })
+        .catch(() => {})
       return c.text('ok', 200)
     }
   )

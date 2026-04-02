@@ -196,7 +196,8 @@ export function createApp(resolver: ConnectorResolver) {
       path: '/setup',
       tags: ['Stateless Sync API'],
       summary: 'Set up destination schema',
-      description: 'Creates destination tables and applies migrations. Safe to call multiple times.',
+      description:
+        'Creates destination tables and applies migrations. Safe to call multiple times.',
       request: { headers: pipelineHeaders },
       responses: {
         200: {
@@ -214,7 +215,10 @@ export function createApp(resolver: ConnectorResolver) {
       const engine = await createEngineFromParams(params.pipeline, resolver, readonlyStateStore())
       try {
         const result = await engine.setup()
-        logger.info({ ...context, durationMs: Date.now() - startedAt }, 'Engine API /setup completed')
+        logger.info(
+          { ...context, durationMs: Date.now() - startedAt },
+          'Engine API /setup completed'
+        )
         return c.json(result ?? {}, 200)
       } catch (error) {
         logger.error(
