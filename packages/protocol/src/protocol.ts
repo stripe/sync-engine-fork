@@ -183,8 +183,8 @@ export type StreamStatusMessage = z.infer<typeof StreamStatusMessage>
 
 /** Parameters for a sync pipeline — source/destination config and optional stream selection. */
 export const PipelineConfig = z.object({
-  source: z.object({ name: z.string() }).catchall(z.unknown()),
-  destination: z.object({ name: z.string() }).catchall(z.unknown()),
+  source: z.object({ type: z.string() }).catchall(z.unknown()),
+  destination: z.object({ type: z.string() }).catchall(z.unknown()),
   streams: z
     .array(
       z.object({

@@ -5,7 +5,7 @@ import type { PipelineConfig } from '@stripe/sync-protocol'
 /**
  * Tries to resolve a destination-colocated state store.
  *
- * Imports `@stripe/sync-state-${destination.name}` and calls its
+ * Imports `@stripe/sync-state-${destination.type}` and calls its
  * `createStateStore(destConfig)`. Not all destinations support this —
  * Postgres does (state table alongside synced data), Google Sheets doesn't.
  * Falls back to a read-only no-op store when unavailable.
@@ -25,8 +25,8 @@ export async function maybeDestinationStateStore(
   params: PipelineConfig
 ): Promise<StateStore & { close?(): Promise<void> }> {
   try {
-    const { name: destName, ...destConfig } = params.destination
-    const pkg = await import(`@stripe/sync-state-${destName}`)
+    const { type: destType, ...destConfig } = params.destination
+    const pkg = await import(`@stripe/sync-state-${destType}`)
     if (typeof pkg.createStateStore === 'function') {
       // Run migrations if the package provides a setup function
       if (typeof pkg.setupStateStore === 'function') {

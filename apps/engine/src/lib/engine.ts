@@ -33,8 +33,8 @@ export interface Engine {
 
 function engineLogContext(config: PipelineConfig): Record<string, unknown> {
   return {
-    sourceName: config.source.name,
-    destinationName: config.destination.name,
+    sourceName: config.source.type,
+    destinationName: config.destination.type,
     configuredStreamCount: config.streams?.length ?? 0,
     configuredStreams: config.streams?.map((stream) => stream.name) ?? [],
   }
@@ -125,8 +125,8 @@ export function createEngine(
   // Validate configs using connector JSON Schemas (fail-fast)
   const sourceSpec = connectors.source.spec()
   const destSpec = connectors.destination.spec()
-  const { name: _sn, ...rawSourceConfig } = config.source
-  const { name: _dn, ...rawDestConfig } = config.destination
+  const { type: _sn, ...rawSourceConfig } = config.source
+  const { type: _dn, ...rawDestConfig } = config.destination
   const sourceConfig = z.fromJSONSchema(sourceSpec.config).parse(rawSourceConfig) as Record<
     string,
     unknown
@@ -264,8 +264,8 @@ export async function createEngineFromParams(
   stateStore: StateStore
 ): Promise<Engine> {
   const [source, destination] = await Promise.all([
-    resolver.resolveSource(params.source.name),
-    resolver.resolveDestination(params.destination.name),
+    resolver.resolveSource(params.source.type),
+    resolver.resolveDestination(params.destination.type),
   ])
   return createEngine(params, { source, destination }, stateStore)
 }

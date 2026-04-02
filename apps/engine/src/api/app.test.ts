@@ -38,8 +38,8 @@ const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => undefined
 const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
 const syncParams = JSON.stringify({
-  source: { name: 'test', streams: { customers: {} } },
-  destination: { name: 'test' },
+  source: { type: 'test', streams: { customers: {} } },
+  destination: { type: 'test' },
 })
 
 /** Read an NDJSON response body into an array of parsed lines. */
@@ -117,13 +117,13 @@ describe('GET /openapi.json', () => {
     expect(schemaNames).toContain('PipelineConfig')
 
     // SourceConfig is a discriminated union
-    expect(spec.components.schemas.SourceConfig.discriminator.propertyName).toBe('name')
+    expect(spec.components.schemas.SourceConfig.discriminator.propertyName).toBe('type')
     expect(spec.components.schemas.SourceConfig.oneOf).toHaveLength(1)
 
-    // Each variant has name as required field
+    // Each variant has type as required field
     const testSource = spec.components.schemas.TestSourceConfig
-    expect(testSource.required).toContain('name')
-    expect(testSource.properties.name.enum).toEqual(['test'])
+    expect(testSource.required).toContain('type')
+    expect(testSource.properties.type.enum).toEqual(['test'])
   })
 
   it('defines NDJSON message schemas with discriminated unions', async () => {

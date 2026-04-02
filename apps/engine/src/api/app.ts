@@ -27,8 +27,8 @@ import {
 
 function syncRequestContext(params: SyncParams) {
   return {
-    sourceName: params.pipeline.source.name,
-    destinationName: params.pipeline.destination.name,
+    sourceName: params.pipeline.source.type,
+    destinationName: params.pipeline.destination.type,
     configuredStreamCount: params.pipeline.streams?.length ?? 0,
     configuredStreams: params.pipeline.streams?.map((stream) => stream.name) ?? [],
   }
@@ -133,10 +133,10 @@ export function createApp(resolver: ConnectorResolver) {
     .optional()
     .meta({
       description:
-        'JSON-encoded PipelineConfig: { source: { name, ...config }, destination: { name, ...config }, streams }',
+        'JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }',
       example: JSON.stringify({
-        source: { name: 'stripe', api_key: 'sk_test_...' },
-        destination: { name: 'postgres', connection_string: 'postgres://localhost/db' },
+        source: { type: 'stripe', api_key: 'sk_test_...' },
+        destination: { type: 'postgres', connection_string: 'postgres://localhost/db' },
         streams: [{ name: 'products' }],
       }),
     })

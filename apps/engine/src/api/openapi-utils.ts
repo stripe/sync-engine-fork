@@ -70,22 +70,22 @@ export function injectConnectorSchemas(spec: any, resolver: ConnectorResolver): 
 
   for (const [name, r] of resolver.sources()) {
     const schema = JSON.parse(JSON.stringify(r.rawConfigJsonSchema))
-    schema.properties = { name: { type: 'string', enum: [name] }, ...(schema.properties ?? {}) }
-    schema.required = ['name', ...(schema.required ?? [])]
+    schema.properties = { type: { type: 'string', enum: [name] }, ...(schema.properties ?? {}) }
+    schema.required = ['type', ...(schema.required ?? [])]
     spec.components.schemas[connectorSchemaName(name, 'Source')] = schema
   }
 
   for (const [name, r] of resolver.destinations()) {
     const schema = JSON.parse(JSON.stringify(r.rawConfigJsonSchema))
-    schema.properties = { name: { type: 'string', enum: [name] }, ...(schema.properties ?? {}) }
-    schema.required = ['name', ...(schema.required ?? [])]
+    schema.properties = { type: { type: 'string', enum: [name] }, ...(schema.properties ?? {}) }
+    schema.required = ['type', ...(schema.required ?? [])]
     spec.components.schemas[connectorSchemaName(name, 'Destination')] = schema
   }
 
   const sourceNames = [...resolver.sources().keys()]
   if (sourceNames.length > 0) {
     spec.components.schemas['SourceConfig'] = {
-      discriminator: { propertyName: 'name' },
+      discriminator: { propertyName: 'type' },
       oneOf: sourceNames.map((n) => ({
         $ref: `#/components/schemas/${connectorSchemaName(n, 'Source')}`,
       })),
@@ -95,7 +95,7 @@ export function injectConnectorSchemas(spec: any, resolver: ConnectorResolver): 
   const destNames = [...resolver.destinations().keys()]
   if (destNames.length > 0) {
     spec.components.schemas['DestinationConfig'] = {
-      discriminator: { propertyName: 'name' },
+      discriminator: { propertyName: 'type' },
       oneOf: destNames.map((n) => ({
         $ref: `#/components/schemas/${connectorSchemaName(n, 'Destination')}`,
       })),
@@ -111,8 +111,8 @@ export function injectConnectorSchemas(spec: any, resolver: ConnectorResolver): 
           ? { $ref: '#/components/schemas/SourceConfig' }
           : {
               type: 'object',
-              required: ['name'],
-              properties: { name: { type: 'string' } },
+              required: ['type'],
+              properties: { type: { type: 'string' } },
               additionalProperties: true,
             },
       destination:
@@ -120,8 +120,8 @@ export function injectConnectorSchemas(spec: any, resolver: ConnectorResolver): 
           ? { $ref: '#/components/schemas/DestinationConfig' }
           : {
               type: 'object',
-              required: ['name'],
-              properties: { name: { type: 'string' } },
+              required: ['type'],
+              properties: { type: { type: 'string' } },
               additionalProperties: true,
             },
       streams: {

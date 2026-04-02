@@ -132,7 +132,7 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
 
       // All calls should use the same pipeline config
       for (const call of syncCalls) {
-        expect(call.config.source.name).toBe('test')
+        expect(call.config.source.type).toBe('test')
       }
     })
   })
