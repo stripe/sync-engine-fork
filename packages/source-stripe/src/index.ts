@@ -51,11 +51,21 @@ export type SegmentState = {
   status: 'pending' | 'complete'
 }
 
+/** Compact backfill state — O(concurrency) not O(total segments). */
+export type BackfillState = {
+  range: { gte: number; lt: number }
+  numSegments: number
+  completed: Array<{ gte: number; lt: number }>
+  inFlight: Array<{ gte: number; lt: number; pageCursor: string }>
+}
+
 export type StripeStreamState = {
   pageCursor: string | null
   status: 'pending' | 'complete'
   events_cursor?: number
+  /** @deprecated Legacy — use backfill instead */
   segments?: SegmentState[]
+  backfill?: BackfillState
 }
 
 const segmentStateSpec = z.object({
@@ -66,11 +76,19 @@ const segmentStateSpec = z.object({
   status: z.enum(['pending', 'complete']),
 })
 
+const backfillStateSpec = z.object({
+  range: z.object({ gte: z.number(), lt: z.number() }),
+  numSegments: z.number(),
+  completed: z.array(z.object({ gte: z.number(), lt: z.number() })),
+  inFlight: z.array(z.object({ gte: z.number(), lt: z.number(), pageCursor: z.string() })),
+})
+
 const streamStateSpec = z.object({
   pageCursor: z.string().nullable(),
   status: z.enum(['pending', 'complete']),
   events_cursor: z.number().optional(),
   segments: z.array(segmentStateSpec).optional(),
+  backfill: backfillStateSpec.optional(),
 })
 
 // MARK: - Source

@@ -12,6 +12,14 @@ import type { PipelineConfig } from '@stripe/sync-protocol'
  *
  * If the package exports a `setupStateStore(destConfig)` function,
  * it is called first to ensure the state table exists (runs migrations).
+ *
+ * When to use this vs readonlyStateStore:
+ * - Use `maybeDestinationStateStore` when the engine owns state durability —
+ *   e.g. standalone CLI usage where there is no external state manager.
+ * - Use `readonlyStateStore(params.state)` when the caller owns state —
+ *   e.g. the HTTP API (state flows in via X-State header, out via NDJSON stream)
+ *   or Temporal workflows (workflow memory is the source of truth).
+ *   Writing state to the destination DB in those cases creates unexpected tables.
  */
 export async function maybeDestinationStateStore(
   params: PipelineConfig

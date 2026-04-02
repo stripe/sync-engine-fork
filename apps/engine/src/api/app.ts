@@ -6,7 +6,6 @@ import type { Message, DestinationOutput, ConnectorResolver, SyncParams } from '
 import {
   createEngineFromParams,
   readonlyStateStore,
-  maybeDestinationStateStore,
   parseNdjsonStream,
   PipelineConfig,
 } from '../lib/index.js'

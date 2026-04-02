@@ -92,7 +92,7 @@ export interface paths {
         put?: never;
         /**
          * Read records from source
-         * @description Streams NDJSON messages (records, state, catalog). Optional NDJSON body provides catalog/state as input.
+         * @description Streams NDJSON messages (records, state, catalog). Optional NDJSON body provides live events as input.
          */
         post: operations["read"];
         delete?: never;
@@ -182,7 +182,7 @@ export interface components {
              */
             type: "state";
             stream: string;
-            data: unknown;
+            data?: unknown;
         };
         CatalogMessage: {
             /**
@@ -277,7 +277,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** @constant */
+                        /** @enum {boolean} */
                         ok: true;
                     };
                 };
@@ -297,11 +297,15 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Setup complete */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
             };
             /** @description Invalid params */
             400: {
@@ -310,7 +314,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        error: unknown;
+                        error?: unknown;
                     };
                 };
             };
@@ -342,7 +346,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        error: unknown;
+                        error?: unknown;
                     };
                 };
             };
@@ -387,7 +391,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        error: unknown;
+                        error?: unknown;
                     };
                 };
             };
@@ -425,7 +429,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        error: unknown;
+                        error?: unknown;
                     };
                 };
             };
@@ -463,7 +467,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        error: unknown;
+                        error?: unknown;
                     };
                 };
             };
@@ -501,7 +505,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        error: unknown;
+                        error?: unknown;
                     };
                 };
             };

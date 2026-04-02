@@ -3,7 +3,7 @@
   "info": {
     "title": "Stripe Sync Service",
     "version": "1.0.0",
-    "description": "Stripe Sync Service — manage pipelines and webhook ingress.\n\n## Endpoints\n\n| Method | Path | Summary |\n|--------|------|---------|\n| GET | /health | Health check |\n| GET | /pipelines | List pipelines |\n| POST | /pipelines | Create pipeline |\n| GET | /pipelines/{id} | Retrieve pipeline |\n| PATCH | /pipelines/{id} | Update pipeline |\n| DELETE | /pipelines/{id} | Delete pipeline |\n| POST | /webhooks/{pipeline_id} | Ingest a Stripe webhook event |"
+    "description": "Stripe Sync Service — manage pipelines and webhook ingress.\n\n## Endpoints\n\n| Method | Path | Summary |\n|--------|------|---------|\n| GET | /health | Health check |\n| GET | /pipelines | List pipelines |\n| POST | /pipelines | Create pipeline |\n| GET | /pipelines/{id} | Retrieve pipeline |\n| PATCH | /pipelines/{id} | Update pipeline |\n| DELETE | /pipelines/{id} | Delete pipeline |\n| POST | /pipelines/{id}/pause | Pause pipeline |\n| POST | /pipelines/{id}/resume | Resume pipeline |\n| POST | /webhooks/{pipeline_id} | Ingest a Stripe webhook event |"
   },
   "components": {
     "schemas": {},
@@ -176,6 +176,7 @@
                                   },
                                   "schema": {
                                     "type": "string",
+                                    "default": "public",
                                     "description": "Target schema name"
                                   },
                                   "batch_size": {
@@ -212,7 +213,7 @@
                                     "enum": ["postgres"]
                                   }
                                 },
-                                "required": ["schema", "type"],
+                                "required": ["type"],
                                 "additionalProperties": false
                               },
                               {
@@ -421,6 +422,7 @@
                           },
                           "schema": {
                             "type": "string",
+                            "default": "public",
                             "description": "Target schema name"
                           },
                           "batch_size": {
@@ -457,7 +459,7 @@
                             "enum": ["postgres"]
                           }
                         },
-                        "required": ["schema", "type"],
+                        "required": ["type"],
                         "additionalProperties": false
                       },
                       {
@@ -658,6 +660,7 @@
                             },
                             "schema": {
                               "type": "string",
+                              "default": "public",
                               "description": "Target schema name"
                             },
                             "batch_size": {
@@ -694,7 +697,7 @@
                               "enum": ["postgres"]
                             }
                           },
-                          "required": ["schema", "type"],
+                          "required": ["type"],
                           "additionalProperties": false
                         },
                         {
@@ -927,6 +930,7 @@
                             },
                             "schema": {
                               "type": "string",
+                              "default": "public",
                               "description": "Target schema name"
                             },
                             "batch_size": {
@@ -963,7 +967,7 @@
                               "enum": ["postgres"]
                             }
                           },
-                          "required": ["schema", "type"],
+                          "required": ["type"],
                           "additionalProperties": false
                         },
                         {
@@ -1068,7 +1072,6 @@
         "operationId": "updatePipeline",
         "tags": ["Pipelines"],
         "summary": "Update pipeline",
-        "description": "Update pipeline config. Include `{ \"paused\": true }` to pause or `{ \"paused\": false }` to resume.",
         "parameters": [
           {
             "schema": {
@@ -1205,6 +1208,7 @@
                           },
                           "schema": {
                             "type": "string",
+                            "default": "public",
                             "description": "Target schema name"
                           },
                           "batch_size": {
@@ -1241,7 +1245,7 @@
                             "enum": ["postgres"]
                           }
                         },
-                        "required": ["schema", "type"],
+                        "required": ["type"],
                         "additionalProperties": false
                       },
                       {
@@ -1313,18 +1317,253 @@
         },
         "responses": {
           "200": {
-            "description": "Update signal sent",
+            "description": "Updated pipeline",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": {
-                      "type": "boolean",
-                      "enum": [true]
+                    "id": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "api_key": {
+                              "type": "string",
+                              "description": "Stripe API key (sk_test_... or sk_live_...)"
+                            },
+                            "account_id": {
+                              "type": "string",
+                              "description": "Stripe account ID (resolved from API if omitted)"
+                            },
+                            "livemode": {
+                              "type": "boolean",
+                              "description": "Whether this is a live mode sync"
+                            },
+                            "api_version": {
+                              "type": "string",
+                              "description": "Stripe API version (e.g. 2025-04-30.basil)"
+                            },
+                            "base_url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "Override the Stripe API base URL (e.g. http://localhost:12111 for stripe-mock)"
+                            },
+                            "webhook_url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "URL for managed webhook endpoint registration"
+                            },
+                            "webhook_secret": {
+                              "type": "string",
+                              "description": "Webhook signing secret (whsec_...) for signature verification"
+                            },
+                            "websocket": {
+                              "type": "boolean",
+                              "description": "Enable WebSocket streaming for live events"
+                            },
+                            "poll_events": {
+                              "type": "boolean",
+                              "description": "Enable events API polling for incremental sync after backfill"
+                            },
+                            "webhook_port": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991,
+                              "description": "Port for built-in webhook HTTP listener (e.g. 4242)"
+                            },
+                            "revalidate_objects": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Object types to re-fetch from Stripe API on webhook (e.g. [\"subscription\"])"
+                            },
+                            "backfill_limit": {
+                              "type": "integer",
+                              "maximum": 9007199254740991,
+                              "exclusiveMinimum": 0,
+                              "description": "Max objects to backfill per stream (useful for testing)"
+                            },
+                            "rate_limit": {
+                              "type": "integer",
+                              "maximum": 9007199254740991,
+                              "exclusiveMinimum": 0,
+                              "description": "Max Stripe API requests per second (default: 25)"
+                            },
+                            "backfill_concurrency": {
+                              "type": "integer",
+                              "maximum": 9007199254740991,
+                              "exclusiveMinimum": 0,
+                              "description": "Number of time-range segments for parallel backfill (default: 200)"
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": ["stripe"]
+                            }
+                          },
+                          "required": ["api_key", "type"],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "discriminator": {
+                        "propertyName": "type"
+                      }
+                    },
+                    "destination": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string",
+                              "description": "Postgres connection string (alias for connection_string)"
+                            },
+                            "connection_string": {
+                              "type": "string",
+                              "description": "Postgres connection string"
+                            },
+                            "host": {
+                              "type": "string",
+                              "description": "Postgres host (required for AWS IAM)"
+                            },
+                            "port": {
+                              "type": "number",
+                              "default": 5432,
+                              "description": "Postgres port"
+                            },
+                            "database": {
+                              "type": "string",
+                              "description": "Database name (required for AWS IAM)"
+                            },
+                            "user": {
+                              "type": "string",
+                              "description": "Database user (required for AWS IAM)"
+                            },
+                            "schema": {
+                              "type": "string",
+                              "default": "public",
+                              "description": "Target schema name"
+                            },
+                            "batch_size": {
+                              "type": "number",
+                              "default": 100,
+                              "description": "Records to buffer before flushing"
+                            },
+                            "aws": {
+                              "type": "object",
+                              "properties": {
+                                "region": {
+                                  "type": "string",
+                                  "description": "AWS region for RDS instance"
+                                },
+                                "role_arn": {
+                                  "type": "string",
+                                  "description": "IAM role ARN to assume (cross-account)"
+                                },
+                                "external_id": {
+                                  "type": "string",
+                                  "description": "External ID for STS AssumeRole"
+                                }
+                              },
+                              "required": ["region"],
+                              "additionalProperties": false,
+                              "description": "AWS RDS IAM authentication config"
+                            },
+                            "ssl_ca_pem": {
+                              "type": "string",
+                              "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)"
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": ["postgres"]
+                            }
+                          },
+                          "required": ["type"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "client_id": {
+                              "type": "string",
+                              "description": "Google OAuth2 client ID (env: GOOGLE_CLIENT_ID)"
+                            },
+                            "client_secret": {
+                              "type": "string",
+                              "description": "Google OAuth2 client secret (env: GOOGLE_CLIENT_SECRET)"
+                            },
+                            "access_token": {
+                              "type": "string",
+                              "description": "OAuth2 access token"
+                            },
+                            "refresh_token": {
+                              "type": "string",
+                              "description": "OAuth2 refresh token"
+                            },
+                            "spreadsheet_id": {
+                              "type": "string",
+                              "description": "Target spreadsheet ID (created if omitted)"
+                            },
+                            "spreadsheet_title": {
+                              "type": "string",
+                              "default": "Stripe Sync",
+                              "description": "Title when creating a new spreadsheet"
+                            },
+                            "batch_size": {
+                              "type": "number",
+                              "default": 50,
+                              "description": "Rows per Sheets API append call"
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": ["google-sheets"]
+                            }
+                          },
+                          "required": ["access_token", "refresh_token", "type"],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "discriminator": {
+                        "propertyName": "type"
+                      }
+                    },
+                    "streams": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "sync_mode": {
+                            "type": "string",
+                            "enum": ["incremental", "full_refresh"]
+                          }
+                        },
+                        "required": ["name"]
+                      }
+                    },
+                    "status": {
+                      "type": "object",
+                      "properties": {
+                        "phase": {
+                          "type": "string"
+                        },
+                        "paused": {
+                          "type": "boolean"
+                        },
+                        "iteration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["phase", "paused", "iteration"]
                     }
                   },
-                  "required": ["ok"]
+                  "required": ["id", "source", "destination"]
                 }
               }
             }
@@ -1376,6 +1615,576 @@
                     }
                   },
                   "required": ["id", "deleted"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pipelines/{id}/pause": {
+      "post": {
+        "operationId": "pausePipeline",
+        "tags": ["Pipelines"],
+        "summary": "Pause pipeline",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "pipe_abc123"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paused pipeline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "api_key": {
+                              "type": "string",
+                              "description": "Stripe API key (sk_test_... or sk_live_...)"
+                            },
+                            "account_id": {
+                              "type": "string",
+                              "description": "Stripe account ID (resolved from API if omitted)"
+                            },
+                            "livemode": {
+                              "type": "boolean",
+                              "description": "Whether this is a live mode sync"
+                            },
+                            "api_version": {
+                              "type": "string",
+                              "description": "Stripe API version (e.g. 2025-04-30.basil)"
+                            },
+                            "base_url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "Override the Stripe API base URL (e.g. http://localhost:12111 for stripe-mock)"
+                            },
+                            "webhook_url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "URL for managed webhook endpoint registration"
+                            },
+                            "webhook_secret": {
+                              "type": "string",
+                              "description": "Webhook signing secret (whsec_...) for signature verification"
+                            },
+                            "websocket": {
+                              "type": "boolean",
+                              "description": "Enable WebSocket streaming for live events"
+                            },
+                            "poll_events": {
+                              "type": "boolean",
+                              "description": "Enable events API polling for incremental sync after backfill"
+                            },
+                            "webhook_port": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991,
+                              "description": "Port for built-in webhook HTTP listener (e.g. 4242)"
+                            },
+                            "revalidate_objects": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Object types to re-fetch from Stripe API on webhook (e.g. [\"subscription\"])"
+                            },
+                            "backfill_limit": {
+                              "type": "integer",
+                              "maximum": 9007199254740991,
+                              "exclusiveMinimum": 0,
+                              "description": "Max objects to backfill per stream (useful for testing)"
+                            },
+                            "rate_limit": {
+                              "type": "integer",
+                              "maximum": 9007199254740991,
+                              "exclusiveMinimum": 0,
+                              "description": "Max Stripe API requests per second (default: 25)"
+                            },
+                            "backfill_concurrency": {
+                              "type": "integer",
+                              "maximum": 9007199254740991,
+                              "exclusiveMinimum": 0,
+                              "description": "Number of time-range segments for parallel backfill (default: 200)"
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": ["stripe"]
+                            }
+                          },
+                          "required": ["api_key", "type"],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "discriminator": {
+                        "propertyName": "type"
+                      }
+                    },
+                    "destination": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string",
+                              "description": "Postgres connection string (alias for connection_string)"
+                            },
+                            "connection_string": {
+                              "type": "string",
+                              "description": "Postgres connection string"
+                            },
+                            "host": {
+                              "type": "string",
+                              "description": "Postgres host (required for AWS IAM)"
+                            },
+                            "port": {
+                              "type": "number",
+                              "default": 5432,
+                              "description": "Postgres port"
+                            },
+                            "database": {
+                              "type": "string",
+                              "description": "Database name (required for AWS IAM)"
+                            },
+                            "user": {
+                              "type": "string",
+                              "description": "Database user (required for AWS IAM)"
+                            },
+                            "schema": {
+                              "type": "string",
+                              "default": "public",
+                              "description": "Target schema name"
+                            },
+                            "batch_size": {
+                              "type": "number",
+                              "default": 100,
+                              "description": "Records to buffer before flushing"
+                            },
+                            "aws": {
+                              "type": "object",
+                              "properties": {
+                                "region": {
+                                  "type": "string",
+                                  "description": "AWS region for RDS instance"
+                                },
+                                "role_arn": {
+                                  "type": "string",
+                                  "description": "IAM role ARN to assume (cross-account)"
+                                },
+                                "external_id": {
+                                  "type": "string",
+                                  "description": "External ID for STS AssumeRole"
+                                }
+                              },
+                              "required": ["region"],
+                              "additionalProperties": false,
+                              "description": "AWS RDS IAM authentication config"
+                            },
+                            "ssl_ca_pem": {
+                              "type": "string",
+                              "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)"
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": ["postgres"]
+                            }
+                          },
+                          "required": ["type"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "client_id": {
+                              "type": "string",
+                              "description": "Google OAuth2 client ID (env: GOOGLE_CLIENT_ID)"
+                            },
+                            "client_secret": {
+                              "type": "string",
+                              "description": "Google OAuth2 client secret (env: GOOGLE_CLIENT_SECRET)"
+                            },
+                            "access_token": {
+                              "type": "string",
+                              "description": "OAuth2 access token"
+                            },
+                            "refresh_token": {
+                              "type": "string",
+                              "description": "OAuth2 refresh token"
+                            },
+                            "spreadsheet_id": {
+                              "type": "string",
+                              "description": "Target spreadsheet ID (created if omitted)"
+                            },
+                            "spreadsheet_title": {
+                              "type": "string",
+                              "default": "Stripe Sync",
+                              "description": "Title when creating a new spreadsheet"
+                            },
+                            "batch_size": {
+                              "type": "number",
+                              "default": 50,
+                              "description": "Rows per Sheets API append call"
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": ["google-sheets"]
+                            }
+                          },
+                          "required": ["access_token", "refresh_token", "type"],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "discriminator": {
+                        "propertyName": "type"
+                      }
+                    },
+                    "streams": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "sync_mode": {
+                            "type": "string",
+                            "enum": ["incremental", "full_refresh"]
+                          }
+                        },
+                        "required": ["name"]
+                      }
+                    },
+                    "status": {
+                      "type": "object",
+                      "properties": {
+                        "phase": {
+                          "type": "string"
+                        },
+                        "paused": {
+                          "type": "boolean"
+                        },
+                        "iteration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["phase", "paused", "iteration"]
+                    }
+                  },
+                  "required": ["id", "source", "destination"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pipelines/{id}/resume": {
+      "post": {
+        "operationId": "resumePipeline",
+        "tags": ["Pipelines"],
+        "summary": "Resume pipeline",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "pipe_abc123"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resumed pipeline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "api_key": {
+                              "type": "string",
+                              "description": "Stripe API key (sk_test_... or sk_live_...)"
+                            },
+                            "account_id": {
+                              "type": "string",
+                              "description": "Stripe account ID (resolved from API if omitted)"
+                            },
+                            "livemode": {
+                              "type": "boolean",
+                              "description": "Whether this is a live mode sync"
+                            },
+                            "api_version": {
+                              "type": "string",
+                              "description": "Stripe API version (e.g. 2025-04-30.basil)"
+                            },
+                            "base_url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "Override the Stripe API base URL (e.g. http://localhost:12111 for stripe-mock)"
+                            },
+                            "webhook_url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "URL for managed webhook endpoint registration"
+                            },
+                            "webhook_secret": {
+                              "type": "string",
+                              "description": "Webhook signing secret (whsec_...) for signature verification"
+                            },
+                            "websocket": {
+                              "type": "boolean",
+                              "description": "Enable WebSocket streaming for live events"
+                            },
+                            "poll_events": {
+                              "type": "boolean",
+                              "description": "Enable events API polling for incremental sync after backfill"
+                            },
+                            "webhook_port": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991,
+                              "description": "Port for built-in webhook HTTP listener (e.g. 4242)"
+                            },
+                            "revalidate_objects": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Object types to re-fetch from Stripe API on webhook (e.g. [\"subscription\"])"
+                            },
+                            "backfill_limit": {
+                              "type": "integer",
+                              "maximum": 9007199254740991,
+                              "exclusiveMinimum": 0,
+                              "description": "Max objects to backfill per stream (useful for testing)"
+                            },
+                            "rate_limit": {
+                              "type": "integer",
+                              "maximum": 9007199254740991,
+                              "exclusiveMinimum": 0,
+                              "description": "Max Stripe API requests per second (default: 25)"
+                            },
+                            "backfill_concurrency": {
+                              "type": "integer",
+                              "maximum": 9007199254740991,
+                              "exclusiveMinimum": 0,
+                              "description": "Number of time-range segments for parallel backfill (default: 200)"
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": ["stripe"]
+                            }
+                          },
+                          "required": ["api_key", "type"],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "discriminator": {
+                        "propertyName": "type"
+                      }
+                    },
+                    "destination": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string",
+                              "description": "Postgres connection string (alias for connection_string)"
+                            },
+                            "connection_string": {
+                              "type": "string",
+                              "description": "Postgres connection string"
+                            },
+                            "host": {
+                              "type": "string",
+                              "description": "Postgres host (required for AWS IAM)"
+                            },
+                            "port": {
+                              "type": "number",
+                              "default": 5432,
+                              "description": "Postgres port"
+                            },
+                            "database": {
+                              "type": "string",
+                              "description": "Database name (required for AWS IAM)"
+                            },
+                            "user": {
+                              "type": "string",
+                              "description": "Database user (required for AWS IAM)"
+                            },
+                            "schema": {
+                              "type": "string",
+                              "default": "public",
+                              "description": "Target schema name"
+                            },
+                            "batch_size": {
+                              "type": "number",
+                              "default": 100,
+                              "description": "Records to buffer before flushing"
+                            },
+                            "aws": {
+                              "type": "object",
+                              "properties": {
+                                "region": {
+                                  "type": "string",
+                                  "description": "AWS region for RDS instance"
+                                },
+                                "role_arn": {
+                                  "type": "string",
+                                  "description": "IAM role ARN to assume (cross-account)"
+                                },
+                                "external_id": {
+                                  "type": "string",
+                                  "description": "External ID for STS AssumeRole"
+                                }
+                              },
+                              "required": ["region"],
+                              "additionalProperties": false,
+                              "description": "AWS RDS IAM authentication config"
+                            },
+                            "ssl_ca_pem": {
+                              "type": "string",
+                              "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)"
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": ["postgres"]
+                            }
+                          },
+                          "required": ["type"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "client_id": {
+                              "type": "string",
+                              "description": "Google OAuth2 client ID (env: GOOGLE_CLIENT_ID)"
+                            },
+                            "client_secret": {
+                              "type": "string",
+                              "description": "Google OAuth2 client secret (env: GOOGLE_CLIENT_SECRET)"
+                            },
+                            "access_token": {
+                              "type": "string",
+                              "description": "OAuth2 access token"
+                            },
+                            "refresh_token": {
+                              "type": "string",
+                              "description": "OAuth2 refresh token"
+                            },
+                            "spreadsheet_id": {
+                              "type": "string",
+                              "description": "Target spreadsheet ID (created if omitted)"
+                            },
+                            "spreadsheet_title": {
+                              "type": "string",
+                              "default": "Stripe Sync",
+                              "description": "Title when creating a new spreadsheet"
+                            },
+                            "batch_size": {
+                              "type": "number",
+                              "default": 50,
+                              "description": "Rows per Sheets API append call"
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": ["google-sheets"]
+                            }
+                          },
+                          "required": ["access_token", "refresh_token", "type"],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "discriminator": {
+                        "propertyName": "type"
+                      }
+                    },
+                    "streams": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "sync_mode": {
+                            "type": "string",
+                            "enum": ["incremental", "full_refresh"]
+                          }
+                        },
+                        "required": ["name"]
+                      }
+                    },
+                    "status": {
+                      "type": "object",
+                      "properties": {
+                        "phase": {
+                          "type": "string"
+                        },
+                        "paused": {
+                          "type": "boolean"
+                        },
+                        "iteration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["phase", "paused", "iteration"]
+                    }
+                  },
+                  "required": ["id", "source", "destination"]
                 }
               }
             }
