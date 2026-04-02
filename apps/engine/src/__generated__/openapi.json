@@ -235,51 +235,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "catalog"
-                    },
-                    "streams": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "primary_key": {
-                            "type": "array",
-                            "items": {
-                              "type": "array",
-                              "items": {
-                                "type": "string"
-                              }
-                            }
-                          },
-                          "json_schema": {
-                            "type": "object",
-                            "propertyNames": {
-                              "type": "string"
-                            },
-                            "additionalProperties": {}
-                          },
-                          "metadata": {
-                            "type": "object",
-                            "propertyNames": {
-                              "type": "string"
-                            },
-                            "additionalProperties": {}
-                          }
-                        },
-                        "required": ["name", "primary_key"],
-                        "additionalProperties": false
-                      }
-                    }
-                  },
-                  "required": ["type", "streams"],
-                  "additionalProperties": false
+                  "$ref": "#/components/schemas/CatalogMessageOutput"
                 }
               }
             }
@@ -772,6 +728,53 @@
           }
         }
       },
+      "CatalogMessageOutput": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "catalog"
+          },
+          "streams": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "primary_key": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "json_schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "metadata": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "required": ["name", "primary_key"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["type", "streams"],
+        "additionalProperties": false
+      },
       "MessageOutput": {
         "oneOf": [
           {
@@ -843,53 +846,6 @@
           "data": {}
         },
         "required": ["type", "stream", "data"],
-        "additionalProperties": false
-      },
-      "CatalogMessageOutput": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "catalog"
-          },
-          "streams": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "primary_key": {
-                  "type": "array",
-                  "items": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "json_schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                },
-                "metadata": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {}
-                }
-              },
-              "required": ["name", "primary_key"],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": ["type", "streams"],
         "additionalProperties": false
       },
       "LogMessageOutput": {
