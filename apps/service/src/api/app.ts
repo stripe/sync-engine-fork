@@ -182,11 +182,15 @@ export function createApp(options: AppOptions) {
       const { id } = c.req.valid('param')
       try {
         const handle = temporal.getHandle(id)
-        // Completed workflows are soft-deleted — queries fail, treat as 404
-        const [pipeline, status] = await Promise.all([
+        const [desc, pipeline, status] = await Promise.all([
+          handle.describe(),
           handle.query<Pipeline>('config'),
           handle.query<WorkflowStatus>('status'),
         ])
+        // Completed workflows are soft-deleted — treat as 404
+        if (desc.status.name !== 'RUNNING') {
+          return c.json({ error: `Pipeline ${id} not found` }, 404)
+        }
         return c.json({ ...pipeline, status } as any, 200)
       } catch {
         return c.json({ error: `Pipeline ${id} not found` }, 404)
@@ -331,7 +335,9 @@ export function createApp(options: AppOptions) {
     async (c) => {
       const { id } = c.req.valid('param')
       try {
-        await temporal.getHandle(id).signal('delete')
+        const handle = temporal.getHandle(id)
+        await handle.signal('delete')
+        await handle.result()
         return c.json({ id, deleted: true as const }, 200)
       } catch {
         return c.json({ error: `Pipeline ${id} not found` }, 404)

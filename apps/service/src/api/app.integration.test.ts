@@ -198,30 +198,21 @@ describe('pipelines (integration)', () => {
     expect(updated!.id).toBe(id)
     expect(updated!.status).toBeDefined()
 
-    if (!SKIP_CLEANUP) {
-      // Delete (signals workflow to teardown)
-      const { data: deleted, error: deleteErr } = await c.DELETE('/pipelines/{id}', {
-        params: { path: { id } },
-      })
-      expect(deleteErr).toBeUndefined()
-      expect(deleted).toEqual({ id, deleted: true })
+    // Delete pipeline (signals workflow to teardown, waits, then deletes execution)
+    const { data: deleted, error: deleteErr } = await c.DELETE('/pipelines/{id}', {
+      params: { path: { id } },
+    })
+    expect(deleteErr).toBeUndefined()
+    expect(deleted).toEqual({ id, deleted: true })
 
-      // Wait for workflow to complete
-      const handle = client.workflow.getHandle(id)
-      await handle.result()
+    // Deleted pipeline should be gone from list and get
+    const { data: listAfter } = await c.GET('/pipelines')
+    expect(listAfter!.data.find((p: any) => p.id === id)).toBeUndefined()
 
-      // Deleted pipeline should be gone from list and get
-      const { data: listAfter } = await c.GET('/pipelines')
-      expect(listAfter!.data.find((p: any) => p.id === id)).toBeUndefined()
-
-      const { error: getAfter } = await c.GET('/pipelines/{id}', {
-        params: { path: { id } },
-      })
-      expect(getAfter).toBeDefined()
-
-      // Remove workflow execution from Temporal (skip with SKIP_CLEANUP=1 to inspect)
-      await handle.delete()
-    }
+    const { error: getAfter } = await c.GET('/pipelines/{id}', {
+      params: { path: { id } },
+    })
+    expect(getAfter).toBeDefined()
   }, 60_000)
 
   it('returns 404 for non-existent pipeline', async () => {
