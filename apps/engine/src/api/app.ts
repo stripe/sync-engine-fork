@@ -1,6 +1,4 @@
-import { Hono } from 'hono'
-import { z } from 'zod'
-import { createDocument } from 'zod-openapi'
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi'
 import { apiReference } from '@scalar/hono-api-reference'
 import { HTTPException } from 'hono/http-exception'
 import pg from 'pg'
@@ -107,10 +105,59 @@ async function* logApiStream<T>(
   }
 }
 
+// ── OpenAPI helpers ─────────────────────────────────────────────
+
+/**
+ * Walk an OpenAPI spec and add `discriminator: { propertyName: "type" }` to
+ * every `oneOf` whose variants all define a `type` property with a single
+ * enum or const value. Handles both Zod v3 (`enum`) and Zod v4 (`const`).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function addDiscriminators(node: any): void {
+  if (node == null || typeof node !== 'object') return
+  if (Array.isArray(node)) {
+    for (const item of node) addDiscriminators(item)
+    return
+  }
+  if (Array.isArray(node.oneOf)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const allHaveTypeDiscriminator = node.oneOf.every(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (v: any) =>
+        v?.type === 'object' &&
+        (v?.properties?.type?.enum?.length === 1 || v?.properties?.type?.const !== undefined)
+    )
+    if (allHaveTypeDiscriminator && !node.discriminator) {
+      node.discriminator = { propertyName: 'type' }
+    }
+  }
+  for (const value of Object.values(node)) {
+    addDiscriminators(value)
+  }
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+function connectorSchemaName(name: string, role: 'Source' | 'Destination'): string {
+  const pascal = name
+    .split(/[-_]/)
+    .map((w) => capitalize(w))
+    .join('')
+  return `${pascal}${role}Config`
+}
+
 // ── App factory ────────────────────────────────────────────────
 
 export function createApp(resolver: ConnectorResolver) {
-  const app = new Hono()
+  const app = new OpenAPIHono({
+    defaultHook: (result, c) => {
+      if (!result.success) {
+        return c.json({ error: result.error.issues }, 400)
+      }
+    },
+  })
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) {
@@ -188,130 +235,8 @@ export function createApp(resolver: ConnectorResolver) {
     return { engine, close: () => rl?.close() }
   }
 
-  // ── Routes ─────────────────────────────────────────────────────
+  // ── Shared header param schemas ─────────────────────────────────
 
-  app.get('/health', (c) => c.json({ ok: true }))
-
-  app.post('/setup', async (c) => {
-    const params = parseSyncParams(c)
-    const context = { path: '/setup', ...syncRequestContext(params) }
-    const startedAt = Date.now()
-    logger.info(context, 'Engine API /setup started')
-    const engine = await createEngineFromParams(params.pipeline, resolver, readonlyStateStore())
-    try {
-      const result = await engine.setup()
-      logger.info({ ...context, durationMs: Date.now() - startedAt }, 'Engine API /setup completed')
-      return c.json(result)
-    } catch (error) {
-      logger.error(
-        { ...context, durationMs: Date.now() - startedAt, err: error },
-        'Engine API /setup failed'
-      )
-      throw error
-    }
-  })
-
-  app.post('/teardown', async (c) => {
-    const params = parseSyncParams(c)
-    const engine = await createEngineFromParams(params.pipeline, resolver, readonlyStateStore())
-    await engine.teardown()
-    return c.body(null, 204)
-  })
-
-  app.get('/check', async (c) => {
-    const params = parseSyncParams(c)
-    const engine = await createEngineFromParams(params.pipeline, resolver, readonlyStateStore())
-    const result = await engine.check()
-    return c.json(result, 200)
-  })
-
-  app.post('/read', async (c) => {
-    const params = parseSyncParams(c)
-    const inputPresent = hasBody(c)
-    const context = { path: '/read', inputPresent, ...syncRequestContext(params) }
-    const startedAt = Date.now()
-    logger.info(context, 'Engine API /read started')
-    const { engine, close } = await resolveEngineWithRateLimiter(
-      params.pipeline,
-      readonlyStateStore(params.state)
-    )
-
-    const input = inputPresent ? parseNdjsonStream(c.req.raw.body!) : undefined
-    let output: AsyncIterable<Message> = engine.read(input)
-    if (params.stateCheckpointLimit) {
-      output = takeStateCheckpoints<Message>(params.stateCheckpointLimit)(output)
-    }
-    return ndjsonResponse(
-      closeAfter(logApiStream('Engine API /read', output, context, startedAt), () => close())
-    )
-  })
-
-  app.post('/write', async (c) => {
-    const params = parseSyncParams(c)
-    const context = { path: '/write', ...syncRequestContext(params) }
-    if (!hasBody(c)) {
-      logger.error(context, 'Engine API /write missing request body')
-      return c.json({ error: 'Request body required for /write' }, 400)
-    }
-    const startedAt = Date.now()
-    logger.info(context, 'Engine API /write started')
-    const stateStore = await maybeDestinationStateStore(params.pipeline)
-    const engine = await createEngineFromParams(params.pipeline, resolver, stateStore)
-    const messages = parseNdjsonStream<Message>(c.req.raw.body!)
-    return ndjsonResponse(
-      closeAfter(
-        logApiStream('Engine API /write', engine.write(messages), context, startedAt),
-        () => stateStore.close?.()
-      )
-    )
-  })
-
-  app.post('/sync', async (c) => {
-    const params = parseSyncParams(c)
-    const stateStore = await maybeDestinationStateStore(params.pipeline)
-    const { engine, close } = await resolveEngineWithRateLimiter(params.pipeline, stateStore)
-
-    const input = hasBody(c) ? parseNdjsonStream(c.req.raw.body!) : undefined
-    let output: AsyncIterable<DestinationOutput> = engine.sync(input)
-    if (params.stateCheckpointLimit) {
-      output = takeStateCheckpoints<DestinationOutput>(params.stateCheckpointLimit)(output)
-    }
-    return ndjsonResponse(
-      closeAfter(output, async () => {
-        await stateStore.close?.()
-        await close()
-      })
-    )
-  })
-
-  app.get('/connectors', (c) => {
-    const sources = Object.fromEntries(
-      [...resolver.sources()].map(([name, r]) => [name, { config_schema: r.rawConfigJsonSchema }])
-    )
-    const destinations = Object.fromEntries(
-      [...resolver.destinations()].map(([name, r]) => [
-        name,
-        { config_schema: r.rawConfigJsonSchema },
-      ])
-    )
-    return c.json({ sources, destinations })
-  })
-
-  // ── OpenAPI spec + Swagger UI ───────────────────────────────────
-
-  function capitalize(s: string): string {
-    return s.charAt(0).toUpperCase() + s.slice(1)
-  }
-
-  function connectorSchemaName(name: string, role: 'Source' | 'Destination'): string {
-    const pascal = name
-      .split(/[-_]/)
-      .map((w) => capitalize(w))
-      .join('')
-    return `${pascal}${role}Config`
-  }
-
-  // Shared header param schemas for the OpenAPI spec
   const xPipelineHeader = z
     .string()
     .optional()
@@ -340,216 +265,340 @@ export function createApp(resolver: ConnectorResolver) {
     example: '1',
   })
 
+  const pipelineHeaders = z.object({ 'x-pipeline': xPipelineHeader })
+  const allSyncHeaders = z.object({
+    'x-pipeline': xPipelineHeader,
+    'x-state': xStateHeader,
+    'x-state-checkpoint-limit': xCheckpointLimitHeader,
+  })
+
   const errorResponse = {
     description: 'Invalid params',
     content: {
-      'application/json': {
-        schema: z.object({ error: z.unknown() }),
-      },
+      'application/json': { schema: z.object({ error: z.unknown() }) },
     },
-  }
+  } as const
 
-  const pipelineHeaders = {
-    header: z.object({ 'x-pipeline': xPipelineHeader }),
-  }
+  // ── Routes ─────────────────────────────────────────────────────
 
-  const allSyncHeaders = {
-    header: z.object({
-      'x-pipeline': xPipelineHeader,
-      'x-state': xStateHeader,
-      'x-state-checkpoint-limit': xCheckpointLimitHeader,
+  app.openapi(
+    createRoute({
+      operationId: 'health',
+      method: 'get',
+      path: '/health',
+      tags: ['Status'],
+      summary: 'Health check',
+      responses: {
+        200: {
+          content: { 'application/json': { schema: z.object({ ok: z.literal(true) }) } },
+          description: 'Server is healthy',
+        },
+      },
     }),
-  }
+    (c) => c.json({ ok: true as const }, 200)
+  )
+
+  app.openapi(
+    createRoute({
+      operationId: 'setup',
+      method: 'post',
+      path: '/setup',
+      tags: ['Stateless Sync API'],
+      summary: 'Set up destination schema',
+      description: 'Creates destination tables and applies migrations. Safe to call multiple times.',
+      request: { headers: pipelineHeaders },
+      responses: {
+        200: {
+          description: 'Setup complete',
+          content: { 'application/json': { schema: z.record(z.string(), z.unknown()) } },
+        },
+        400: errorResponse,
+      },
+    }),
+    async (c) => {
+      const params = parseSyncParams(c)
+      const context = { path: '/setup', ...syncRequestContext(params) }
+      const startedAt = Date.now()
+      logger.info(context, 'Engine API /setup started')
+      const engine = await createEngineFromParams(params.pipeline, resolver, readonlyStateStore())
+      try {
+        const result = await engine.setup()
+        logger.info({ ...context, durationMs: Date.now() - startedAt }, 'Engine API /setup completed')
+        return c.json(result ?? {}, 200)
+      } catch (error) {
+        logger.error(
+          { ...context, durationMs: Date.now() - startedAt, err: error },
+          'Engine API /setup failed'
+        )
+        throw error
+      }
+    }
+  )
+
+  app.openapi(
+    createRoute({
+      operationId: 'teardown',
+      method: 'post',
+      path: '/teardown',
+      tags: ['Stateless Sync API'],
+      summary: 'Tear down destination schema',
+      description: 'Drops destination tables. Irreversible.',
+      request: { headers: pipelineHeaders },
+      responses: {
+        204: { description: 'Teardown complete' },
+        400: errorResponse,
+      },
+    }),
+    async (c) => {
+      const params = parseSyncParams(c)
+      const engine = await createEngineFromParams(params.pipeline, resolver, readonlyStateStore())
+      await engine.teardown()
+      return c.body(null, 204)
+    }
+  )
+
+  app.openapi(
+    createRoute({
+      operationId: 'check',
+      method: 'get',
+      path: '/check',
+      tags: ['Stateless Sync API'],
+      summary: 'Check connector connection',
+      description: 'Validates the source/destination config and tests connectivity.',
+      request: { headers: pipelineHeaders },
+      responses: {
+        200: {
+          description: 'Connection check result',
+          content: {
+            'application/json': {
+              schema: z.object({
+                source: z.object({
+                  status: z.enum(['succeeded', 'failed']),
+                  message: z.string().optional(),
+                }),
+                destination: z.object({
+                  status: z.enum(['succeeded', 'failed']),
+                  message: z.string().optional(),
+                }),
+              }),
+            },
+          },
+        },
+        400: errorResponse,
+      },
+    }),
+    async (c) => {
+      const params = parseSyncParams(c)
+      const engine = await createEngineFromParams(params.pipeline, resolver, readonlyStateStore())
+      const result = await engine.check()
+      return c.json(result, 200)
+    }
+  )
+
+  // For streaming NDJSON routes the handler returns a raw Response (not c.json),
+  // so we cast to `any` to satisfy the typed route handler constraint.
+
+  app.openapi(
+    createRoute({
+      operationId: 'read',
+      method: 'post',
+      path: '/read',
+      tags: ['Stateless Sync API'],
+      summary: 'Read records from source',
+      description:
+        'Streams NDJSON messages (records, state, catalog). Optional NDJSON body provides live events as input.',
+      request: { headers: allSyncHeaders },
+      responses: {
+        200: {
+          description: 'NDJSON stream of sync messages',
+          content: { 'application/x-ndjson': { schema: MessageSchema } },
+        },
+        400: errorResponse,
+      },
+    }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (async (c: any) => {
+      const params = parseSyncParams(c)
+      const inputPresent = hasBody(c)
+      const context = { path: '/read', inputPresent, ...syncRequestContext(params) }
+      const startedAt = Date.now()
+      logger.info(context, 'Engine API /read started')
+      const { engine, close } = await resolveEngineWithRateLimiter(
+        params.pipeline,
+        readonlyStateStore(params.state)
+      )
+
+      const input = inputPresent ? parseNdjsonStream(c.req.raw.body!) : undefined
+      let output: AsyncIterable<Message> = engine.read(input)
+      if (params.stateCheckpointLimit) {
+        output = takeStateCheckpoints<Message>(params.stateCheckpointLimit)(output)
+      }
+      return ndjsonResponse(
+        closeAfter(logApiStream('Engine API /read', output, context, startedAt), () => close())
+      )
+    }) as any
+  )
+
+  app.openapi(
+    createRoute({
+      operationId: 'write',
+      method: 'post',
+      path: '/write',
+      tags: ['Stateless Sync API'],
+      summary: 'Write records to destination',
+      description:
+        'Reads NDJSON messages from the request body and writes them to the destination. Pipe /read output as input.',
+      request: {
+        headers: pipelineHeaders,
+        body: {
+          required: true,
+          content: { 'application/x-ndjson': { schema: MessageSchema } },
+        },
+      },
+      responses: {
+        200: {
+          description: 'NDJSON stream of write result messages',
+          content: { 'application/x-ndjson': { schema: DestinationOutputSchema } },
+        },
+        400: errorResponse,
+      },
+    }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (async (c: any) => {
+      const params = parseSyncParams(c)
+      const context = { path: '/write', ...syncRequestContext(params) }
+      if (!hasBody(c)) {
+        logger.error(context, 'Engine API /write missing request body')
+        return c.json({ error: 'Request body required for /write' }, 400)
+      }
+      const startedAt = Date.now()
+      logger.info(context, 'Engine API /write started')
+      const stateStore = await maybeDestinationStateStore(params.pipeline)
+      const engine = await createEngineFromParams(params.pipeline, resolver, stateStore)
+      const messages = parseNdjsonStream<Message>(c.req.raw.body!)
+      return ndjsonResponse(
+        closeAfter(
+          logApiStream('Engine API /write', engine.write(messages), context, startedAt),
+          () => stateStore.close?.()
+        )
+      )
+    }) as any
+  )
+
+  app.openapi(
+    createRoute({
+      operationId: 'sync',
+      method: 'post',
+      path: '/sync',
+      tags: ['Stateless Sync API'],
+      summary: 'Run sync pipeline (read → write)',
+      description:
+        'Without a request body, reads from the source connector and writes to the destination (backfill mode). ' +
+        'With an NDJSON request body, uses the provided messages as input instead of reading from the source (push mode — e.g. piped webhook events).',
+      request: { headers: allSyncHeaders },
+      responses: {
+        200: {
+          description: 'NDJSON stream of sync messages',
+          content: { 'application/x-ndjson': { schema: DestinationOutputSchema } },
+        },
+        400: errorResponse,
+      },
+    }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (async (c: any) => {
+      const params = parseSyncParams(c)
+      const stateStore = await maybeDestinationStateStore(params.pipeline)
+      const { engine, close } = await resolveEngineWithRateLimiter(params.pipeline, stateStore)
+
+      const input = hasBody(c) ? parseNdjsonStream(c.req.raw.body!) : undefined
+      let output: AsyncIterable<DestinationOutput> = engine.sync(input)
+      if (params.stateCheckpointLimit) {
+        output = takeStateCheckpoints<DestinationOutput>(params.stateCheckpointLimit)(output)
+      }
+      return ndjsonResponse(
+        closeAfter(output, async () => {
+          await stateStore.close?.()
+          await close()
+        })
+      )
+    }) as any
+  )
+
+  app.openapi(
+    createRoute({
+      operationId: 'listConnectors',
+      method: 'get',
+      path: '/connectors',
+      tags: ['Connectors'],
+      summary: 'List available connectors and their config schemas',
+      responses: {
+        200: {
+          description: 'Available connectors with their JSON Schema configs',
+          content: {
+            'application/json': {
+              schema: z.object({
+                sources: z.record(
+                  z.string(),
+                  z.object({ config_schema: z.record(z.string(), z.unknown()) })
+                ),
+                destinations: z.record(
+                  z.string(),
+                  z.object({ config_schema: z.record(z.string(), z.unknown()) })
+                ),
+              }),
+            },
+          },
+        },
+      },
+    }),
+    (c) => {
+      const sources = Object.fromEntries(
+        [...resolver.sources()].map(([name, r]) => [name, { config_schema: r.rawConfigJsonSchema }])
+      )
+      const destinations = Object.fromEntries(
+        [...resolver.destinations()].map(([name, r]) => [
+          name,
+          { config_schema: r.rawConfigJsonSchema },
+        ])
+      )
+      return c.json({ sources, destinations }, 200)
+    }
+  )
+
+  // ── OpenAPI spec + Swagger UI ───────────────────────────────────
 
   app.get('/openapi.json', (c) => {
-    const spec = createDocument(
-      {
-        openapi: '3.1.0',
-        info: {
-          title: 'Stripe Sync Engine',
-          version: '1.0.0',
-          description:
-            'Stripe Sync Engine — stateless, one-shot source/destination sync over HTTP.\nAll sync endpoints accept configuration via the `X-Pipeline` header (JSON-encoded PipelineConfig). Optional cursor state can be provided via `X-State`.',
-        },
-        paths: {
-          '/health': {
-            get: {
-              operationId: 'health',
-              tags: ['Status'],
-              summary: 'Health check',
-              responses: {
-                '200': {
-                  description: 'Server is healthy',
-                  content: { 'application/json': { schema: z.object({ ok: z.literal(true) }) } },
-                },
-              },
-            },
-          },
-          '/setup': {
-            post: {
-              operationId: 'setup',
-              tags: ['Stateless Sync API'],
-              summary: 'Set up destination schema',
-              description:
-                'Creates destination tables and applies migrations. Safe to call multiple times.',
-              requestParams: pipelineHeaders,
-              responses: {
-                '204': { description: 'Setup complete' },
-                '400': errorResponse,
-              },
-            },
-          },
-          '/teardown': {
-            post: {
-              operationId: 'teardown',
-              tags: ['Stateless Sync API'],
-              summary: 'Tear down destination schema',
-              description: 'Drops destination tables. Irreversible.',
-              requestParams: pipelineHeaders,
-              responses: {
-                '204': { description: 'Teardown complete' },
-                '400': errorResponse,
-              },
-            },
-          },
-          '/check': {
-            get: {
-              operationId: 'check',
-              tags: ['Stateless Sync API'],
-              summary: 'Check connector connection',
-              description: 'Validates the source/destination config and tests connectivity.',
-              requestParams: pipelineHeaders,
-              responses: {
-                '200': {
-                  description: 'Connection check result',
-                  content: {
-                    'application/json': {
-                      schema: z.object({
-                        source: z.object({
-                          status: z.enum(['succeeded', 'failed']),
-                          message: z.string().optional(),
-                        }),
-                        destination: z.object({
-                          status: z.enum(['succeeded', 'failed']),
-                          message: z.string().optional(),
-                        }),
-                      }),
-                    },
-                  },
-                },
-                '400': errorResponse,
-              },
-            },
-          },
-          '/read': {
-            post: {
-              operationId: 'read',
-              tags: ['Stateless Sync API'],
-              summary: 'Read records from source',
-              description:
-                'Streams NDJSON messages (records, state, catalog). Optional NDJSON body provides catalog/state as input.',
-              requestParams: allSyncHeaders,
-              responses: {
-                '200': {
-                  description: 'NDJSON stream of sync messages',
-                  content: { 'application/x-ndjson': { schema: MessageSchema } },
-                },
-                '400': errorResponse,
-              },
-            },
-          },
-          '/write': {
-            post: {
-              operationId: 'write',
-              tags: ['Stateless Sync API'],
-              summary: 'Write records to destination',
-              description:
-                'Reads NDJSON messages from the request body and writes them to the destination. Pipe /read output as input.',
-              requestParams: pipelineHeaders,
-              requestBody: {
-                required: true,
-                content: { 'application/x-ndjson': { schema: MessageSchema } },
-              },
-              responses: {
-                '200': {
-                  description: 'NDJSON stream of write result messages',
-                  content: { 'application/x-ndjson': { schema: DestinationOutputSchema } },
-                },
-                '400': errorResponse,
-              },
-            },
-          },
-          '/sync': {
-            post: {
-              operationId: 'sync',
-              tags: ['Stateless Sync API'],
-              summary: 'Run sync pipeline (read → write)',
-              description:
-                'Without a request body, reads from the source connector and writes to the destination (backfill mode). ' +
-                'With an NDJSON request body, uses the provided messages as input instead of reading from the source (push mode — e.g. piped webhook events).',
-              requestParams: allSyncHeaders,
-              responses: {
-                '200': {
-                  description: 'NDJSON stream of sync messages',
-                  content: { 'application/x-ndjson': { schema: DestinationOutputSchema } },
-                },
-                '400': errorResponse,
-              },
-            },
-          },
-          '/connectors': {
-            get: {
-              operationId: 'listConnectors',
-              tags: ['Connectors'],
-              summary: 'List available connectors and their config schemas',
-              responses: {
-                '200': {
-                  description: 'Available connectors with their JSON Schema configs',
-                  content: {
-                    'application/json': {
-                      schema: z.object({
-                        sources: z.record(
-                          z.string(),
-                          z.object({ config_schema: z.record(z.string(), z.unknown()) })
-                        ),
-                        destinations: z.record(
-                          z.string(),
-                          z.object({ config_schema: z.record(z.string(), z.unknown()) })
-                        ),
-                      }),
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
+    const spec = app.getOpenAPI31Document({
+      openapi: '3.1.0',
+      info: {
+        title: 'Stripe Sync Engine',
+        version: '1.0.0',
+        description:
+          'Stripe Sync Engine — stateless, one-shot source/destination sync over HTTP.\nAll sync endpoints accept configuration via the `X-Pipeline` header (JSON-encoded PipelineConfig). Optional cursor state can be provided via `X-State`.',
       },
-      { allowEmptySchema: { unknown: true }, outputIdSuffix: '' }
-    )
+    }) as any
 
     // Inject typed connector config schemas into OpenAPI components
-    const doc = spec as any
-    if (!doc.components) doc.components = {}
-    if (!doc.components.schemas) doc.components.schemas = {}
+    if (!spec.components) spec.components = {}
+    if (!spec.components.schemas) spec.components.schemas = {}
 
     for (const [name, r] of resolver.sources()) {
       const schema = JSON.parse(JSON.stringify(r.rawConfigJsonSchema))
       schema.properties = { name: { type: 'string', enum: [name] }, ...(schema.properties ?? {}) }
       schema.required = ['name', ...(schema.required ?? [])]
-      doc.components.schemas[connectorSchemaName(name, 'Source')] = schema
+      spec.components.schemas[connectorSchemaName(name, 'Source')] = schema
     }
 
     for (const [name, r] of resolver.destinations()) {
       const schema = JSON.parse(JSON.stringify(r.rawConfigJsonSchema))
       schema.properties = { name: { type: 'string', enum: [name] }, ...(schema.properties ?? {}) }
       schema.required = ['name', ...(schema.required ?? [])]
-      doc.components.schemas[connectorSchemaName(name, 'Destination')] = schema
+      spec.components.schemas[connectorSchemaName(name, 'Destination')] = schema
     }
 
     const sourceNames = [...resolver.sources().keys()]
     if (sourceNames.length > 0) {
-      doc.components.schemas['SourceConfig'] = {
+      spec.components.schemas['SourceConfig'] = {
         discriminator: { propertyName: 'name' },
         oneOf: sourceNames.map((n) => ({
           $ref: `#/components/schemas/${connectorSchemaName(n, 'Source')}`,
@@ -559,7 +608,7 @@ export function createApp(resolver: ConnectorResolver) {
 
     const destNames = [...resolver.destinations().keys()]
     if (destNames.length > 0) {
-      doc.components.schemas['DestinationConfig'] = {
+      spec.components.schemas['DestinationConfig'] = {
         discriminator: { propertyName: 'name' },
         oneOf: destNames.map((n) => ({
           $ref: `#/components/schemas/${connectorSchemaName(n, 'Destination')}`,
@@ -567,7 +616,7 @@ export function createApp(resolver: ConnectorResolver) {
       }
     }
 
-    doc.components.schemas['PipelineConfig'] = {
+    spec.components.schemas['PipelineConfig'] = {
       type: 'object',
       required: ['source', 'destination'],
       properties: {
@@ -605,7 +654,7 @@ export function createApp(resolver: ConnectorResolver) {
     }
 
     // Annotate JSON-encoded headers with contentMediaType / contentSchema (OAS 3.1)
-    for (const [, methods] of Object.entries(doc.paths ?? {})) {
+    for (const [, methods] of Object.entries(spec.paths ?? {})) {
       for (const [, op] of Object.entries(methods as Record<string, any>)) {
         for (const param of op?.parameters ?? []) {
           if (param.in !== 'header') continue
@@ -630,6 +679,7 @@ export function createApp(resolver: ConnectorResolver) {
       }
     }
 
+    addDiscriminators(spec)
     spec.info.description += '\n\n## Endpoints\n\n' + endpointTable(spec)
     return c.json(spec)
   })

@@ -132,10 +132,10 @@ describe('GET /openapi.json', () => {
     const spec = (await res.json()) as any
     const schemas = spec.components.schemas
 
-    // Individual message types (Zod v4 / JSON Schema 2020-12 uses `const` for literals)
-    expect(schemas.RecordMessage.properties.type.const).toBe('record')
-    expect(schemas.StateMessage.properties.type.const).toBe('state')
-    expect(schemas.ErrorMessage.properties.type.const).toBe('error')
+    // Individual message types — @hono/zod-openapi uses enum for z.literal()
+    expect(schemas.RecordMessage.properties.type.enum).toEqual(['record'])
+    expect(schemas.StateMessage.properties.type.enum).toEqual(['state'])
+    expect(schemas.ErrorMessage.properties.type.enum).toEqual(['error'])
 
     // Message union
     expect(schemas.Message.discriminator.propertyName).toBe('type')
@@ -157,6 +157,30 @@ describe('GET /openapi.json', () => {
     const syncNdjson =
       spec.paths['/sync']?.post?.responses?.['200']?.content?.['application/x-ndjson']
     expect(syncNdjson.schema.$ref).toBe('#/components/schemas/DestinationOutput')
+  })
+
+  it('/setup spec documents 200 response (not 204)', async () => {
+    const app = createApp(resolver)
+    const res = await app.request('/openapi.json')
+    const spec = (await res.json()) as any
+    const setupOp = spec.paths['/setup']?.post
+    expect(setupOp).toBeDefined()
+    expect(setupOp.responses['200']).toBeDefined()
+    expect(setupOp.responses['204']).toBeUndefined()
+  })
+
+  it('/write spec documents a required NDJSON request body', async () => {
+    const app = createApp(resolver)
+    const res = await app.request('/openapi.json')
+    const spec = (await res.json()) as any
+    const writeOp = spec.paths['/write']?.post
+    expect(writeOp).toBeDefined()
+    const body = writeOp.requestBody
+    expect(body).toBeDefined()
+    expect(body.required).toBe(true)
+    const ndjsonContent = body.content?.['application/x-ndjson']
+    expect(ndjsonContent).toBeDefined()
+    expect(ndjsonContent.schema.$ref).toBe('#/components/schemas/Message')
   })
 
   it('documents the X-Pipeline header on sync routes', async () => {
