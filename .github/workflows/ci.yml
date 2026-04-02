@@ -425,8 +425,7 @@ jobs:
       - name: Build visualizer
         run: |
           pnpm install --frozen-lockfile
-          pnpm --filter @stripe/sync-source-stripe build
-          pnpm --filter @stripe/sync-visualizer build
+          pnpm --filter '...@stripe/sync-visualizer' build
           mkdir -p docs/.vercel/output/static/visualizer
           cp -r apps/visualizer/out/. docs/.vercel/output/static/visualizer/
 
