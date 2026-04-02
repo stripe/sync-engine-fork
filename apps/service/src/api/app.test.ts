@@ -1,16 +1,18 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import type { WorkflowClient } from '@temporalio/client'
+import { TestWorkflowEnvironment } from '@temporalio/testing'
+import { Worker } from '@temporalio/worker'
+import path from 'node:path'
 import { createConnectorResolver, sourceTest, destinationTest } from '@stripe/sync-engine'
+import type { SyncActivities, RunResult } from '../temporal/activities.js'
 import { createApp } from './app.js'
-
-// These tests cover routes that don't touch Temporal (OpenAPI spec, docs, health).
-// Pipeline CRUD tests live in app.integration.test.ts with a real Temporal server.
 
 const resolver = createConnectorResolver({
   sources: { test: sourceTest },
   destinations: { test: destinationTest },
 })
 
+// Lightweight app for spec/health tests (no Temporal needed)
 function app() {
   return createApp({
     temporal: { client: {} as WorkflowClient, taskQueue: 'unused' },
@@ -32,29 +34,16 @@ describe('GET /openapi.json', () => {
     expect(spec.paths).toBeDefined()
   })
 
-  it('includes pipeline and webhook paths', async () => {
+  it('includes pipeline, pause/resume, and webhook paths', async () => {
     const res = await app().request('/openapi.json')
     const spec = (await res.json()) as { paths: Record<string, unknown> }
     const paths = Object.keys(spec.paths)
 
     expect(paths).toContain('/pipelines')
     expect(paths).toContain('/pipelines/{id}')
+    expect(paths).toContain('/pipelines/{id}/pause')
+    expect(paths).toContain('/pipelines/{id}/resume')
     expect(paths).toContain('/webhooks/{pipeline_id}')
-  })
-
-  it('does not include removed pipeline operation paths', async () => {
-    const res = await app().request('/openapi.json')
-    const spec = (await res.json()) as { paths: Record<string, unknown> }
-    const paths = Object.keys(spec.paths)
-
-    expect(paths).not.toContain('/pipelines/{id}/sync')
-    expect(paths).not.toContain('/pipelines/{id}/setup')
-    expect(paths).not.toContain('/pipelines/{id}/teardown')
-    expect(paths).not.toContain('/pipelines/{id}/check')
-    expect(paths).not.toContain('/pipelines/{id}/read')
-    expect(paths).not.toContain('/pipelines/{id}/write')
-    expect(paths).not.toContain('/pipelines/{id}/pause')
-    expect(paths).not.toContain('/pipelines/{id}/resume')
   })
 })
 
@@ -76,5 +65,135 @@ describe('GET /health', () => {
     const res = await app().request('/health')
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ ok: true })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Pipeline CRUD + pause/resume (in-memory Temporal, stub activities)
+// ---------------------------------------------------------------------------
+
+const workflowsPath = path.resolve(process.cwd(), 'dist/temporal/workflows.js')
+const noErrors: RunResult = { errors: [], state: {} }
+
+function stubActivities(): SyncActivities {
+  return {
+    setup: async () => {},
+    syncImmediate: async () => noErrors,
+    readIntoQueue: async () => ({ count: 0, state: {} }),
+    writeFromQueue: async () => ({ errors: [], state: {}, written: 0 }),
+    teardown: async () => {},
+  }
+}
+
+let testEnv: TestWorkflowEnvironment
+let worker: Worker
+let workerRunning: Promise<void>
+
+beforeAll(async () => {
+  testEnv = await TestWorkflowEnvironment.createLocal()
+  worker = await Worker.create({
+    connection: testEnv.nativeConnection,
+    taskQueue: 'test-api',
+    workflowsPath,
+    activities: stubActivities(),
+  })
+  workerRunning = worker.run()
+}, 120_000)
+
+afterAll(async () => {
+  worker?.shutdown()
+  await workerRunning
+  await testEnv?.teardown()
+})
+
+function liveApp() {
+  return createApp({
+    temporal: { client: testEnv.client.workflow, taskQueue: 'test-api' },
+    resolver,
+  })
+}
+
+describe('pipeline CRUD', () => {
+  it('create returns full pipeline', async () => {
+    const res = await liveApp().request('/pipelines', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        source: { type: 'test' },
+        destination: { type: 'test' },
+        streams: [{ name: 'customers' }],
+      }),
+    })
+    expect(res.status).toBe(201)
+    const pipeline = await res.json()
+    expect(pipeline.id).toMatch(/^pipe_/)
+    expect(pipeline.source.type).toBe('test')
+    expect(pipeline.destination.type).toBe('test')
+  })
+
+  it('update returns updated pipeline with status', async () => {
+    const a = liveApp()
+
+    // Create
+    const createRes = await a.request('/pipelines', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        source: { type: 'test' },
+        destination: { type: 'test' },
+        streams: [{ name: 'customers' }],
+      }),
+    })
+    const created = await createRes.json()
+    await new Promise((r) => setTimeout(r, 500))
+
+    // Update
+    const updateRes = await a.request(`/pipelines/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ streams: [{ name: 'products' }] }),
+    })
+    expect(updateRes.status).toBe(200)
+    const updated = await updateRes.json()
+    expect(updated.id).toBe(created.id)
+    expect(updated.source.type).toBe('test')
+    expect(updated.status).toBeDefined()
+    expect(updated.status.paused).toBe(false)
+
+    // Cleanup
+    await a.request(`/pipelines/${created.id}`, { method: 'DELETE' })
+  })
+
+  it('pause and resume return pipeline with updated status', async () => {
+    const a = liveApp()
+
+    // Create
+    const createRes = await a.request('/pipelines', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        source: { type: 'test' },
+        destination: { type: 'test' },
+      }),
+    })
+    const created = await createRes.json()
+    await new Promise((r) => setTimeout(r, 500))
+
+    // Pause
+    const pauseRes = await a.request(`/pipelines/${created.id}/pause`, { method: 'POST' })
+    expect(pauseRes.status).toBe(200)
+    const paused = await pauseRes.json()
+    expect(paused.id).toBe(created.id)
+    expect(paused.status.paused).toBe(true)
+
+    // Resume
+    const resumeRes = await a.request(`/pipelines/${created.id}/resume`, { method: 'POST' })
+    expect(resumeRes.status).toBe(200)
+    const resumed = await resumeRes.json()
+    expect(resumed.id).toBe(created.id)
+    expect(resumed.status.paused).toBe(false)
+
+    // Cleanup
+    await a.request(`/pipelines/${created.id}`, { method: 'DELETE' })
   })
 })

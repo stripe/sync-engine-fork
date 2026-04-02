@@ -189,13 +189,14 @@ describe('pipelines (integration)', () => {
     )
     expect(sample[0].id).toMatch(/^prod_/)
 
-    // Update
+    // Update — returns full pipeline with status
     const { data: updated, error: updateErr } = await c.PATCH('/pipelines/{id}', {
       params: { path: { id } },
       body: { streams: [{ name: 'customers' }] },
     })
     expect(updateErr).toBeUndefined()
-    expect(updated).toEqual({ ok: true })
+    expect(updated!.id).toBe(id)
+    expect(updated!.status).toBeDefined()
 
     // Delete (signals workflow to teardown)
     const { data: deleted, error: deleteErr } = await c.DELETE('/pipelines/{id}', {

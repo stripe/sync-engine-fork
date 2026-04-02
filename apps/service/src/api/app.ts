@@ -235,8 +235,6 @@ export function createApp(options: AppOptions) {
       path: '/pipelines/{id}',
       tags: ['Pipelines'],
       summary: 'Update pipeline',
-      description:
-        'Update pipeline config. Include `{ "paused": true }` to pause or `{ "paused": false }` to resume.',
       request: {
         params: PipelineIdParam,
         body: {
@@ -245,8 +243,8 @@ export function createApp(options: AppOptions) {
       },
       responses: {
         200: {
-          content: { 'application/json': { schema: z.object({ ok: z.literal(true) }) } },
-          description: 'Update signal sent',
+          content: { 'application/json': { schema: PipelineWithStatusSchema } },
+          description: 'Updated pipeline',
         },
         404: {
           content: { 'application/json': { schema: ErrorSchema } },
@@ -258,8 +256,87 @@ export function createApp(options: AppOptions) {
       const { id } = c.req.valid('param')
       const patch = c.req.valid('json')
       try {
-        await temporal.getHandle(id).signal('update', patch)
-        return c.json({ ok: true as const }, 200)
+        const handle = temporal.getHandle(id)
+        await handle.signal('update', patch)
+        // Brief wait for signal to be processed before querying
+        await new Promise((r) => setTimeout(r, 200))
+        const [pipeline, status] = await Promise.all([
+          handle.query<Pipeline>('config'),
+          handle.query<WorkflowStatus>('status'),
+        ])
+        return c.json({ ...pipeline, status } as any, 200)
+      } catch {
+        return c.json({ error: `Pipeline ${id} not found` }, 404)
+      }
+    }
+  )
+
+  app.openapi(
+    createRoute({
+      operationId: 'pausePipeline',
+      method: 'post',
+      path: '/pipelines/{id}/pause',
+      tags: ['Pipelines'],
+      summary: 'Pause pipeline',
+      request: { params: PipelineIdParam },
+      responses: {
+        200: {
+          content: { 'application/json': { schema: PipelineWithStatusSchema } },
+          description: 'Paused pipeline',
+        },
+        404: {
+          content: { 'application/json': { schema: ErrorSchema } },
+          description: 'Not found',
+        },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid('param')
+      try {
+        const handle = temporal.getHandle(id)
+        await handle.signal('update', { paused: true })
+        await new Promise((r) => setTimeout(r, 200))
+        const [pipeline, status] = await Promise.all([
+          handle.query<Pipeline>('config'),
+          handle.query<WorkflowStatus>('status'),
+        ])
+        return c.json({ ...pipeline, status } as any, 200)
+      } catch {
+        return c.json({ error: `Pipeline ${id} not found` }, 404)
+      }
+    }
+  )
+
+  app.openapi(
+    createRoute({
+      operationId: 'resumePipeline',
+      method: 'post',
+      path: '/pipelines/{id}/resume',
+      tags: ['Pipelines'],
+      summary: 'Resume pipeline',
+      request: { params: PipelineIdParam },
+      responses: {
+        200: {
+          content: { 'application/json': { schema: PipelineWithStatusSchema } },
+          description: 'Resumed pipeline',
+        },
+        404: {
+          content: { 'application/json': { schema: ErrorSchema } },
+          description: 'Not found',
+        },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid('param')
+      try {
+        const handle = temporal.getHandle(id)
+        await handle.signal('update', { paused: false })
+        await new Promise((r) => setTimeout(r, 200))
+        const [pipeline, status] = await Promise.all([
+          handle.query<Pipeline>('config'),
+          handle.query<WorkflowStatus>('status'),
+        ])
+        return c.json({ ...pipeline, status } as any, 200)
       } catch {
         return c.json({ error: `Pipeline ${id} not found` }, 404)
       }
