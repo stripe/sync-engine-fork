@@ -1,5 +1,3 @@
-# Install deps and create standalone deployment
-# Expects pre-built dist/ directories in the build context (from `pnpm build`)
 FROM node:24 AS build
 
 ENV PNPM_HOME="/pnpm"
@@ -8,9 +6,31 @@ ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
 
 WORKDIR /app
-COPY . ./
 
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+# ---- Install layer (cached by BuildKit registry cache) ----
+# Copy manifest files only first so pnpm install is cached until lockfile changes.
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY packages/destination-google-sheets/package.json packages/destination-google-sheets/
+COPY packages/destination-postgres/package.json packages/destination-postgres/
+COPY packages/hono-zod-openapi/package.json packages/hono-zod-openapi/
+COPY packages/openapi/package.json packages/openapi/
+COPY packages/protocol/package.json packages/protocol/
+COPY packages/source-stripe/package.json packages/source-stripe/
+COPY packages/state-postgres/package.json packages/state-postgres/
+COPY packages/ts-cli/package.json packages/ts-cli/
+COPY packages/util-postgres/package.json packages/util-postgres/
+COPY apps/dashboard/package.json apps/dashboard/
+COPY apps/engine/package.json apps/engine/
+COPY apps/service/package.json apps/service/
+COPY apps/supabase/package.json apps/supabase/
+COPY apps/visualizer/package.json apps/visualizer/
+COPY e2e/package.json e2e/
+
+RUN pnpm install --frozen-lockfile
+
+# ---- Build layer (pre-built dist from CI) ----
+# Only this layer changes on most commits; install layer above is a cache hit.
+COPY . ./
 RUN pnpm --filter @stripe/sync-service deploy --prod /deploy
 
 # Final image — just the bundle + external node_modules
