@@ -7,12 +7,15 @@ import { describeWithEnv } from './test-helpers.js'
 import type { paths } from '../apps/service/src/__generated__/openapi.js'
 
 // ---------------------------------------------------------------------------
-// Config
+// Config — env vars allow CI to override defaults for compose-based local dev
 // ---------------------------------------------------------------------------
 
-const SERVICE_URL = 'http://localhost:4020'
-// Containers reach Postgres by compose service name; host uses mapped port.
-const POSTGRES_CONTAINER_URL = 'postgresql://postgres:postgres@postgres:5432/postgres'
+const SERVICE_URL = process.env.SERVICE_URL ?? 'http://localhost:4020'
+// URL the service container uses to reach Postgres.
+// compose: postgres:5432 (internal DNS) | CI --network=host: localhost:55432
+const POSTGRES_CONTAINER_URL =
+  process.env.POSTGRES_CONTAINER_URL ?? 'postgresql://postgres:postgres@postgres:5432/postgres'
+// URL the test runner (host) uses to query Postgres.
 const POSTGRES_HOST_URL =
   process.env.POSTGRES_URL ?? 'postgresql://postgres:postgres@localhost:55432/postgres'
 
@@ -20,6 +23,8 @@ const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 const COMPOSE_CMD = `docker compose -f compose.yml -f compose.dev.yml`
 
 const SKIP_CLEANUP = process.env.SKIP_CLEANUP === '1'
+// When true, skip building and starting containers (CI pre-starts them).
+const SKIP_SETUP = process.env.SKIP_SETUP === '1'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,6 +46,16 @@ function api() {
   return createFetchClient<paths>({ baseUrl: SERVICE_URL })
 }
 
+/** Returns true if the service health endpoint responds 200. */
+async function isServiceHealthy(): Promise<boolean> {
+  try {
+    const r = await fetch(`${SERVICE_URL}/health`)
+    return r.ok
+  } catch {
+    return false
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Suite
 // ---------------------------------------------------------------------------
@@ -51,31 +66,31 @@ describeWithEnv(
   ({ STRIPE_API_KEY }) => {
     let pool: pg.Pool
     let schema: string
+    let managedContainers = false
 
     beforeAll(async () => {
       schema = `docker_e2e_${Date.now()}`
 
-      // 1. Build TypeScript so Dockerfiles have fresh dist/
-      console.log('\n  Building packages...')
-      execSync('pnpm build', { cwd: REPO_ROOT, stdio: 'pipe' })
+      if (SKIP_SETUP || (await isServiceHealthy())) {
+        console.log('\n  Service already healthy — skipping build & container startup')
+      } else {
+        managedContainers = true
 
-      // 2. Start engine + service + worker containers (infra already running via compose/CI)
-      console.log('  Starting containers...')
-      execSync(`${COMPOSE_CMD} up --build --no-deps -d engine service worker`, {
-        cwd: REPO_ROOT,
-        stdio: 'pipe',
-      })
+        // 1. Build TypeScript so Dockerfiles have fresh dist/
+        console.log('\n  Building packages...')
+        execSync('pnpm build', { cwd: REPO_ROOT, stdio: 'pipe' })
 
-      // 3. Wait for service HTTP API to be ready
-      console.log('  Waiting for service health...')
-      await pollUntil(async () => {
-        try {
-          const r = await fetch(`${SERVICE_URL}/health`)
-          return r.ok
-        } catch {
-          return false
-        }
-      })
+        // 2. Start engine + service + worker containers (infra already running via compose/CI)
+        console.log('  Starting containers...')
+        execSync(`${COMPOSE_CMD} up --build --no-deps -d engine service worker`, {
+          cwd: REPO_ROOT,
+          stdio: 'pipe',
+        })
+
+        // 3. Wait for service HTTP API to be ready
+        console.log('  Waiting for service health...')
+        await pollUntil(isServiceHealthy)
+      }
 
       // 4. Open Postgres pool on host-mapped port for verification
       pool = new pg.Pool({ connectionString: POSTGRES_HOST_URL })
@@ -93,9 +108,11 @@ describeWithEnv(
       }
       await pool?.end().catch(() => {})
 
-      // Stop only app containers — leave infra (postgres, temporal, stripe-mock) running
-      execSync(`${COMPOSE_CMD} stop engine service worker`, { cwd: REPO_ROOT, stdio: 'pipe' })
-      execSync(`${COMPOSE_CMD} rm -f engine service worker`, { cwd: REPO_ROOT, stdio: 'pipe' })
+      // Only stop containers we started
+      if (managedContainers) {
+        execSync(`${COMPOSE_CMD} stop engine service worker`, { cwd: REPO_ROOT, stdio: 'pipe' })
+        execSync(`${COMPOSE_CMD} rm -f engine service worker`, { cwd: REPO_ROOT, stdio: 'pipe' })
+      }
     }, 2 * 60_000) // 2 min — docker stop can be slow
 
     it('create pipeline → data lands in Postgres → delete', async () => {
