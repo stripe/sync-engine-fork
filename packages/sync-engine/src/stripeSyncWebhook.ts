@@ -193,6 +193,9 @@ export class StripeSyncWebhook {
       } as Stripe.Entitlements.ActiveEntitlementListParams)
       entitlementItems.push(...(page.data as EntitlementItem[]))
       while (page.has_more) {
+        if (page.data.length === 0) {
+          throw new Error('Stripe returned has_more=true with an empty entitlements page')
+        }
         const lastId = page.data[page.data.length - 1].id
         page = await this.deps.stripe.entitlements.activeEntitlements.list({
           customer: customerId,
