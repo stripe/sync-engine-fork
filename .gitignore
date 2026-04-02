@@ -34,6 +34,10 @@ private/
 # Claude Code local state
 .claude/
 
+# Build artifacts
+*.tsbuildinfo
+test-results/
+
 # Terraform state (contains secrets)
 *.tfstate
 *.tfstate.backup

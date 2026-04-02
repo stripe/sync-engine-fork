@@ -1,6 +1,6 @@
 # Install deps and create standalone deployment
 # Expects pre-built dist/ directories in the build context (from `pnpm build`)
-FROM node:24-alpine AS build
+FROM node:24 AS build
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -14,7 +14,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 RUN pnpm --filter @stripe/sync-service deploy --prod /deploy
 
 # Final image — just the bundle + external node_modules
-FROM node:24-alpine
+FROM node:24
 WORKDIR /app
 
 COPY --from=build /deploy/package.json ./
