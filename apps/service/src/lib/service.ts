@@ -163,7 +163,7 @@ export class SyncService {
     yield* pipe(engine.write(messages), persistState(stateWriter))
   }
 
-  async *run(
+  async *sync(
     pipelineId: string,
     $stdin?: AsyncIterable<unknown>
   ): AsyncIterable<DestinationOutput> {

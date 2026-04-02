@@ -28,7 +28,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run",
-    "generate:types": "openapi-typescript ../../docs/openapi/engine.json -o src/lib/openapi.d.ts"
+    "generate:types": "openapi-typescript ../../docs/openapi/engine.json -o src/__generated__/openapi.d.ts"
   },
   "files": [
     "dist",

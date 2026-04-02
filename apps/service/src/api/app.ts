@@ -467,7 +467,7 @@ export function createApp(options?: AppOptions) {
       const { id } = c.req.valid('param')
       const body = c.req.raw.body
       const input = body && c.req.header('content-type') ? parseNdjsonStream(body) : undefined
-      return ndjsonResponse(service.run(id, input)) as any
+      return ndjsonResponse(service.sync(id, input)) as any
     }
   )
 

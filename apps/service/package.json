@@ -19,7 +19,7 @@
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:integration": "vitest run --include '**/*.integration.test.ts'",
-    "generate:types": "openapi-typescript ../../docs/openapi/service.json -o src/lib/openapi.d.ts"
+    "generate:types": "openapi-typescript ../../docs/openapi/service.json -o src/__generated__/openapi.d.ts"
   },
   "files": [
     "dist",
