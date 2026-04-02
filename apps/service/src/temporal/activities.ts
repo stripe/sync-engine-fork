@@ -93,7 +93,7 @@ export function createActivities(opts: {
       await engine.setup()
     },
 
-    async sync(
+    async syncImmediate(
       pipelineId: string,
       opts?: { input?: unknown[]; state?: Record<string, unknown>; stateLimit?: number }
     ): Promise<RunResult> {
@@ -109,7 +109,7 @@ export function createActivities(opts: {
       return { errors, state }
     },
 
-    async read(
+    async readIntoQueue(
       pipelineId: string,
       opts?: { input?: unknown[]; state?: Record<string, unknown>; stateLimit?: number }
     ): Promise<{ count: number; records: unknown[]; state: Record<string, unknown> }> {
@@ -135,7 +135,7 @@ export function createActivities(opts: {
       return { count: records.length, records, state }
     },
 
-    async write(
+    async writeFromQueue(
       pipelineId: string,
       opts?: { records?: unknown[]; maxBatch?: number }
     ): Promise<RunResult & { written: number }> {

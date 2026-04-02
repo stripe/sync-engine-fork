@@ -110,9 +110,9 @@ describe('createActivities (integration via createRemoteEngine)', () => {
     await expect(activities.teardown('test-pipeline')).resolves.toBeUndefined()
   })
 
-  it('sync returns errors and state', async () => {
+  it('syncImmediate returns errors and state', async () => {
     const activities = createActivities({ serviceUrl, engineUrl })
-    const result = await activities.sync('test-pipeline', {
+    const result = await activities.syncImmediate('test-pipeline', {
       input: [
         { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
         { type: 'state', stream: 'customers', data: { cursor: 'cus_1' } },
@@ -125,9 +125,9 @@ describe('createActivities (integration via createRemoteEngine)', () => {
     expect(result.state).toHaveProperty('customers')
   })
 
-  it('read returns count, records, and state', async () => {
+  it('readIntoQueue returns count, records, and state', async () => {
     const activities = createActivities({ serviceUrl, engineUrl })
-    const result = await activities.read('test-pipeline', {
+    const result = await activities.readIntoQueue('test-pipeline', {
       input: [
         { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
         { type: 'state', stream: 'customers', data: { cursor: 'cus_1' } },
@@ -140,9 +140,9 @@ describe('createActivities (integration via createRemoteEngine)', () => {
     expect(Array.isArray(result.records)).toBe(true)
   })
 
-  it('write returns errors, state, and written count', async () => {
+  it('writeFromQueue returns errors, state, and written count', async () => {
     const activities = createActivities({ serviceUrl, engineUrl })
-    const result = await activities.write('test-pipeline', {
+    const result = await activities.writeFromQueue('test-pipeline', {
       records: [
         { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
         { type: 'state', stream: 'customers', data: { cursor: 'cus_1' } },
@@ -155,16 +155,16 @@ describe('createActivities (integration via createRemoteEngine)', () => {
     expect(Array.isArray(result.errors)).toBe(true)
   })
 
-  it('sync without input returns empty result', async () => {
+  it('syncImmediate without input returns empty result', async () => {
     const activities = createActivities({ serviceUrl, engineUrl })
-    const result = await activities.sync('test-pipeline')
+    const result = await activities.syncImmediate('test-pipeline')
     expect(result.errors).toEqual([])
     expect(result.state).toEqual({})
   })
 
-  it('write with empty records returns zero written', async () => {
+  it('writeFromQueue with empty records returns zero written', async () => {
     const activities = createActivities({ serviceUrl, engineUrl })
-    const result = await activities.write('test-pipeline', { records: [] })
+    const result = await activities.writeFromQueue('test-pipeline', { records: [] })
     expect(result.written).toBe(0)
     expect(result.errors).toEqual([])
   })

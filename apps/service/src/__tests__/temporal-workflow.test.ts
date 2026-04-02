@@ -13,7 +13,7 @@ const noErrors: RunResult = { errors: [], state: {} }
 function stubActivities(overrides: Partial<SyncActivities> = {}): SyncActivities {
   return {
     setup: async () => {},
-    sync: async () => noErrors,
+    syncImmediate: async () => noErrors,
     teardown: async () => {},
     ...overrides,
   }
@@ -42,7 +42,7 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
         setup: async () => {
           setupCalled = true
         },
-        sync: async () => {
+        syncImmediate: async () => {
           runCallCount++
           return noErrors
         },
@@ -78,7 +78,7 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
       taskQueue: 'test-queue-2',
       workflowsPath,
       activities: stubActivities({
-        sync: async (pipelineId: string, opts?) => {
+        syncImmediate: async (pipelineId: string, opts?) => {
           runCalls.push({ pipelineId, input: opts?.input ?? undefined })
           return noErrors
         },
@@ -166,7 +166,7 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
       taskQueue: 'test-queue-4',
       workflowsPath,
       activities: stubActivities({
-        sync: async () => {
+        syncImmediate: async () => {
           // Slow sync so delete arrives mid-reconciliation
           await new Promise((r) => setTimeout(r, 500))
           return noErrors

@@ -19,7 +19,7 @@ const { setup, teardown } = proxyActivities<SyncActivities>({
 })
 
 // Data activities: 10m with retry and heartbeat
-const { sync, read, write } = proxyActivities<SyncActivities>({
+const { syncImmediate, readIntoQueue, writeFromQueue } = proxyActivities<SyncActivities>({
   startToCloseTimeout: '10m',
   heartbeatTimeout: '2m',
   retry: retryPolicy,
@@ -125,7 +125,7 @@ export async function pipelineWorkflow(
         // Resolve events through read → Kafka
         if (inputQueue.length > 0) {
           const batch = inputQueue.splice(0, EVENT_BATCH_SIZE)
-          const { count } = await read(pipelineId, { input: batch })
+          const { count } = await readIntoQueue(pipelineId, { input: batch })
           if (count > 0) pendingWrites = true
           await tickIteration()
           continue
@@ -134,7 +134,7 @@ export async function pipelineWorkflow(
         // Backfill one page → Kafka
         if (!readComplete) {
           const before = readState
-          const { count, state: nextReadState } = await read(pipelineId, {
+          const { count, state: nextReadState } = await readIntoQueue(pipelineId, {
             state: readState,
             stateLimit: 1,
           })
@@ -156,7 +156,7 @@ export async function pipelineWorkflow(
         if (deleted) break
 
         if (pendingWrites) {
-          const result = await write(pipelineId, { maxBatch: 50 })
+          const result = await writeFromQueue(pipelineId, { maxBatch: 50 })
           pendingWrites = result.written > 0
           writeState = { ...writeState, ...result.state }
           // Propagate writeState to syncState so continueAsNew carries the persisted truth
@@ -180,7 +180,7 @@ export async function pipelineWorkflow(
       // 1. Drain buffered events
       if (inputQueue.length > 0) {
         const batch = inputQueue.splice(0, EVENT_BATCH_SIZE)
-        await sync(pipelineId, { input: batch })
+        await syncImmediate(pipelineId, { input: batch })
         await tickIteration()
         continue
       }
@@ -188,7 +188,7 @@ export async function pipelineWorkflow(
       // 2. Reconciliation page
       if (!readComplete) {
         const before = syncState
-        const result = await sync(pipelineId, { state: syncState, stateLimit: 1 })
+        const result = await syncImmediate(pipelineId, { state: syncState, stateLimit: 1 })
         syncState = { ...syncState, ...result.state }
         readComplete = deepEqual(syncState, before)
         await tickIteration()
