@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# End-to-end test: Service (config resolution) → Engine (sync execution)
+# End-to-end test: Engine stateless API — setup, sync, teardown
 #
-# Tests the same flow that Temporal activities execute:
-#   1. Create pipelines via service API (Postgres + optionally Google Sheets)
-#   2. GET /pipelines/{id} → resolved config
-#   3. POST /setup, /sync, /teardown on engine with X-Pipeline
-#   4. Verify data landed, verify teardown
+# Tests the same flow that Temporal activities execute against the engine:
+#   1. POST /setup with X-Pipeline header
+#   2. POST /sync — verify data landed
+#   3. POST /teardown — verify cleanup
 #
 # Env vars:
 #   STRIPE_API_KEY          (required)
@@ -28,22 +27,18 @@ POSTGRES_URL="${POSTGRES_URL:-postgresql://postgres:postgres@localhost:5432/post
 SCHEMA="temporal_sh_$(date +%Y%m%d%H%M%S)_$$"
 SKIP_DELETE="${SKIP_DELETE:-}"
 
-SERVICE_PORT=0
 ENGINE_PORT=0
-SERVICE_PID=""
 ENGINE_PID=""
 
 cleanup() {
   echo ""
   echo "--- Cleanup ---"
-  [ -n "$SERVICE_PID" ] && kill "$SERVICE_PID" 2>/dev/null && echo "  Stopped service ($SERVICE_PID)"
   [ -n "$ENGINE_PID" ] && kill "$ENGINE_PID" 2>/dev/null && echo "  Stopped engine ($ENGINE_PID)"
   if [ -z "$SKIP_DELETE" ]; then
     psql "$POSTGRES_URL" -c "DROP SCHEMA IF EXISTS \"$SCHEMA\" CASCADE" 2>/dev/null && echo "  Dropped schema $SCHEMA"
   else
     echo "  SKIP_DELETE: keeping schema $SCHEMA"
   fi
-  [ -n "${DATA_DIR:-}" ] && rm -rf "$DATA_DIR" && echo "  Removed $DATA_DIR"
 }
 trap cleanup EXIT
 
@@ -64,31 +59,14 @@ wait_for_port() {
   exit 1
 }
 
-# Resolve a pipeline's config and build X-Pipeline header value
-resolve_params() {
-  local sync_id=$1
-  curl -sf "$SERVICE_URL/pipelines/$sync_id" | python3 -c "
-import sys, json
-c = json.load(sys.stdin)
-print(json.dumps({
-  'source': c['source'],
-  'destination': c['destination'],
-  'streams': c.get('streams', [])
-}))
-"
-}
-
-# Run the full setup → sync → verify → teardown cycle for a sync
+# Run the full setup → sync → verify → teardown cycle
 run_sync_cycle() {
-  local label=$1 sync_id=$2 verify_fn=$3
+  local label=$1 params=$2 verify_fn=$3
 
   echo ""
   echo "=== $label ==="
 
-  # Resolve
-  local params
-  params=$(resolve_params "$sync_id")
-  echo "  Resolved config ($(echo "$params" | wc -c | tr -d ' ') bytes)"
+  echo "  Config ($(echo "$params" | wc -c | tr -d ' ') bytes)"
 
   # Setup
   local status
@@ -133,7 +111,7 @@ print(n)
   fi
 }
 
-# ── Start servers ──────────────────────────────────────────────────
+# ── Start engine server ───────────────────────────────────────────
 
 ENGINE_PORT=$(find_free_port)
 echo "Starting engine on port $ENGINE_PORT ..."
@@ -141,20 +119,9 @@ echo "Starting engine on port $ENGINE_PORT ..."
 ENGINE_PID=$!
 wait_for_port "$ENGINE_PORT" "Engine"
 
-SERVICE_PORT=$(find_free_port)
-DATA_DIR=$(mktemp -d)
-echo "Starting service on port $SERVICE_PORT ..."
-node "$ROOT/apps/service/dist/bin/cli.js" serve \
-  --port "$SERVICE_PORT" \
-  --data-dir "$DATA_DIR" &>/dev/null &
-SERVICE_PID=$!
-wait_for_port "$SERVICE_PORT" "Service"
-
-SERVICE_URL="http://localhost:$SERVICE_PORT"
 ENGINE_URL="http://localhost:$ENGINE_PORT"
 
 echo ""
-echo "  Service:  $SERVICE_URL"
 echo "  Engine:   $ENGINE_URL"
 echo "  Postgres: $POSTGRES_URL"
 [ -n "$SKIP_DELETE" ] && echo "  Mode:     SKIP_DELETE (data preserved)"
@@ -162,16 +129,17 @@ echo "  Postgres: $POSTGRES_URL"
 # ── Sync 1: Stripe → Postgres ─────────────────────────────────────
 
 echo ""
-echo "--- Creating Postgres pipeline ---"
-PG_SYNC_RESP=$(curl -sf -X POST "$SERVICE_URL/pipelines" \
-  -H 'Content-Type: application/json' \
-  -d "{
-    \"source\": { \"name\": \"stripe\", \"api_key\": \"$STRIPE_API_KEY\", \"backfill_limit\": 5 },
-    \"destination\": { \"name\": \"postgres\", \"connection_string\": \"$POSTGRES_URL\", \"schema\": \"$SCHEMA\" },
-    \"streams\": [{ \"name\": \"products\" }]
-  }")
-PG_SYNC_ID=$(echo "$PG_SYNC_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
-echo "  Pipeline: $PG_SYNC_ID (schema: $SCHEMA)"
+echo "--- Stripe → Postgres ---"
+
+PG_PARAMS=$(python3 -c "
+import json
+print(json.dumps({
+  'source': {'name': 'stripe', 'api_key': '$STRIPE_API_KEY', 'backfill_limit': 5},
+  'destination': {'name': 'postgres', 'connection_string': '$POSTGRES_URL', 'schema': '$SCHEMA'},
+  'streams': [{'name': 'products'}]
+}))
+")
+echo "  Schema: $SCHEMA"
 
 verify_postgres() {
   local count
@@ -184,15 +152,12 @@ verify_postgres() {
   echo "  Sample: $sample"
   [[ "$sample" == prod_* ]] || { echo "FAIL: expected prod_ prefix"; exit 1; }
 
-  if [ -z "$SKIP_DELETE" ]; then
-    # Will be verified after teardown
-    :
-  else
+  if [ -n "$SKIP_DELETE" ]; then
     echo "  Data preserved: psql $POSTGRES_URL -c 'SELECT * FROM \"$SCHEMA\".\"products\" LIMIT 5'"
   fi
 }
 
-run_sync_cycle "Stripe → Postgres" "$PG_SYNC_ID" verify_postgres
+run_sync_cycle "Stripe → Postgres" "$PG_PARAMS" verify_postgres
 
 # Verify teardown actually dropped the schema
 if [ -z "$SKIP_DELETE" ]; then
@@ -208,9 +173,8 @@ if [ -n "${GOOGLE_CLIENT_ID:-}" ] && [ -n "${GOOGLE_CLIENT_SECRET:-}" ] && \
    [ -n "${GOOGLE_REFRESH_TOKEN:-}" ]; then
 
   echo ""
-  echo "--- Creating Google Sheets pipeline ---"
+  echo "--- Stripe → Google Sheets ---"
 
-  # Build destination config — reuse existing spreadsheet if GOOGLE_SPREADSHEET_ID is set
   SHEETS_DEST="{
     \"name\": \"google-sheets\",
     \"client_id\": \"$GOOGLE_CLIENT_ID\",
@@ -225,15 +189,16 @@ if [ -n "${GOOGLE_CLIENT_ID:-}" ] && [ -n "${GOOGLE_CLIENT_SECRET:-}" ] && \
   fi
   SHEETS_DEST="$SHEETS_DEST }"
 
-  SHEETS_SYNC_RESP=$(curl -sf -X POST "$SERVICE_URL/pipelines" \
-    -H 'Content-Type: application/json' \
-    -d "{
-      \"source\": { \"name\": \"stripe\", \"api_key\": \"$STRIPE_API_KEY\", \"backfill_limit\": 3 },
-      \"destination\": $SHEETS_DEST,
-      \"streams\": [{ \"name\": \"products\" }]
-    }")
-  SHEETS_SYNC_ID=$(echo "$SHEETS_SYNC_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
-  echo "  Pipeline: $SHEETS_SYNC_ID (spreadsheet: ${GOOGLE_SPREADSHEET_ID:-auto-created})"
+  SHEETS_PARAMS=$(python3 -c "
+import json
+dest = json.loads('''$SHEETS_DEST''')
+print(json.dumps({
+  'source': {'name': 'stripe', 'api_key': '$STRIPE_API_KEY', 'backfill_limit': 3},
+  'destination': dest,
+  'streams': [{'name': 'products'}]
+}))
+")
+  echo "  Pipeline config built"
 
   verify_sheets() {
     if [ -z "${GOOGLE_SPREADSHEET_ID:-}" ]; then
@@ -271,7 +236,7 @@ print(len(rows) - 1 if len(rows) > 1 else 0)  # minus header
     fi
   }
 
-  run_sync_cycle "Stripe → Google Sheets" "$SHEETS_SYNC_ID" verify_sheets
+  run_sync_cycle "Stripe → Google Sheets" "$SHEETS_PARAMS" verify_sheets
 else
   echo ""
   echo "--- Skipping Google Sheets sync (set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN; GOOGLE_SPREADSHEET_ID is optional) ---"
