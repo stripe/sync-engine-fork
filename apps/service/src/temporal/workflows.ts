@@ -5,6 +5,7 @@ import {
   setHandler,
   condition,
   continueAsNew,
+  sleep,
 } from '@temporalio/workflow'
 
 import type { SyncActivities } from './activities.js'
@@ -58,18 +59,26 @@ export const statusQuery = defineQuery<WorkflowStatus>('status')
 
 export async function pipelineWorkflow(
   pipelineId: string,
-  opts?: { phase?: string; state?: Record<string, unknown>; mode?: 'sync' | 'read-write' }
+  opts?: {
+    phase?: string
+    state?: Record<string, unknown>
+    mode?: 'sync' | 'read-write'
+    writeRps?: number
+    inputQueue?: unknown[]
+    messagesQueue?: unknown[]
+  }
 ): Promise<void> {
   let paused = false
   let deleted = false
-  const eventBuffer: unknown[] = []
+  const inputQueue: unknown[] = [...(opts?.inputQueue ?? [])]
+  const messagesQueue: unknown[] = [...(opts?.messagesQueue ?? [])]
   let iteration = 0
   let syncState: Record<string, unknown> = opts?.state ?? {}
   let reconciled = false
 
   // Register signal handlers (must be before any await)
   setHandler(stripeEventSignal, (event: unknown) => {
-    eventBuffer.push(event)
+    inputQueue.push(event)
   })
   setHandler(pauseSignal, () => {
     paused = true
@@ -105,6 +114,9 @@ export async function pipelineWorkflow(
         phase: 'running',
         state: syncState,
         mode: opts?.mode,
+        writeRps: opts?.writeRps,
+        inputQueue: inputQueue.length > 0 ? [...inputQueue] : undefined,
+        messagesQueue: messagesQueue.length > 0 ? [...messagesQueue] : undefined,
       })
     }
   }
@@ -119,41 +131,73 @@ export async function pipelineWorkflow(
     }
   }
 
-  // --- Main loop: continuous reconciliation + optimistic updates ---
+  // --- Main loop ---
 
   while (true) {
     await waitWhilePaused()
     if (deleted) break
 
-    // 1. Drain buffered events
-    if (eventBuffer.length > 0) {
-      const batch = eventBuffer.splice(0, EVENT_BATCH_SIZE)
-      await sync(pipelineId, { input: batch })
-      await tickIteration()
-      continue // Re-check for more events before reconciliation
-    }
+    if (opts?.mode === 'read-write') {
+      // Two-queue architecture: inputQueue → read → messagesQueue → write (rate-limited)
 
-    // 2. Reconciliation: one page at a time; done when state stops changing
-    if (!reconciled) {
-      const before = syncState
-      if (opts?.mode === 'read-write') {
+      // 1. DRAIN: write from messagesQueue (rate-limited)
+      if (messagesQueue.length > 0) {
+        const batch = messagesQueue.splice(0, messagesQueue.length)
+        await write(pipelineId, batch)
+        if (opts?.writeRps) await sleep(Math.ceil(1000 / opts.writeRps))
+        await tickIteration()
+        continue
+      }
+
+      // 2. RESOLVE: process events through read into messagesQueue
+      if (inputQueue.length > 0) {
+        const batch = inputQueue.splice(0, EVENT_BATCH_SIZE)
+        const { records } = await read(pipelineId, { input: batch })
+        messagesQueue.push(...records)
+        await tickIteration()
+        continue
+      }
+
+      // 3. RECONCILE: backfill one page into messagesQueue
+      if (!reconciled) {
+        const before = syncState
         const { records, state: readState } = await read(pipelineId, {
           state: syncState,
           stateLimit: 1,
         })
-        if (records.length > 0) await write(pipelineId, records)
+        messagesQueue.push(...records)
         syncState = { ...syncState, ...readState }
-      } else {
+        reconciled = deepEqual(syncState, before)
+        await tickIteration()
+        continue
+      }
+
+      // 4. WAIT: all caught up
+      await condition(() => inputQueue.length > 0 || deleted)
+    } else {
+      // sync mode: combined read+write in a single activity call
+
+      // 1. Drain buffered events
+      if (inputQueue.length > 0) {
+        const batch = inputQueue.splice(0, EVENT_BATCH_SIZE)
+        await sync(pipelineId, { input: batch })
+        await tickIteration()
+        continue
+      }
+
+      // 2. Reconciliation page
+      if (!reconciled) {
+        const before = syncState
         const result = await sync(pipelineId, { state: syncState, stateLimit: 1 })
         syncState = { ...syncState, ...result.state }
+        reconciled = deepEqual(syncState, before)
+        await tickIteration()
+        continue
       }
-      reconciled = deepEqual(syncState, before)
-      await tickIteration()
-      continue
-    }
 
-    // 3. All streams caught up — wait for a new event or delete signal
-    await condition(() => eventBuffer.length > 0 || deleted)
+      // 3. Wait
+      await condition(() => inputQueue.length > 0 || deleted)
+    }
   }
 
   // Teardown on delete
