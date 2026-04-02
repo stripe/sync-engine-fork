@@ -139,26 +139,14 @@ const webhookCmd = defineCommand({
     },
   },
   async run({ args }) {
-    const { createWebhookApp } = await import('./api/webhook-app.js')
-
-    const { client } = await createTemporalClient(
-      args['temporal-address'],
-      args['temporal-task-queue'] || 'sync-engine'
-    )
-
-    const app = createWebhookApp({
-      push_event: (id, e) => {
-        client.getHandle(id).signal('stripe_event', e).catch(() => {})
-      },
-    })
     const port = Number(args.port)
+    const taskQueue = args['temporal-task-queue'] || 'sync-engine'
+    const temporal = await createTemporalClient(args['temporal-address'], taskQueue)
+    const app = createApp({ temporal, resolver })
+
     serve({ fetch: app.fetch, port }, () => {
       logger.info(
-        {
-          port,
-          temporalAddress: args['temporal-address'],
-          taskQueue: args['temporal-task-queue'] || 'sync-engine',
-        },
+        { port, temporalAddress: args['temporal-address'], taskQueue },
         `Webhook server listening on http://localhost:${port}`
       )
     })

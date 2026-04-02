@@ -17,10 +17,6 @@ export { createApp } from './api/app.js'
 export type { AppOptions } from './api/app.js'
 
 
-// Standalone webhook ingress app
-export { createWebhookApp } from './api/webhook-app.js'
-export type { WebhookAppOptions } from './api/webhook-app.js'
-
 // Temporal workflow types (for consumers that need to reference them)
 export { createActivities } from './temporal/activities.js'
 export type { SyncActivities, RunResult } from './temporal/activities.js'
