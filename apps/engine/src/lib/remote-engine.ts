@@ -10,10 +10,7 @@ import type { CheckResult, DestinationOutput, Message, PipelineConfig } from '@s
 // We use targeted `as any` casts on the POST calls for these streaming endpoints
 // until the generator supports streaming request bodies.
 // See: https://github.com/openapi-ts/openapi-typescript/issues/1823
-type StreamPost = (
-  path: string,
-  init: Record<string, unknown>
-) => Promise<{ response: Response }>
+type StreamPost = (path: string, init: Record<string, unknown>) => Promise<{ response: Response }>
 
 /**
  * HTTP client that satisfies the Engine interface by delegating each method to

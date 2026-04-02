@@ -9,12 +9,7 @@ import {
 } from '@temporalio/workflow'
 
 import type { SyncActivities } from './activities.js'
-import {
-  deepEqual,
-  CONTINUE_AS_NEW_THRESHOLD,
-  EVENT_BATCH_SIZE,
-  retryPolicy,
-} from './types.js'
+import { deepEqual, CONTINUE_AS_NEW_THRESHOLD, EVENT_BATCH_SIZE, retryPolicy } from './types.js'
 import type { WorkflowStatus } from './types.js'
 
 // Setup/teardown: 2m with retry
@@ -117,10 +112,10 @@ export async function pipelineWorkflow(
 
   if (opts?.mode === 'read-write') {
     // Concurrent read/write via Kafka queue — each loop runs at its own pace
-    // readState: pagination cursor for source reads (not persisted)
-    // writeState: persisted pipeline state, only updated after successful writes
-    let readState: Record<string, unknown> = { ...syncState }
+    // writeState: persisted pipeline state, only advanced after successful writes (source of truth)
+    // readState: pagination cursor for source reads, starts from writeState
     let writeState: Record<string, unknown> = { ...syncState }
+    let readState: Record<string, unknown> = { ...writeState }
 
     async function readLoop(): Promise<void> {
       while (!deleted) {
@@ -164,6 +159,8 @@ export async function pipelineWorkflow(
           const result = await write(pipelineId, { maxBatch: 50 })
           pendingWrites = result.written > 0
           writeState = { ...writeState, ...result.state }
+          // Propagate writeState to syncState so continueAsNew carries the persisted truth
+          syncState = writeState
           if (opts?.writeRps) await sleep(Math.ceil(1000 / opts.writeRps))
           await tickIteration()
         } else {
