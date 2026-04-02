@@ -41,7 +41,6 @@ export async function pipelineWorkflow(
     state?: Record<string, unknown>
     mode?: 'sync' | 'read-write'
     writeRps?: number
-    pendingWrites?: boolean
     inputQueue?: unknown[]
   }
 ): Promise<void> {
@@ -51,7 +50,6 @@ export async function pipelineWorkflow(
   let iteration = 0
   let syncState: Record<string, unknown> = opts?.state ?? {}
   let readComplete = false
-  let pendingWrites = opts?.pendingWrites ?? false
 
   // Register signal handlers (must be before any await)
   setHandler(stripeEventSignal, (event: unknown) => {
@@ -92,7 +90,6 @@ export async function pipelineWorkflow(
         state: syncState,
         mode: opts?.mode,
         writeRps: opts?.writeRps,
-        pendingWrites,
         inputQueue: inputQueue.length > 0 ? [...inputQueue] : undefined,
       })
     }
@@ -125,8 +122,7 @@ export async function pipelineWorkflow(
         // Resolve events through read → Kafka
         if (inputQueue.length > 0) {
           const batch = inputQueue.splice(0, EVENT_BATCH_SIZE)
-          const { count } = await readIntoQueue(pipelineId, { input: batch })
-          if (count > 0) pendingWrites = true
+          await readIntoQueue(pipelineId, { input: batch })
           await tickIteration()
           continue
         }
@@ -134,11 +130,10 @@ export async function pipelineWorkflow(
         // Backfill one page → Kafka
         if (!readComplete) {
           const before = readState
-          const { count, state: nextReadState } = await readIntoQueue(pipelineId, {
+          const { state: nextReadState } = await readIntoQueue(pipelineId, {
             state: readState,
             stateLimit: 1,
           })
-          if (count > 0) pendingWrites = true
           readState = { ...readState, ...nextReadState }
           readComplete = deepEqual(readState, before)
           await tickIteration()
@@ -155,17 +150,11 @@ export async function pipelineWorkflow(
         await waitWhilePaused()
         if (deleted) break
 
-        if (pendingWrites) {
-          const result = await writeFromQueue(pipelineId, { maxBatch: 50 })
-          pendingWrites = result.written > 0
-          writeState = { ...writeState, ...result.state }
-          // Propagate writeState to syncState so continueAsNew carries the persisted truth
-          syncState = writeState
-          if (opts?.writeRps) await sleep(Math.ceil(1000 / opts.writeRps))
-          await tickIteration()
-        } else {
-          await condition(() => pendingWrites || deleted)
-        }
+        const result = await writeFromQueue(pipelineId, { maxBatch: 50 })
+        writeState = { ...writeState, ...result.state }
+        syncState = writeState
+        if (opts?.writeRps) await sleep(Math.ceil(1000 / opts.writeRps))
+        await tickIteration()
       }
     }
 
