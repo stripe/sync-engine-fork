@@ -146,7 +146,10 @@ Deno.serve(async (req) => {
     }
 
     const backfillConcurrency = Number(Deno.env.get('BACKFILL_CONCURRENCY')) || undefined
-    const sourceConfig: SourceConfig = { api_key: stripeKey, backfill_concurrency: backfillConcurrency }
+    const sourceConfig: SourceConfig = {
+      api_key: stripeKey,
+      backfill_concurrency: backfillConcurrency,
+    }
     const destConfig: DestConfig = {
       connection_string: dbUrl,
       schema: schemaName,
