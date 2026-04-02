@@ -3,7 +3,7 @@
   "info": {
     "title": "Stripe Sync Service",
     "version": "1.0.0",
-    "description": "Stripe Sync Service — manage pipelines and webhook ingress.\n\n## Endpoints\n\n| Method | Path | Summary |\n|--------|------|---------|\n| GET | /health | Health check |\n| GET | /pipelines | List pipelines |\n| POST | /pipelines | Create pipeline |\n| GET | /pipelines/{id} | Retrieve pipeline |\n| PATCH | /pipelines/{id} | Update pipeline |\n| DELETE | /pipelines/{id} | Delete pipeline |\n| POST | /pipelines/{id}/setup | Set up destination schema for a pipeline |\n| POST | /pipelines/{id}/teardown | Tear down destination schema for a pipeline |\n| GET | /pipelines/{id}/check | Check connector connection for a pipeline |\n| POST | /pipelines/{id}/read | Read records from the pipeline source |\n| POST | /pipelines/{id}/write | Write records to the pipeline destination |\n| POST | /pipelines/{id}/sync | Run pipeline (read → write) |\n| POST | /pipelines/{id}/pause | Pause a running pipeline (Temporal mode only) |\n| POST | /pipelines/{id}/resume | Resume a paused pipeline (Temporal mode only) |\n| POST | /webhooks/{pipeline_id} | Ingest a Stripe webhook event |"
+    "description": "Stripe Sync Service — manage pipelines and webhook ingress.\n\n## Endpoints\n\n| Method | Path | Summary |\n|--------|------|---------|\n| GET | /health | Health check |\n| GET | /pipelines | List pipelines |\n| POST | /pipelines | Create pipeline |\n| GET | /pipelines/{id} | Retrieve pipeline |\n| PATCH | /pipelines/{id} | Update pipeline |\n| DELETE | /pipelines/{id} | Delete pipeline |\n| POST | /webhooks/{pipeline_id} | Ingest a Stripe webhook event |"
   },
   "components": {
     "schemas": {},
@@ -13,7 +13,9 @@
     "/health": {
       "get": {
         "operationId": "health",
-        "tags": ["Status"],
+        "tags": [
+          "Status"
+        ],
         "summary": "Health check",
         "responses": {
           "200": {
@@ -25,10 +27,14 @@
                   "properties": {
                     "ok": {
                       "type": "boolean",
-                      "enum": [true]
+                      "enum": [
+                        true
+                      ]
                     }
                   },
-                  "required": ["ok"]
+                  "required": [
+                    "ok"
+                  ]
                 }
               }
             }
@@ -39,7 +45,9 @@
     "/pipelines": {
       "get": {
         "operationId": "listPipelines",
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "List pipelines",
         "responses": {
           "200": {
@@ -64,7 +72,9 @@
                                 "type": "string"
                               }
                             },
-                            "required": ["name"],
+                            "required": [
+                              "name"
+                            ],
                             "additionalProperties": {
                               "nullable": true
                             }
@@ -76,7 +86,9 @@
                                 "type": "string"
                               }
                             },
-                            "required": ["name"],
+                            "required": [
+                              "name"
+                            ],
                             "additionalProperties": {
                               "nullable": true
                             }
@@ -91,21 +103,33 @@
                                 },
                                 "sync_mode": {
                                   "type": "string",
-                                  "enum": ["incremental", "full_refresh"]
+                                  "enum": [
+                                    "incremental",
+                                    "full_refresh"
+                                  ]
                                 }
                               },
-                              "required": ["name"]
+                              "required": [
+                                "name"
+                              ]
                             }
                           }
                         },
-                        "required": ["id", "source", "destination"]
+                        "required": [
+                          "id",
+                          "source",
+                          "destination"
+                        ]
                       }
                     },
                     "has_more": {
                       "type": "boolean"
                     }
                   },
-                  "required": ["data", "has_more"]
+                  "required": [
+                    "data",
+                    "has_more"
+                  ]
                 }
               }
             }
@@ -114,7 +138,9 @@
       },
       "post": {
         "operationId": "createPipeline",
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Create pipeline",
         "requestBody": {
           "content": {
@@ -129,7 +155,9 @@
                         "type": "string"
                       }
                     },
-                    "required": ["name"],
+                    "required": [
+                      "name"
+                    ],
                     "additionalProperties": {
                       "nullable": true
                     }
@@ -141,7 +169,9 @@
                         "type": "string"
                       }
                     },
-                    "required": ["name"],
+                    "required": [
+                      "name"
+                    ],
                     "additionalProperties": {
                       "nullable": true
                     }
@@ -156,14 +186,22 @@
                         },
                         "sync_mode": {
                           "type": "string",
-                          "enum": ["incremental", "full_refresh"]
+                          "enum": [
+                            "incremental",
+                            "full_refresh"
+                          ]
                         }
                       },
-                      "required": ["name"]
+                      "required": [
+                        "name"
+                      ]
                     }
                   }
                 },
-                "required": ["source", "destination"]
+                "required": [
+                  "source",
+                  "destination"
+                ]
               }
             }
           }
@@ -186,7 +224,9 @@
                           "type": "string"
                         }
                       },
-                      "required": ["name"],
+                      "required": [
+                        "name"
+                      ],
                       "additionalProperties": {
                         "nullable": true
                       }
@@ -198,7 +238,9 @@
                           "type": "string"
                         }
                       },
-                      "required": ["name"],
+                      "required": [
+                        "name"
+                      ],
                       "additionalProperties": {
                         "nullable": true
                       }
@@ -213,14 +255,23 @@
                           },
                           "sync_mode": {
                             "type": "string",
-                            "enum": ["incremental", "full_refresh"]
+                            "enum": [
+                              "incremental",
+                              "full_refresh"
+                            ]
                           }
                         },
-                        "required": ["name"]
+                        "required": [
+                          "name"
+                        ]
                       }
                     }
                   },
-                  "required": ["id", "source", "destination"]
+                  "required": [
+                    "id",
+                    "source",
+                    "destination"
+                  ]
                 }
               }
             }
@@ -246,7 +297,9 @@
     "/pipelines/{id}": {
       "get": {
         "operationId": "getPipeline",
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Retrieve pipeline",
         "parameters": [
           {
@@ -261,7 +314,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Retrieved pipeline",
+            "description": "Retrieved pipeline with status",
             "content": {
               "application/json": {
                 "schema": {
@@ -277,7 +330,9 @@
                           "type": "string"
                         }
                       },
-                      "required": ["name"],
+                      "required": [
+                        "name"
+                      ],
                       "additionalProperties": {
                         "nullable": true
                       }
@@ -289,7 +344,9 @@
                           "type": "string"
                         }
                       },
-                      "required": ["name"],
+                      "required": [
+                        "name"
+                      ],
                       "additionalProperties": {
                         "nullable": true
                       }
@@ -304,14 +361,42 @@
                           },
                           "sync_mode": {
                             "type": "string",
-                            "enum": ["incremental", "full_refresh"]
+                            "enum": [
+                              "incremental",
+                              "full_refresh"
+                            ]
                           }
                         },
-                        "required": ["name"]
+                        "required": [
+                          "name"
+                        ]
                       }
+                    },
+                    "status": {
+                      "type": "object",
+                      "properties": {
+                        "phase": {
+                          "type": "string"
+                        },
+                        "paused": {
+                          "type": "boolean"
+                        },
+                        "iteration": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "phase",
+                        "paused",
+                        "iteration"
+                      ]
                     }
                   },
-                  "required": ["id", "source", "destination"]
+                  "required": [
+                    "id",
+                    "source",
+                    "destination"
+                  ]
                 }
               }
             }
@@ -335,8 +420,11 @@
       },
       "patch": {
         "operationId": "updatePipeline",
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Update pipeline",
+        "description": "Update pipeline config. Include `{ \"paused\": true }` to pause or `{ \"paused\": false }` to resume.",
         "parameters": [
           {
             "schema": {
@@ -361,7 +449,9 @@
                         "type": "string"
                       }
                     },
-                    "required": ["name"],
+                    "required": [
+                      "name"
+                    ],
                     "additionalProperties": {
                       "nullable": true
                     }
@@ -373,7 +463,9 @@
                         "type": "string"
                       }
                     },
-                    "required": ["name"],
+                    "required": [
+                      "name"
+                    ],
                     "additionalProperties": {
                       "nullable": true
                     }
@@ -388,10 +480,15 @@
                         },
                         "sync_mode": {
                           "type": "string",
-                          "enum": ["incremental", "full_refresh"]
+                          "enum": [
+                            "incremental",
+                            "full_refresh"
+                          ]
                         }
                       },
-                      "required": ["name"]
+                      "required": [
+                        "name"
+                      ]
                     }
                   }
                 }
@@ -401,72 +498,22 @@
         },
         "responses": {
           "200": {
-            "description": "Updated pipeline",
+            "description": "Update signal sent",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "source": {
-                      "type": "object",
-                      "properties": {
-                        "name": {
-                          "type": "string"
-                        }
-                      },
-                      "required": ["name"],
-                      "additionalProperties": {
-                        "nullable": true
-                      }
-                    },
-                    "destination": {
-                      "type": "object",
-                      "properties": {
-                        "name": {
-                          "type": "string"
-                        }
-                      },
-                      "required": ["name"],
-                      "additionalProperties": {
-                        "nullable": true
-                      }
-                    },
-                    "streams": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "sync_mode": {
-                            "type": "string",
-                            "enum": ["incremental", "full_refresh"]
-                          }
-                        },
-                        "required": ["name"]
-                      }
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
                     }
                   },
-                  "required": ["id", "source", "destination"]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "nullable": true
-                    }
-                  }
+                  "required": [
+                    "ok"
+                  ]
                 }
               }
             }
@@ -490,7 +537,9 @@
       },
       "delete": {
         "operationId": "deletePipeline",
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Delete pipeline",
         "parameters": [
           {
@@ -516,10 +565,15 @@
                     },
                     "deleted": {
                       "type": "boolean",
-                      "enum": [true]
+                      "enum": [
+                        true
+                      ]
                     }
                   },
-                  "required": ["id", "deleted"]
+                  "required": [
+                    "id",
+                    "deleted"
+                  ]
                 }
               }
             }
@@ -542,442 +596,12 @@
         }
       }
     },
-    "/pipelines/{id}/setup": {
-      "post": {
-        "operationId": "setupPipeline",
-        "tags": ["Pipeline Operations"],
-        "summary": "Set up destination schema for a pipeline",
-        "description": "Creates destination tables and applies migrations. Safe to call multiple times.",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "example": "pipe_abc123"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Setup complete"
-          },
-          "404": {
-            "description": "Pipeline not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "nullable": true
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/pipelines/{id}/teardown": {
-      "post": {
-        "operationId": "teardownPipeline",
-        "tags": ["Pipeline Operations"],
-        "summary": "Tear down destination schema for a pipeline",
-        "description": "Drops destination tables. Irreversible.",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "example": "pipe_abc123"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Teardown complete"
-          },
-          "404": {
-            "description": "Pipeline not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "nullable": true
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/pipelines/{id}/check": {
-      "get": {
-        "operationId": "checkPipeline",
-        "tags": ["Pipeline Operations"],
-        "summary": "Check connector connection for a pipeline",
-        "description": "Validates the source/destination config and tests connectivity.",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "example": "pipe_abc123"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Connection check result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "source": {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "enum": ["succeeded", "failed"]
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": ["status"]
-                    },
-                    "destination": {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "enum": ["succeeded", "failed"]
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": ["status"]
-                    }
-                  },
-                  "required": ["source", "destination"]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Pipeline not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "nullable": true
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/pipelines/{id}/read": {
-      "post": {
-        "operationId": "readPipeline",
-        "tags": ["Pipeline Operations"],
-        "summary": "Read records from the pipeline source",
-        "description": "Streams NDJSON messages (records, state, catalog). Optional NDJSON body provides input.",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "example": "pipe_abc123"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "NDJSON stream of sync messages",
-            "content": {
-              "application/x-ndjson": {
-                "schema": {
-                  "type": "string",
-                  "description": "Newline-delimited JSON sync messages, one per line",
-                  "example": "{\"type\":\"record\",\"stream\":\"products\",\"data\":{\"id\":\"prod_123\",\"name\":\"Widget\"}}\n"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Pipeline not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "nullable": true
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/pipelines/{id}/write": {
-      "post": {
-        "operationId": "writePipeline",
-        "tags": ["Pipeline Operations"],
-        "summary": "Write records to the pipeline destination",
-        "description": "Reads NDJSON messages from the request body and writes them to the destination.",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "example": "pipe_abc123"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/x-ndjson": {
-              "schema": {
-                "type": "string",
-                "description": "Newline-delimited JSON sync messages, one per line",
-                "example": "{\"type\":\"record\",\"stream\":\"products\",\"data\":{\"id\":\"prod_123\",\"name\":\"Widget\"}}\n"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "NDJSON stream of write result messages",
-            "content": {
-              "application/x-ndjson": {
-                "schema": {
-                  "type": "string",
-                  "description": "Newline-delimited JSON sync messages, one per line",
-                  "example": "{\"type\":\"record\",\"stream\":\"products\",\"data\":{\"id\":\"prod_123\",\"name\":\"Widget\"}}\n"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Missing request body",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "nullable": true
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Pipeline not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "nullable": true
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/pipelines/{id}/sync": {
-      "post": {
-        "operationId": "syncPipeline",
-        "tags": ["Pipeline Operations"],
-        "summary": "Run pipeline (read → write)",
-        "description": "Without a request body, reads from the source connector and writes to the destination (backfill mode). With an NDJSON request body, uses the provided messages as input instead of reading from the source (push mode — e.g. piped webhook events).",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "example": "pipe_abc123"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "NDJSON stream of sync messages",
-            "content": {
-              "application/x-ndjson": {
-                "schema": {
-                  "type": "string",
-                  "description": "Newline-delimited JSON sync messages, one per line",
-                  "example": "{\"type\":\"record\",\"stream\":\"products\",\"data\":{\"id\":\"prod_123\",\"name\":\"Widget\"}}\n"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Pipeline not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "nullable": true
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/pipelines/{id}/pause": {
-      "post": {
-        "operationId": "pausePipeline",
-        "tags": ["Pipeline Operations"],
-        "summary": "Pause a running pipeline (Temporal mode only)",
-        "description": "Signals the Temporal workflow to pause. The pipeline will stop processing after the current batch completes. Requires --temporal-address.",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "example": "pipe_abc123"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Pause signal sent"
-          },
-          "404": {
-            "description": "Pipeline not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "nullable": true
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Pause requires Temporal mode",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "nullable": true
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/pipelines/{id}/resume": {
-      "post": {
-        "operationId": "resumePipeline",
-        "tags": ["Pipeline Operations"],
-        "summary": "Resume a paused pipeline (Temporal mode only)",
-        "description": "Signals the Temporal workflow to resume. Requires --temporal-address.",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "example": "pipe_abc123"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Resume signal sent"
-          },
-          "404": {
-            "description": "Pipeline not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "nullable": true
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Resume requires Temporal mode",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "nullable": true
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/webhooks/{pipeline_id}": {
       "post": {
         "operationId": "pushWebhook",
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Ingest a Stripe webhook event",
         "description": "Receives a raw Stripe webhook event, verifies its signature using the pipeline's webhook secret, and enqueues it for processing by the active pipeline.",
         "parameters": [
@@ -998,7 +622,9 @@
               "text/plain": {
                 "schema": {
                   "type": "string",
-                  "enum": ["ok"]
+                  "enum": [
+                    "ok"
+                  ]
                 }
               }
             }
