@@ -167,6 +167,9 @@ importers:
       kafkajs:
         specifier: ^2.2.4
         version: 2.2.4
+      openapi-fetch:
+        specifier: ^0.13
+        version: 0.13.8
       pino:
         specifier: ^10
         version: 10.1.0
@@ -177,12 +180,24 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
+      '@stripe/sync-destination-postgres':
+        specifier: workspace:*
+        version: link:../../packages/destination-postgres
+      '@stripe/sync-source-stripe':
+        specifier: workspace:*
+        version: link:../../packages/source-stripe
       '@temporalio/testing':
         specifier: ^1
         version: 1.15.0(tslib@2.8.1)
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
+      openapi-typescript:
+        specifier: ^7
+        version: 7.13.0(typescript@5.9.3)
+      pg:
+        specifier: ^8
+        version: 8.16.3
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.1)
@@ -3295,8 +3310,14 @@ packages:
   once@1.4.0:
     resolution: {integrity: sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==}
 
+  openapi-fetch@0.13.8:
+    resolution: {integrity: sha512-yJ4QKRyNxE44baQ9mY5+r/kAzZ8yXMemtNAOFwOzRXJscdjSxxzWSNlyBAr+o5JjkUw9Lc3W7OIoca0cY3PYnQ==}
+
   openapi-fetch@0.17.0:
     resolution: {integrity: sha512-PsbZR1wAPcG91eEthKhN+Zn92FMHxv+/faECIwjXdxfTODGSGegYv0sc1Olz+HYPvKOuoXfp+0pA2XVt2cI0Ig==}
+
+  openapi-typescript-helpers@0.0.15:
+    resolution: {integrity: sha512-opyTPaunsklCBpTK8JGef6mfPhLSnyy5a0IN9vKtx3+4aExf+KxEqYwIy3hqkedXIB97u357uLMJsOnm3GVjsw==}
 
   openapi-typescript-helpers@0.1.0:
     resolution: {integrity: sha512-OKTGPthhivLw/fHz6c3OPtg72vi86qaMlqbJuVJ23qOvQ+53uw1n7HdmkJFibloF7QEjDrDkzJiOJuockM/ljw==}
@@ -7067,9 +7088,15 @@ snapshots:
     dependencies:
       wrappy: 1.0.2
 
+  openapi-fetch@0.13.8:
+    dependencies:
+      openapi-typescript-helpers: 0.0.15
+
   openapi-fetch@0.17.0:
     dependencies:
       openapi-typescript-helpers: 0.1.0
+
+  openapi-typescript-helpers@0.0.15: {}
 
   openapi-typescript-helpers@0.1.0: {}
 

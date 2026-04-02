@@ -33,6 +33,10 @@ export type { TemporalOptions } from './temporal/bridge.js'
 export { createApp } from './api/app.js'
 export type { AppOptions } from './api/app.js'
 
+// Typed HTTP client for the service API
+export { createServiceClient } from './lib/service-client.js'
+export type { ServiceClient } from './lib/service-client.js'
+
 // Standalone webhook ingress app
 export { createWebhookApp } from './api/webhook-app.js'
 export type { WebhookAppOptions } from './api/webhook-app.js'

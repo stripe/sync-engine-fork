@@ -17,7 +17,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integration": "vitest run --include '**/*.integration.test.ts'",
+    "generate:types": "openapi-typescript ../../docs/openapi/service.json -o src/lib/openapi.d.ts"
   },
   "files": [
     "dist",
@@ -25,6 +27,7 @@
   ],
   "dependencies": {
     "@hono/node-server": "^1",
+    "openapi-fetch": "^0.13",
     "@hono/zod-openapi": "^1.2",
     "@scalar/hono-api-reference": "^0.6",
     "@stripe/sync-engine": "workspace:*",
@@ -45,8 +48,12 @@
     "@temporalio/workflow": "^1"
   },
   "devDependencies": {
+    "@stripe/sync-destination-postgres": "workspace:*",
+    "@stripe/sync-source-stripe": "workspace:*",
     "@temporalio/testing": "^1",
     "@types/node": "^24.10.1",
+    "openapi-typescript": "^7",
+    "pg": "^8",
     "vitest": "^3.2.4"
   },
   "repository": {
