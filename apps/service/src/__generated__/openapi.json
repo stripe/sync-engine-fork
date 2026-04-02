@@ -173,9 +173,8 @@
                                     "description": "Database user (required for AWS IAM)"
                                   },
                                   "schema": {
-                                    "default": "public",
                                     "type": "string",
-                                    "description": "Target schema name"
+                                    "description": "Target schema name (e.g. \"stripe_sync\")"
                                   },
                                   "batch_size": {
                                     "default": 100,
@@ -288,6 +287,22 @@
                               "required": ["name"],
                               "additionalProperties": false
                             }
+                          },
+                          "status": {
+                            "type": "object",
+                            "properties": {
+                              "phase": {
+                                "type": "string"
+                              },
+                              "paused": {
+                                "type": "boolean"
+                              },
+                              "iteration": {
+                                "type": "number"
+                              }
+                            },
+                            "required": ["phase", "paused", "iteration"],
+                            "additionalProperties": false
                           }
                         },
                         "required": ["id", "source", "destination"],
@@ -435,9 +450,8 @@
                             "description": "Database user (required for AWS IAM)"
                           },
                           "schema": {
-                            "default": "public",
                             "type": "string",
-                            "description": "Target schema name"
+                            "description": "Target schema name (e.g. \"stripe_sync\")"
                           },
                           "batch_size": {
                             "default": 100,
@@ -473,7 +487,7 @@
                             "const": "postgres"
                           }
                         },
-                        "required": ["type"],
+                        "required": ["schema", "type"],
                         "additionalProperties": false
                       },
                       {
@@ -680,9 +694,8 @@
                               "description": "Database user (required for AWS IAM)"
                             },
                             "schema": {
-                              "default": "public",
                               "type": "string",
-                              "description": "Target schema name"
+                              "description": "Target schema name (e.g. \"stripe_sync\")"
                             },
                             "batch_size": {
                               "default": 100,
@@ -967,9 +980,8 @@
                               "description": "Database user (required for AWS IAM)"
                             },
                             "schema": {
-                              "default": "public",
                               "type": "string",
-                              "description": "Target schema name"
+                              "description": "Target schema name (e.g. \"stripe_sync\")"
                             },
                             "batch_size": {
                               "default": 100,
@@ -1263,9 +1275,8 @@
                             "description": "Database user (required for AWS IAM)"
                           },
                           "schema": {
-                            "default": "public",
                             "type": "string",
-                            "description": "Target schema name"
+                            "description": "Target schema name (e.g. \"stripe_sync\")"
                           },
                           "batch_size": {
                             "default": 100,
@@ -1301,7 +1312,7 @@
                             "const": "postgres"
                           }
                         },
-                        "required": ["type"],
+                        "required": ["schema", "type"],
                         "additionalProperties": false
                       },
                       {
@@ -1507,9 +1518,8 @@
                               "description": "Database user (required for AWS IAM)"
                             },
                             "schema": {
-                              "default": "public",
                               "type": "string",
-                              "description": "Target schema name"
+                              "description": "Target schema name (e.g. \"stripe_sync\")"
                             },
                             "batch_size": {
                               "default": 100,
@@ -1864,9 +1874,8 @@
                               "description": "Database user (required for AWS IAM)"
                             },
                             "schema": {
-                              "default": "public",
                               "type": "string",
-                              "description": "Target schema name"
+                              "description": "Target schema name (e.g. \"stripe_sync\")"
                             },
                             "batch_size": {
                               "default": 100,
@@ -2167,9 +2176,8 @@
                               "description": "Database user (required for AWS IAM)"
                             },
                             "schema": {
-                              "default": "public",
                               "type": "string",
-                              "description": "Target schema name"
+                              "description": "Target schema name (e.g. \"stripe_sync\")"
                             },
                             "batch_size": {
                               "default": 100,

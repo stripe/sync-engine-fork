@@ -158,7 +158,17 @@ export function createStripeSource(
         const managed = existing.data.find(
           (wh) => wh.url === config.webhook_url && wh.metadata?.managed_by === 'stripe-sync'
         )
-        if (!(managed && managed.status === 'enabled')) {
+        if (managed && managed.status === 'enabled') {
+          // Endpoint already exists — ensure we have the secret to verify webhooks
+          if (!config.webhook_secret) {
+            throw new Error(
+              'Existing managed webhook endpoint found for this URL but webhook_secret ' +
+                'is not configured. The secret is only available at endpoint creation time — ' +
+                'provide it in the pipeline config.'
+            )
+          }
+          // Endpoint exists and we have the secret — nothing to do
+        } else {
           // Tradeoff: we subscribe to all events ('*') rather than only the
           // events needed by this sync's catalog. This is not ideal — Stripe
           // will send events we don't need, adding unnecessary network traffic.

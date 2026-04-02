@@ -7,7 +7,7 @@ export const configSchema = z.object({
   port: z.number().default(5432).describe('Postgres port'),
   database: z.string().optional().describe('Database name (required for AWS IAM)'),
   user: z.string().optional().describe('Database user (required for AWS IAM)'),
-  schema: z.string().default('public').describe('Target schema name'),
+  schema: z.string().describe('Target schema name (e.g. "stripe_sync")'),
   batch_size: z.number().default(100).describe('Records to buffer before flushing'),
   aws: z
     .object({

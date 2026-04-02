@@ -169,6 +169,12 @@ const destination = {
   },
 
   async teardown({ config }) {
+    const PROTECTED_SCHEMAS = new Set(['public', 'information_schema', 'pg_catalog', 'pg_toast'])
+    if (PROTECTED_SCHEMAS.has(config.schema)) {
+      throw new Error(
+        `Refusing to drop protected schema "${config.schema}" — teardown only drops user-created schemas`
+      )
+    }
     const pool = new pg.Pool(await buildPoolConfig(config))
     try {
       await pool.query(sql`DROP SCHEMA IF EXISTS "${config.schema}" CASCADE`)

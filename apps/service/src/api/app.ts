@@ -103,21 +103,40 @@ export function createApp(options: AppOptions) {
       responses: {
         200: {
           content: {
-            'application/json': { schema: ListResponse(PipelineSchema) },
+            'application/json': { schema: ListResponse(PipelineWithStatusSchema) },
           },
           description: 'List of pipelines',
         },
       },
     }),
     async (c) => {
-      // Filter out completed/deleted workflows — they're soft-deleted pipelines.
-      // TODO: once we add a persistent store, query that instead of Temporal directly.
-      const pipelines: Pipeline[] = []
+      // Completed = soft-deleted (via delete signal). Show everything else
+      // including failed/terminated so operators can see broken pipelines.
+      const pipelines: Array<Pipeline & { status?: WorkflowStatus }> = []
       for await (const wf of temporal.list({
-        query: `WorkflowType = 'pipelineWorkflow' AND ExecutionStatus = 'Running'`,
+        query: `WorkflowType = 'pipelineWorkflow' AND ExecutionStatus != 'Completed'`,
       })) {
-        const memo = wf.memo as { pipeline?: Pipeline } | undefined
-        if (memo?.pipeline) pipelines.push(memo.pipeline)
+        try {
+          const handle = temporal.getHandle(wf.workflowId)
+          const [pipeline, status] = await Promise.all([
+            handle.query<Pipeline>('config'),
+            handle.query<WorkflowStatus>('status'),
+          ])
+          pipelines.push({ ...pipeline, status })
+        } catch {
+          // Non-queryable (failed/terminated) — fall back to memo with derived status
+          const memo = wf.memo as { pipeline?: Pipeline } | undefined
+          if (memo?.pipeline) {
+            pipelines.push({
+              ...memo.pipeline,
+              status: {
+                phase: wf.status.name.toLowerCase(),
+                paused: false,
+                iteration: 0,
+              },
+            })
+          }
+        }
       }
       return c.json({ data: pipelines, has_more: false } as any, 200)
     }
@@ -181,16 +200,35 @@ export function createApp(options: AppOptions) {
       const { id } = c.req.valid('param')
       try {
         const handle = temporal.getHandle(id)
-        const [desc, pipeline, status] = await Promise.all([
-          handle.describe(),
-          handle.query<Pipeline>('config'),
-          handle.query<WorkflowStatus>('status'),
-        ])
-        // Completed workflows are soft-deleted — treat as 404
-        if (desc.status.name !== 'RUNNING') {
+        const desc = await handle.describe()
+        // Completed = soft-deleted via delete signal — treat as 404
+        if (desc.status.name === 'COMPLETED') {
           return c.json({ error: `Pipeline ${id} not found` }, 404)
         }
-        return c.json({ ...pipeline, status } as any, 200)
+        try {
+          const [pipeline, status] = await Promise.all([
+            handle.query<Pipeline>('config'),
+            handle.query<WorkflowStatus>('status'),
+          ])
+          return c.json({ ...pipeline, status } as any, 200)
+        } catch {
+          // Non-queryable (failed/terminated) — fall back to memo with derived status
+          const memo = desc.memo as { pipeline?: Pipeline } | undefined
+          if (!memo?.pipeline) {
+            return c.json({ error: `Pipeline ${id} not found` }, 404)
+          }
+          return c.json(
+            {
+              ...memo.pipeline,
+              status: {
+                phase: desc.status.name.toLowerCase(),
+                paused: false,
+                iteration: 0,
+              },
+            } as any,
+            200
+          )
+        }
       } catch {
         return c.json({ error: `Pipeline ${id} not found` }, 404)
       }
