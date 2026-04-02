@@ -449,7 +449,7 @@ jobs:
             echo "::warning::service-docker.test.ts skipped — STRIPE_API_KEY not available"
             exit 0
           fi
-          pnpm --filter @stripe/sync-e2e run test -- service-docker.test.ts
+          pnpm --filter @stripe/sync-e2e exec vitest run service-docker.test.ts
         env:
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           POSTGRES_URL: 'postgres://postgres:postgres@localhost:55432/postgres'
