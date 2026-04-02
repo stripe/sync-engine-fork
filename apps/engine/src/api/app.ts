@@ -4,7 +4,6 @@ import { HTTPException } from 'hono/http-exception'
 import pg from 'pg'
 import type { Message, DestinationOutput, ConnectorResolver, SyncParams } from '../lib/index.js'
 import {
-  createEngine,
   createEngineFromParams,
   readonlyStateStore,
   maybeDestinationStateStore,
@@ -19,17 +18,11 @@ import {
 import { takeStateCheckpoints } from '../lib/pipeline.js'
 import { ndjsonResponse } from '@stripe/sync-ts-cli/ndjson'
 import { logger } from '../logger.js'
-import { createStripeSource, DEFAULT_MAX_RPS } from '@stripe/sync-source-stripe'
-import type { RateLimiter } from '@stripe/sync-source-stripe'
 import {
-  acquire,
-  createRateLimiterTable,
-  ident,
   sslConfigFromConnectionString,
   stripSslParams,
   withPgConnectProxy,
 } from '@stripe/sync-util-postgres'
-import { createHash } from 'node:crypto'
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -40,38 +33,6 @@ function syncRequestContext(params: SyncParams) {
     configuredStreamCount: params.pipeline.streams?.length ?? 0,
     configuredStreams: params.pipeline.streams?.map((stream) => stream.name) ?? [],
   }
-}
-
-/**
- * When the destination is Postgres, create a distributed rate limiter backed
- * by a `_rate_limit_buckets` table so multiple workers share a single bucket.
- * Returns `undefined` for non-Postgres destinations.
- */
-async function createPgRateLimiter(
-  pipeline: PipelineConfig
-): Promise<{ rateLimiter: RateLimiter; close(): Promise<void> } | undefined> {
-  if (pipeline.source.name !== 'stripe') return undefined
-  if (pipeline.destination.name !== 'postgres') return undefined
-
-  const destConfig = pipeline.destination as Record<string, unknown>
-  const connStr = destConfig.connection_string as string | undefined
-  if (!connStr) return undefined
-
-  const pool = new pg.Pool({ connectionString: connStr })
-  const schema = destConfig.schema as string | undefined
-  if (schema) {
-    await pool.query(`CREATE SCHEMA IF NOT EXISTS ${ident(schema)}`)
-  }
-  await createRateLimiterTable(pool, schema)
-
-  const srcConfig = pipeline.source as Record<string, unknown>
-  const apiKey = srcConfig.api_key as string
-  const maxRps = (srcConfig.rate_limit as number | undefined) ?? DEFAULT_MAX_RPS
-  const keyHash = createHash('sha256').update(apiKey).digest('hex').slice(0, 16)
-  const opts = { key: `stripe:${keyHash}`, max_rps: maxRps, schema }
-  const rateLimiter: RateLimiter = async (cost = 1) => acquire(pool, opts, cost)
-
-  return { rateLimiter, close: () => pool.end() }
 }
 
 async function* logApiStream<T>(
@@ -164,23 +125,6 @@ export function createApp(resolver: ConnectorResolver) {
     } finally {
       await fn()
     }
-  }
-
-  /** Resolve connectors, optionally wrapping the source with a Postgres-backed rate limiter. */
-  async function resolveEngineWithRateLimiter(
-    pipeline: PipelineConfig,
-    stateStore: Parameters<typeof createEngine>[2]
-  ) {
-    const rl = await createPgRateLimiter(pipeline)
-
-    const [resolvedSource, destination] = await Promise.all([
-      resolver.resolveSource(pipeline.source.name),
-      resolver.resolveDestination(pipeline.destination.name),
-    ])
-    const source = rl ? createStripeSource({ rateLimiter: rl.rateLimiter }) : resolvedSource
-    const engine = createEngine(pipeline, { source, destination }, stateStore)
-
-    return { engine, close: () => rl?.close() }
   }
 
   // ── Shared header param schemas ─────────────────────────────────
@@ -371,8 +315,9 @@ export function createApp(resolver: ConnectorResolver) {
       const context = { path: '/read', inputPresent, ...syncRequestContext(params) }
       const startedAt = Date.now()
       logger.info(context, 'Engine API /read started')
-      const { engine, close } = await resolveEngineWithRateLimiter(
+      const engine = await createEngineFromParams(
         params.pipeline,
+        resolver,
         readonlyStateStore(params.state)
       )
 
@@ -381,9 +326,7 @@ export function createApp(resolver: ConnectorResolver) {
       if (params.stateCheckpointLimit) {
         output = takeStateCheckpoints<Message>(params.stateCheckpointLimit)(output)
       }
-      return ndjsonResponse(
-        closeAfter(logApiStream('Engine API /read', output, context, startedAt), () => close())
-      )
+      return ndjsonResponse(logApiStream('Engine API /read', output, context, startedAt))
     }) as any
   )
 
@@ -421,14 +364,10 @@ export function createApp(resolver: ConnectorResolver) {
       }
       const startedAt = Date.now()
       logger.info(context, 'Engine API /write started')
-      const stateStore = await maybeDestinationStateStore(params.pipeline)
-      const engine = await createEngineFromParams(params.pipeline, resolver, stateStore)
+      const engine = await createEngineFromParams(params.pipeline, resolver, readonlyStateStore())
       const messages = parseNdjsonStream<Message>(c.req.raw.body!)
       return ndjsonResponse(
-        closeAfter(
-          logApiStream('Engine API /write', engine.write(messages), context, startedAt),
-          () => stateStore.close?.()
-        )
+        logApiStream('Engine API /write', engine.write(messages), context, startedAt)
       )
     }) as any
   )
@@ -456,16 +395,14 @@ export function createApp(resolver: ConnectorResolver) {
     (async (c: any) => {
       const params = parseSyncParams(c)
       const stateStore = readonlyStateStore(params.state)
-      const { engine, close } = await resolveEngineWithRateLimiter(params.pipeline, stateStore)
+      const engine = await createEngineFromParams(params.pipeline, resolver, stateStore)
 
       const input = hasBody(c) ? parseNdjsonStream(c.req.raw.body!) : undefined
       let output: AsyncIterable<DestinationOutput> = engine.sync(input)
       if (params.stateCheckpointLimit) {
         output = takeStateCheckpoints<DestinationOutput>(params.stateCheckpointLimit)(output)
       }
-      return ndjsonResponse(
-        closeAfter(output, () => close())
-      )
+      return ndjsonResponse(output)
     }) as any
   )
 
