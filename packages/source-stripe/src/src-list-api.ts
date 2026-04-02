@@ -329,7 +329,7 @@ async function* sequentialBackfillStream(opts: {
 // MARK: - Main entry point
 
 export async function* listApiBackfill(opts: {
-  catalog: { streams: Array<{ stream: { name: string } }> }
+  catalog: { streams: Array<{ stream: { name: string }; backfill_limit?: number | undefined }> }
   state:
     | Record<string, { pageCursor: string | null; status: string; segments?: SegmentState[]; backfill?: BackfillState }>
     | undefined
@@ -355,6 +355,8 @@ export async function* listApiBackfill(opts: {
 
   for (const configuredStream of catalog.streams) {
     const stream = configuredStream.stream
+    // Per-stream limit overrides global backfillLimit
+    const streamBackfillLimit = configuredStream.backfill_limit ?? backfillLimit
     const resourceConfig = findConfigByTableName(registry, stream.name)
     if (!resourceConfig) {
       yield {
@@ -417,7 +419,7 @@ export async function* listApiBackfill(opts: {
               numSegments,
               streamName: stream.name,
               supportsLimit: resourceConfig.supportsLimit !== false,
-              backfillLimit,
+              backfillLimit: streamBackfillLimit,
               totalEmitted,
               rateLimiter,
             })
@@ -432,7 +434,7 @@ export async function* listApiBackfill(opts: {
           resourceConfig,
           streamName: stream.name,
           pageCursor,
-          backfillLimit,
+          backfillLimit: streamBackfillLimit,
           rateLimiter,
           drainQueue,
         })

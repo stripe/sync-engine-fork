@@ -67,6 +67,9 @@ export const ConfiguredStream = z.object({
 
   /** If set, only these field names are included in records for this stream. */
   fields: z.array(z.string()).optional(),
+
+  /** Cap backfill to this many records, then mark the stream complete. */
+  backfill_limit: z.number().int().positive().optional(),
 })
 export type ConfiguredStream = z.infer<typeof ConfiguredStream>
 
@@ -188,6 +191,7 @@ export const PipelineConfig = z.object({
         name: z.string(),
         sync_mode: z.enum(['incremental', 'full_refresh']).optional(),
         fields: z.array(z.string()).optional(),
+        backfill_limit: z.number().int().positive().optional(),
       })
     )
     .optional(),

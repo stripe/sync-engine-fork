@@ -6,6 +6,7 @@ import type { ConnectorResolver } from '@stripe/sync-engine'
 export const StreamConfig = z.object({
   name: z.string(),
   sync_mode: z.enum(['incremental', 'full_refresh']).optional(),
+  backfill_limit: z.number().int().positive().optional(),
 })
 
 export const LogEntry = z.object({

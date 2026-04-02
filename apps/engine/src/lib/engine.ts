@@ -94,12 +94,16 @@ export function buildCatalog(
     const wanted = new Map(configStreams.map((s) => [s.name, s]))
     streams = discovered
       .filter((s) => wanted.has(s.name))
-      .map((s) => ({
-        stream: s,
-        sync_mode: wanted.get(s.name)!.sync_mode ?? 'full_refresh',
-        destination_sync_mode: 'append' as const,
-        fields: wanted.get(s.name)!.fields,
-      }))
+      .map((s) => {
+        const cfg = wanted.get(s.name)!
+        return {
+          stream: s,
+          sync_mode: cfg.sync_mode ?? 'full_refresh',
+          destination_sync_mode: 'append' as const,
+          fields: cfg.fields,
+          backfill_limit: cfg.backfill_limit,
+        }
+      })
   } else {
     streams = discovered.map((s) => ({
       stream: s,
