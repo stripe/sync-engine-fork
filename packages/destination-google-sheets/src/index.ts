@@ -11,34 +11,15 @@ import type {
 import type { sheets_v4 } from 'googleapis'
 import { google } from 'googleapis'
 import { z } from 'zod'
+import { configSchema } from './spec.js'
+import type { Config } from './spec.js'
 import { appendRows, ensureSheet, ensureSpreadsheet } from './writer.js'
 
 export { ensureSpreadsheet, ensureSheet, appendRows, readSheet } from './writer.js'
 
 // MARK: - Spec
 
-export const envVars = {
-  client_id: 'GOOGLE_CLIENT_ID',
-  client_secret: 'GOOGLE_CLIENT_SECRET',
-} as const
-
-export const spec = z.object({
-  client_id: z.string().optional().describe('Google OAuth2 client ID (env: GOOGLE_CLIENT_ID)'),
-  client_secret: z
-    .string()
-    .optional()
-    .describe('Google OAuth2 client secret (env: GOOGLE_CLIENT_SECRET)'),
-  access_token: z.string().describe('OAuth2 access token'),
-  refresh_token: z.string().describe('OAuth2 refresh token'),
-  spreadsheet_id: z.string().optional().describe('Target spreadsheet ID (created if omitted)'),
-  spreadsheet_title: z
-    .string()
-    .default('Stripe Sync')
-    .describe('Title when creating a new spreadsheet'),
-  batch_size: z.number().default(50).describe('Rows per Sheets API append call'),
-})
-
-export type Config = z.infer<typeof spec>
+export { configSchema, envVars, type Config } from './spec.js'
 
 // MARK: - Helpers
 
@@ -91,7 +72,7 @@ export function createDestination(
     },
 
     spec(): ConnectorSpecification {
-      return { config: z.toJSONSchema(spec) }
+      return { config: z.toJSONSchema(configSchema) }
     },
 
     async check({ config }: { config: Config }): Promise<CheckResult> {
