@@ -41,6 +41,7 @@ export async function pipelineWorkflow(
     state?: Record<string, unknown>
     mode?: 'sync' | 'read-write'
     writeRps?: number
+    pendingWrites?: boolean
     inputQueue?: unknown[]
   }
 ): Promise<void> {
@@ -50,6 +51,14 @@ export async function pipelineWorkflow(
   let iteration = 0
   let syncState: Record<string, unknown> = opts?.state ?? {}
   let readComplete = false
+  // pendingWrites is a coordination hint from the read loop to the write loop.
+  // It avoids the write loop spinning on Kafka when the queue is known to be empty —
+  // each writeFromQueue call creates a new consumer, joins the group, and waits 2s
+  // for messages before returning. Without this gate the write loop would burn one
+  // 2s activity invocation per tick just to learn "nothing to do."
+  // The flag is best-effort: writeFromQueue self-corrects if it drifts (returns
+  // written:0 when the queue is actually empty, written:>0 when it's not).
+  let pendingWrites = opts?.pendingWrites ?? false
 
   // Register signal handlers (must be before any await)
   setHandler(stripeEventSignal, (event: unknown) => {
@@ -90,6 +99,7 @@ export async function pipelineWorkflow(
         state: syncState,
         mode: opts?.mode,
         writeRps: opts?.writeRps,
+        pendingWrites,
         inputQueue: inputQueue.length > 0 ? [...inputQueue] : undefined,
       })
     }
@@ -122,7 +132,8 @@ export async function pipelineWorkflow(
         // Resolve events through read → Kafka
         if (inputQueue.length > 0) {
           const batch = inputQueue.splice(0, EVENT_BATCH_SIZE)
-          await readIntoQueue(pipelineId, { input: batch })
+          const { count } = await readIntoQueue(pipelineId, { input: batch })
+          if (count > 0) pendingWrites = true
           await tickIteration()
           continue
         }
@@ -130,10 +141,11 @@ export async function pipelineWorkflow(
         // Backfill one page → Kafka
         if (!readComplete) {
           const before = readState
-          const { state: nextReadState } = await readIntoQueue(pipelineId, {
+          const { count, state: nextReadState } = await readIntoQueue(pipelineId, {
             state: readState,
             stateLimit: 1,
           })
+          if (count > 0) pendingWrites = true
           readState = { ...readState, ...nextReadState }
           readComplete = deepEqual(readState, before)
           await tickIteration()
@@ -150,11 +162,17 @@ export async function pipelineWorkflow(
         await waitWhilePaused()
         if (deleted) break
 
-        const result = await writeFromQueue(pipelineId, { maxBatch: 50 })
-        writeState = { ...writeState, ...result.state }
-        syncState = writeState
-        if (opts?.writeRps) await sleep(Math.ceil(1000 / opts.writeRps))
-        await tickIteration()
+        if (pendingWrites) {
+          const result = await writeFromQueue(pipelineId, { maxBatch: 50 })
+          pendingWrites = result.written > 0
+          writeState = { ...writeState, ...result.state }
+          syncState = writeState
+          if (opts?.writeRps) await sleep(Math.ceil(1000 / opts.writeRps))
+          await tickIteration()
+        } else {
+          // Wait until the read loop signals there's work, or we're deleted
+          await condition(() => pendingWrites || deleted)
+        }
       }
     }
 
