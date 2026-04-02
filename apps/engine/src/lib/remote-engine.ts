@@ -4,13 +4,24 @@ import type { Engine } from './engine.js'
 import { parseNdjsonStream, toNdjsonStream } from './ndjson.js'
 import type { CheckResult, DestinationOutput, Message, PipelineConfig } from '@stripe/sync-protocol'
 
+// openapi-typescript does not model NDJSON streaming bodies correctly:
+// - /read and /sync accept an optional NDJSON body but the generated types declare `requestBody?: never`
+// - /write body is typed as `Message` (a single JSON object) instead of a stream
+// We use targeted `as any` casts on the POST calls for these streaming endpoints
+// until the generator supports streaming request bodies.
+// See: https://github.com/openapi-ts/openapi-typescript/issues/1823
+type StreamPost = (
+  path: string,
+  init: Record<string, unknown>
+) => Promise<{ response: Response }>
+
 /**
  * HTTP client that satisfies the Engine interface by delegating each method to
  * the corresponding sync engine REST endpoint.
  *
- * Uses openapi-fetch for typed JSON endpoints (/check, /connectors).
- * Streaming NDJSON endpoints use plain fetch — openapi-fetch's type system
- * doesn't model ReadableStream bodies or `parseAs: 'stream'` well.
+ * Uses openapi-fetch for typed JSON endpoints (/check).
+ * Streaming NDJSON endpoints use `client.POST` with targeted casts due to
+ * openapi-typescript generator limitations with streaming bodies.
  *
  * Usage:
  *   const engine = createRemoteEngine('http://localhost:3001', pipeline)
@@ -23,33 +34,45 @@ export function createRemoteEngine(
   opts?: { state?: Record<string, unknown>; stateLimit?: number }
 ): Engine {
   const client = createClient<paths>({ baseUrl: engineUrl })
-  const pipelineHeader = JSON.stringify(pipeline)
+  const ph = JSON.stringify(pipeline)
 
-  /** POST with optional streaming NDJSON body. Returns the raw Response. */
-  async function post(path: string, body?: ReadableStream<Uint8Array>): Promise<Response> {
-    const headers: Record<string, string> = { 'x-pipeline': pipelineHeader }
+  // Cast once: streaming endpoints need untyped POST due to generator limitations (see above)
+  const streamPost = client.POST as unknown as StreamPost
 
+  function extraHeaders(): Record<string, string> {
+    const h: Record<string, string> = {}
     if (opts?.state && Object.keys(opts.state).length > 0) {
-      headers['x-state'] = JSON.stringify(opts.state)
+      h['x-state'] = JSON.stringify(opts.state)
     }
     if (opts?.stateLimit != null) {
-      headers['x-state-checkpoint-limit'] = String(opts.stateLimit)
+      h['x-state-checkpoint-limit'] = String(opts.stateLimit)
     }
+    return h
+  }
 
-    const init: RequestInit & { duplex?: string } = { method: 'POST', headers }
-
-    if (body) {
-      headers['content-type'] = 'application/x-ndjson'
-      init.body = body
-      init.duplex = 'half' // Required by Node 18+ for ReadableStream bodies
+  async function post(
+    path: '/read' | '/write' | '/sync' | '/setup' | '/teardown',
+    body?: ReadableStream<Uint8Array>
+  ): Promise<Response> {
+    const headers = { ...extraHeaders() }
+    const { response } = await streamPost(path, {
+      params: { header: { 'x-pipeline': ph } },
+      parseAs: 'stream',
+      headers,
+      ...(body
+        ? {
+            body,
+            bodySerializer: (b: unknown) => b,
+            headers: { 'content-type': 'application/x-ndjson', ...headers },
+            duplex: 'half',
+          }
+        : {}),
+    })
+    if (!response.ok) {
+      const text = await response.text().catch(() => '')
+      throw new Error(`Engine ${path} failed (${response.status}): ${text}`)
     }
-
-    const res = await fetch(`${engineUrl}${path}`, init)
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      throw new Error(`Engine ${path} failed (${res.status}): ${text}`)
-    }
-    return res
+    return response
   }
 
   return {
@@ -63,7 +86,7 @@ export function createRemoteEngine(
 
     async check() {
       const { data, error } = await client.GET('/check', {
-        params: { header: { 'x-pipeline': pipelineHeader } },
+        params: { header: { 'x-pipeline': ph } },
       })
       if (error) throw new Error(`Engine /check failed: ${JSON.stringify(error)}`)
       return data as { source: CheckResult; destination: CheckResult }
