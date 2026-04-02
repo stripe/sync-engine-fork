@@ -59,9 +59,9 @@ describeWithEnv(
       console.log('\n  Building packages...')
       execSync('pnpm build', { cwd: REPO_ROOT, stdio: 'pipe' })
 
-      // 2. Start engine + service + worker containers (infra already running)
+      // 2. Start engine + service + worker containers (infra already running via compose/CI)
       console.log('  Starting containers...')
-      execSync(`${COMPOSE_CMD} up --build -d engine service worker`, {
+      execSync(`${COMPOSE_CMD} up --build --no-deps -d engine service worker`, {
         cwd: REPO_ROOT,
         stdio: 'pipe',
       })
@@ -96,7 +96,7 @@ describeWithEnv(
       // Stop only app containers — leave infra (postgres, temporal, stripe-mock) running
       execSync(`${COMPOSE_CMD} stop engine service worker`, { cwd: REPO_ROOT, stdio: 'pipe' })
       execSync(`${COMPOSE_CMD} rm -f engine service worker`, { cwd: REPO_ROOT, stdio: 'pipe' })
-    })
+    }, 2 * 60_000) // 2 min — docker stop can be slow
 
     it('create pipeline → data lands in Postgres → delete', async () => {
       const c = api()
