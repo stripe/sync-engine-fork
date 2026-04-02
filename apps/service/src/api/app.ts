@@ -94,7 +94,7 @@ export function createApp(options: AppOptions) {
 
   app.openapi(
     createRoute({
-      operationId: 'listPipelines',
+      operationId: 'pipelines.list',
       method: 'get',
       path: '/pipelines',
       tags: ['Pipelines'],
@@ -124,7 +124,7 @@ export function createApp(options: AppOptions) {
 
   app.openapi(
     createRoute({
-      operationId: 'createPipeline',
+      operationId: 'pipelines.create',
       method: 'post',
       path: '/pipelines',
       tags: ['Pipelines'],
@@ -161,7 +161,7 @@ export function createApp(options: AppOptions) {
 
   app.openapi(
     createRoute({
-      operationId: 'getPipeline',
+      operationId: 'pipelines.get',
       method: 'get',
       path: '/pipelines/{id}',
       tags: ['Pipelines'],
@@ -200,7 +200,7 @@ export function createApp(options: AppOptions) {
 
   app.openapi(
     createRoute({
-      operationId: 'updatePipeline',
+      operationId: 'pipelines.update',
       method: 'patch',
       path: '/pipelines/{id}',
       tags: ['Pipelines'],
@@ -243,7 +243,7 @@ export function createApp(options: AppOptions) {
 
   app.openapi(
     createRoute({
-      operationId: 'pausePipeline',
+      operationId: 'pipelines.pause',
       method: 'post',
       path: '/pipelines/{id}/pause',
       tags: ['Pipelines'],
@@ -279,7 +279,7 @@ export function createApp(options: AppOptions) {
 
   app.openapi(
     createRoute({
-      operationId: 'resumePipeline',
+      operationId: 'pipelines.resume',
       method: 'post',
       path: '/pipelines/{id}/resume',
       tags: ['Pipelines'],
@@ -315,7 +315,7 @@ export function createApp(options: AppOptions) {
 
   app.openapi(
     createRoute({
-      operationId: 'deletePipeline',
+      operationId: 'pipelines.delete',
       method: 'delete',
       path: '/pipelines/{id}',
       tags: ['Pipelines'],
@@ -356,7 +356,7 @@ export function createApp(options: AppOptions) {
 
   app.openapi(
     createRoute({
-      operationId: 'pushWebhook',
+      operationId: 'webhooks.push',
       method: 'post',
       path: '/webhooks/{pipeline_id}',
       tags: ['Webhooks'],
