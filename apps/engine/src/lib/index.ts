@@ -2,7 +2,8 @@ export * from '@stripe/sync-protocol'
 export { enforceCatalog, log, filterType, persistState, collect, pipe } from './pipeline.js'
 export { createEngine, createEngineFromParams, buildCatalog } from './engine.js'
 export type { Engine } from './engine.js'
-export { parseNdjson, parseNdjsonChunks, parseNdjsonStream } from './ndjson.js'
+export { parseNdjson, parseNdjsonChunks, parseNdjsonStream, toNdjsonStream } from './ndjson.js'
+export { createRemoteEngine } from './remote-engine.js'
 export {
   validateSource,
   validateDestination,
