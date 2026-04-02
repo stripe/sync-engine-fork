@@ -1,19 +1,13 @@
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi'
 import { apiReference } from '@scalar/hono-api-reference'
-import type { ConnectorResolver, Message } from '@stripe/sync-engine'
-import { createConnectorResolver, parseNdjsonStream } from '@stripe/sync-engine'
-import { ndjsonResponse } from '@stripe/sync-engine'
 import {
   Pipeline as PipelineSchema,
   CreatePipeline as CreatePipelineSchema,
   UpdatePipeline as UpdatePipelineSchema,
 } from '../lib/schemas.js'
 import type { Pipeline } from '../lib/schemas.js'
-import { SyncService } from '../lib/service.js'
 import type { TemporalOptions } from '../temporal/bridge.js'
-import { filePipelineStore, fileStateStore, fileLogSink } from '../lib/stores-fs.js'
+import { TemporalBridge } from '../temporal/bridge.js'
 import { mountWebhookRoutes } from './webhook-app.js'
 
 // MARK: - Helpers
@@ -35,19 +29,14 @@ function genId(prefix: string): string {
 
 // MARK: - Response schemas
 
-const ConnectorCheckSchema = z.object({
-  status: z.enum(['succeeded', 'failed']),
-  message: z.string().optional(),
-})
-
-const CheckResultSchema = z.object({
-  source: ConnectorCheckSchema,
-  destination: ConnectorCheckSchema,
-})
-
-const NdjsonSchema = z.string().openapi({
-  description: 'Newline-delimited JSON sync messages, one per line',
-  example: '{"type":"record","stream":"products","data":{"id":"prod_123","name":"Widget"}}\n',
+const PipelineWithStatusSchema = PipelineSchema.extend({
+  status: z
+    .object({
+      phase: z.string(),
+      paused: z.boolean(),
+      iteration: z.number(),
+    })
+    .optional(),
 })
 
 const DeleteResponseSchema = z.object({
@@ -67,28 +56,11 @@ function ListResponse<T extends z.ZodType>(itemSchema: T) {
 // MARK: - App factory
 
 export interface AppOptions {
-  dataDir?: string
-  /** Pre-built connector resolver (for tests with mocks). */
-  connectors?: ConnectorResolver
-  /** When set, sync lifecycle is managed by Temporal instead of running in-process. */
-  temporal?: TemporalOptions
+  temporal: TemporalOptions
 }
 
-export function createApp(options?: AppOptions) {
-  const dataDir = options?.dataDir || process.env.DATA_DIR || join(homedir(), '.stripe-sync')
-  const connectors = options?.connectors ?? createConnectorResolver({})
-
-  const pipelines = filePipelineStore(`${dataDir}/pipelines`)
-  const states = fileStateStore(`${dataDir}/state`)
-  const logs = fileLogSink(`${dataDir}/logs.ndjson`)
-
-  const service = new SyncService({
-    pipelines,
-    states,
-    logs,
-    connectors,
-    temporal: options?.temporal,
-  })
+export function createApp(options: AppOptions) {
+  const bridge = new TemporalBridge(options.temporal.client, options.temporal.taskQueue)
 
   const app = new OpenAPIHono({
     defaultHook: (result, c) => {
@@ -144,7 +116,7 @@ export function createApp(options?: AppOptions) {
       },
     }),
     async (c) => {
-      const list = await pipelines.list()
+      const list = await bridge.list()
       return c.json({ data: list, has_more: false } as any, 200)
     }
   )
@@ -175,10 +147,9 @@ export function createApp(options?: AppOptions) {
     async (c) => {
       const body = c.req.valid('json')
       const id = genId('pipe')
-      const stored = { id, ...(body as Record<string, unknown>) } as Pipeline
-      await pipelines.set(id, stored)
-      await service.temporal?.start(id)
-      return c.json(stored as any, 201)
+      const pipeline = { id, ...(body as Record<string, unknown>) } as Pipeline
+      await bridge.start(pipeline)
+      return c.json(pipeline as any, 201)
     }
   )
 
@@ -192,8 +163,8 @@ export function createApp(options?: AppOptions) {
       request: { params: PipelineIdParam },
       responses: {
         200: {
-          content: { 'application/json': { schema: PipelineSchema } },
-          description: 'Retrieved pipeline',
+          content: { 'application/json': { schema: PipelineWithStatusSchema } },
+          description: 'Retrieved pipeline with status',
         },
         404: {
           content: { 'application/json': { schema: ErrorSchema } },
@@ -204,8 +175,8 @@ export function createApp(options?: AppOptions) {
     async (c) => {
       const { id } = c.req.valid('param')
       try {
-        const pipeline = await pipelines.get(id)
-        return c.json(pipeline as any, 200)
+        const { pipeline, status } = await bridge.get(id)
+        return c.json({ ...pipeline, status } as any, 200)
       } catch {
         return c.json({ error: `Pipeline ${id} not found` }, 404)
       }
@@ -219,6 +190,8 @@ export function createApp(options?: AppOptions) {
       path: '/pipelines/{id}',
       tags: ['Pipelines'],
       summary: 'Update pipeline',
+      description:
+        'Update pipeline config. Include `{ "paused": true }` to pause or `{ "paused": false }` to resume.',
       request: {
         params: PipelineIdParam,
         body: {
@@ -227,12 +200,8 @@ export function createApp(options?: AppOptions) {
       },
       responses: {
         200: {
-          content: { 'application/json': { schema: PipelineSchema } },
-          description: 'Updated pipeline',
-        },
-        400: {
-          content: { 'application/json': { schema: ErrorSchema } },
-          description: 'Invalid input',
+          content: { 'application/json': { schema: z.object({ ok: z.literal(true) }) } },
+          description: 'Update signal sent',
         },
         404: {
           content: { 'application/json': { schema: ErrorSchema } },
@@ -244,15 +213,8 @@ export function createApp(options?: AppOptions) {
       const { id } = c.req.valid('param')
       const patch = c.req.valid('json')
       try {
-        const existing = await pipelines.get(id)
-        const updated = {
-          ...existing,
-          ...(patch as Record<string, unknown>),
-          id,
-        } as Pipeline
-        await pipelines.set(id, updated)
-        // No need to signal the workflow — activities re-read config from the service on each call
-        return c.json(updated as any, 200)
+        await bridge.update(id, patch as Partial<Pipeline> & { paused?: boolean })
+        return c.json({ ok: true as const }, 200)
       } catch {
         return c.json({ error: `Pipeline ${id} not found` }, 404)
       }
@@ -281,10 +243,7 @@ export function createApp(options?: AppOptions) {
     async (c) => {
       const { id } = c.req.valid('param')
       try {
-        await pipelines.get(id)
-        await service.temporal?.stop(id)
-        await pipelines.delete(id)
-        await states.clear(id)
+        await bridge.stop(id)
         return c.json({ id, deleted: true as const }, 200)
       } catch {
         return c.json({ error: `Pipeline ${id} not found` }, 404)
@@ -292,263 +251,9 @@ export function createApp(options?: AppOptions) {
     }
   )
 
-  // MARK: - Pipeline engine operations
-
-  app.openapi(
-    createRoute({
-      operationId: 'setupPipeline',
-      method: 'post',
-      path: '/pipelines/{id}/setup',
-      tags: ['Pipeline Operations'],
-      summary: 'Set up destination schema for a pipeline',
-      description:
-        'Creates destination tables and applies migrations. Safe to call multiple times.',
-      request: { params: PipelineIdParam },
-      responses: {
-        204: { description: 'Setup complete' },
-        404: {
-          content: { 'application/json': { schema: ErrorSchema } },
-          description: 'Pipeline not found',
-        },
-      },
-    }),
-    async (c) => {
-      const { id } = c.req.valid('param')
-      await service.setup(id)
-      return c.body(null, 204) as any
-    }
-  )
-
-  app.openapi(
-    createRoute({
-      operationId: 'teardownPipeline',
-      method: 'post',
-      path: '/pipelines/{id}/teardown',
-      tags: ['Pipeline Operations'],
-      summary: 'Tear down destination schema for a pipeline',
-      description: 'Drops destination tables. Irreversible.',
-      request: { params: PipelineIdParam },
-      responses: {
-        204: { description: 'Teardown complete' },
-        404: {
-          content: { 'application/json': { schema: ErrorSchema } },
-          description: 'Pipeline not found',
-        },
-      },
-    }),
-    async (c) => {
-      const { id } = c.req.valid('param')
-      await service.teardown(id)
-      return c.body(null, 204) as any
-    }
-  )
-
-  app.openapi(
-    createRoute({
-      operationId: 'checkPipeline',
-      method: 'get',
-      path: '/pipelines/{id}/check',
-      tags: ['Pipeline Operations'],
-      summary: 'Check connector connection for a pipeline',
-      description: 'Validates the source/destination config and tests connectivity.',
-      request: { params: PipelineIdParam },
-      responses: {
-        200: {
-          content: { 'application/json': { schema: CheckResultSchema } },
-          description: 'Connection check result',
-        },
-        404: {
-          content: { 'application/json': { schema: ErrorSchema } },
-          description: 'Pipeline not found',
-        },
-      },
-    }),
-    async (c) => {
-      const { id } = c.req.valid('param')
-      const result = await service.check(id)
-      return c.json(result, 200)
-    }
-  )
-
-  app.openapi(
-    createRoute({
-      operationId: 'readPipeline',
-      method: 'post',
-      path: '/pipelines/{id}/read',
-      tags: ['Pipeline Operations'],
-      summary: 'Read records from the pipeline source',
-      description:
-        'Streams NDJSON messages (records, state, catalog). Optional NDJSON body provides input.',
-      request: { params: PipelineIdParam },
-      responses: {
-        200: {
-          content: { 'application/x-ndjson': { schema: NdjsonSchema } },
-          description: 'NDJSON stream of sync messages',
-        },
-        404: {
-          content: { 'application/json': { schema: ErrorSchema } },
-          description: 'Pipeline not found',
-        },
-      },
-    }),
-    async (c) => {
-      const { id } = c.req.valid('param')
-      const body = c.req.raw.body
-      const input = body ? parseNdjsonStream(body) : undefined
-      return ndjsonResponse(service.read(id, input)) as any
-    }
-  )
-
-  app.openapi(
-    createRoute({
-      operationId: 'writePipeline',
-      method: 'post',
-      path: '/pipelines/{id}/write',
-      tags: ['Pipeline Operations'],
-      summary: 'Write records to the pipeline destination',
-      description:
-        'Reads NDJSON messages from the request body and writes them to the destination.',
-      request: {
-        params: PipelineIdParam,
-        body: {
-          required: true,
-          content: { 'application/x-ndjson': { schema: NdjsonSchema } },
-        },
-      },
-      responses: {
-        200: {
-          content: { 'application/x-ndjson': { schema: NdjsonSchema } },
-          description: 'NDJSON stream of write result messages',
-        },
-        400: {
-          content: { 'application/json': { schema: ErrorSchema } },
-          description: 'Missing request body',
-        },
-        404: {
-          content: { 'application/json': { schema: ErrorSchema } },
-          description: 'Pipeline not found',
-        },
-      },
-    }),
-    async (c) => {
-      const { id } = c.req.valid('param')
-      const body = c.req.raw.body
-      if (!body) {
-        return c.json({ error: 'Request body required for /write' }, 400)
-      }
-      const messages = parseNdjsonStream<Message>(body)
-      return ndjsonResponse(service.write(id, messages)) as any
-    }
-  )
-
-  app.openapi(
-    createRoute({
-      operationId: 'syncPipeline',
-      method: 'post',
-      path: '/pipelines/{id}/sync',
-      tags: ['Pipeline Operations'],
-      summary: 'Run pipeline (read → write)',
-      description:
-        'Without a request body, reads from the source connector and writes to the destination (backfill mode). ' +
-        'With an NDJSON request body, uses the provided messages as input instead of reading from the source (push mode — e.g. piped webhook events).',
-      request: { params: PipelineIdParam },
-      responses: {
-        200: {
-          content: { 'application/x-ndjson': { schema: NdjsonSchema } },
-          description: 'NDJSON stream of sync messages',
-        },
-        404: {
-          content: { 'application/json': { schema: ErrorSchema } },
-          description: 'Pipeline not found',
-        },
-      },
-    }),
-    async (c) => {
-      const { id } = c.req.valid('param')
-      const body = c.req.raw.body
-      const input = body && c.req.header('content-type') ? parseNdjsonStream(body) : undefined
-      return ndjsonResponse(service.sync(id, input)) as any
-    }
-  )
-
-  // MARK: - Temporal-only operations (pause / resume)
-
-  app.openapi(
-    createRoute({
-      operationId: 'pausePipeline',
-      method: 'post',
-      path: '/pipelines/{id}/pause',
-      tags: ['Pipeline Operations'],
-      summary: 'Pause a running pipeline (Temporal mode only)',
-      description:
-        'Signals the Temporal workflow to pause. The pipeline will stop processing after the current batch completes. Requires --temporal-address.',
-      request: { params: PipelineIdParam },
-      responses: {
-        204: { description: 'Pause signal sent' },
-        404: {
-          content: { 'application/json': { schema: ErrorSchema } },
-          description: 'Pipeline not found',
-        },
-        409: {
-          content: { 'application/json': { schema: ErrorSchema } },
-          description: 'Pause requires Temporal mode',
-        },
-      },
-    }),
-    async (c) => {
-      if (!service.temporal) {
-        return c.json({ error: 'Pause requires Temporal mode (--temporal-address)' }, 409)
-      }
-      const { id } = c.req.valid('param')
-      try {
-        await pipelines.get(id)
-      } catch {
-        return c.json({ error: `Pipeline ${id} not found` }, 404)
-      }
-      await service.temporal.pause(id)
-      return c.body(null, 204) as any
-    }
-  )
-
-  app.openapi(
-    createRoute({
-      operationId: 'resumePipeline',
-      method: 'post',
-      path: '/pipelines/{id}/resume',
-      tags: ['Pipeline Operations'],
-      summary: 'Resume a paused pipeline (Temporal mode only)',
-      description: 'Signals the Temporal workflow to resume. Requires --temporal-address.',
-      request: { params: PipelineIdParam },
-      responses: {
-        204: { description: 'Resume signal sent' },
-        404: {
-          content: { 'application/json': { schema: ErrorSchema } },
-          description: 'Pipeline not found',
-        },
-        409: {
-          content: { 'application/json': { schema: ErrorSchema } },
-          description: 'Resume requires Temporal mode',
-        },
-      },
-    }),
-    async (c) => {
-      if (!service.temporal) {
-        return c.json({ error: 'Resume requires Temporal mode (--temporal-address)' }, 409)
-      }
-      const { id } = c.req.valid('param')
-      try {
-        await pipelines.get(id)
-      } catch {
-        return c.json({ error: `Pipeline ${id} not found` }, 404)
-      }
-      await service.temporal.resume(id)
-      return c.body(null, 204) as any
-    }
-  )
-
   // MARK: - Webhook ingress (mounted from webhook-app.ts)
 
-  mountWebhookRoutes(app, (id, e) => service.push_event(id, e))
+  mountWebhookRoutes(app, (id, e) => bridge.pushEvent(id, e))
 
   // MARK: - OpenAPI spec + Swagger UI
 

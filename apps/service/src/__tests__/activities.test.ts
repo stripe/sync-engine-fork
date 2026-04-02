@@ -1,10 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import type { AddressInfo } from 'node:net'
 import { serve } from '@hono/node-server'
-import { Hono } from 'hono'
-import type { ConnectorResolver } from '@stripe/sync-engine'
+import type { ConnectorResolver, PipelineConfig } from '@stripe/sync-engine'
 import { sourceTest, destinationTest, createApp } from '@stripe/sync-engine'
-import type { PipelineConfig } from '@stripe/sync-engine'
 import { createActivities } from '../temporal/activities.js'
 
 // Mock Temporal heartbeat — activities call it but we're outside a workflow context
@@ -13,7 +11,7 @@ vi.mock('@temporalio/activity', () => ({
 }))
 
 // ---------------------------------------------------------------------------
-// Test server setup: engine + mock service
+// Test server setup: engine only (no mock service needed)
 // ---------------------------------------------------------------------------
 
 const resolver: ConnectorResolver = {
@@ -52,7 +50,7 @@ const resolver: ConnectorResolver = {
 vi.spyOn(console, 'info').mockImplementation(() => undefined)
 vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
-const pipeline: PipelineConfig = {
+const config: PipelineConfig = {
   source: { name: 'test', streams: { customers: {} } },
   destination: { name: 'test' },
 }
@@ -60,10 +58,6 @@ const pipeline: PipelineConfig = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let engineServer: any
 let engineUrl: string
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let serviceServer: any
-let serviceUrl: string
 
 beforeAll(async () => {
   // Start engine HTTP server
@@ -74,24 +68,11 @@ beforeAll(async () => {
       resolve()
     })
   })
-
-  // Start mock service that returns pipeline config
-  const serviceApp = new Hono()
-  serviceApp.get('/pipelines/:id', (c) => c.json(pipeline))
-  await new Promise<void>((resolve) => {
-    serviceServer = serve({ fetch: serviceApp.fetch, port: 0 }, (info) => {
-      serviceUrl = `http://localhost:${(info as AddressInfo).port}`
-      resolve()
-    })
-  })
 })
 
 afterAll(async () => {
   await new Promise<void>((resolve, reject) => {
     engineServer?.close((err: Error | null) => (err ? reject(err) : resolve()))
-  })
-  await new Promise<void>((resolve, reject) => {
-    serviceServer?.close((err: Error | null) => (err ? reject(err) : resolve()))
   })
 })
 
@@ -101,18 +82,18 @@ afterAll(async () => {
 
 describe('createActivities (integration via createRemoteEngine)', () => {
   it('setup resolves without error', async () => {
-    const activities = createActivities({ serviceUrl, engineUrl })
-    await expect(activities.setup('test-pipeline')).resolves.toBeUndefined()
+    const activities = createActivities({ engineUrl })
+    await expect(activities.setup(config)).resolves.toBeUndefined()
   })
 
   it('teardown resolves without error', async () => {
-    const activities = createActivities({ serviceUrl, engineUrl })
-    await expect(activities.teardown('test-pipeline')).resolves.toBeUndefined()
+    const activities = createActivities({ engineUrl })
+    await expect(activities.teardown(config)).resolves.toBeUndefined()
   })
 
-  it('syncImmediate returns errors and state', async () => {
-    const activities = createActivities({ serviceUrl, engineUrl })
-    const result = await activities.syncImmediate('test-pipeline', {
+  it('sync returns errors and state', async () => {
+    const activities = createActivities({ engineUrl })
+    const result = await activities.sync(config, {
       input: [
         { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
         { type: 'state', stream: 'customers', data: { cursor: 'cus_1' } },
@@ -125,9 +106,9 @@ describe('createActivities (integration via createRemoteEngine)', () => {
     expect(result.state).toHaveProperty('customers')
   })
 
-  it('readIntoQueue returns count and state', async () => {
-    const activities = createActivities({ serviceUrl, engineUrl })
-    const result = await activities.readIntoQueue('test-pipeline', {
+  it('read returns count and state', async () => {
+    const activities = createActivities({ engineUrl })
+    const result = await activities.read(config, 'test-pipeline', {
       input: [
         { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
         { type: 'state', stream: 'customers', data: { cursor: 'cus_1' } },
@@ -138,9 +119,9 @@ describe('createActivities (integration via createRemoteEngine)', () => {
     expect(typeof result.count).toBe('number')
   })
 
-  it('writeFromQueue returns errors, state, and written count', async () => {
-    const activities = createActivities({ serviceUrl, engineUrl })
-    const result = await activities.writeFromQueue('test-pipeline', {
+  it('write returns errors, state, and written count', async () => {
+    const activities = createActivities({ engineUrl })
+    const result = await activities.write(config, 'test-pipeline', {
       records: [
         { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
         { type: 'state', stream: 'customers', data: { cursor: 'cus_1' } },
@@ -153,16 +134,16 @@ describe('createActivities (integration via createRemoteEngine)', () => {
     expect(Array.isArray(result.errors)).toBe(true)
   })
 
-  it('syncImmediate without input returns empty result', async () => {
-    const activities = createActivities({ serviceUrl, engineUrl })
-    const result = await activities.syncImmediate('test-pipeline')
+  it('sync without input returns empty result', async () => {
+    const activities = createActivities({ engineUrl })
+    const result = await activities.sync(config)
     expect(result.errors).toEqual([])
     expect(result.state).toEqual({})
   })
 
-  it('writeFromQueue with empty records returns zero written', async () => {
-    const activities = createActivities({ serviceUrl, engineUrl })
-    const result = await activities.writeFromQueue('test-pipeline', { records: [] })
+  it('write with empty records returns zero written', async () => {
+    const activities = createActivities({ engineUrl })
+    const result = await activities.write(config, 'test-pipeline', { records: [] })
     expect(result.written).toBe(0)
     expect(result.errors).toEqual([])
   })

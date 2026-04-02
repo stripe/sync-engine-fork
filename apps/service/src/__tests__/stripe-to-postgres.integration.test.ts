@@ -9,9 +9,7 @@
  *
  * Run: pnpm test:integration
  */
-import fs from 'node:fs'
 import net from 'node:net'
-import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { AddressInfo } from 'node:net'
@@ -23,9 +21,6 @@ import { NativeConnection, Worker } from '@temporalio/worker'
 import source from '@stripe/sync-source-stripe'
 import destination from '@stripe/sync-destination-postgres'
 import { createConnectorResolver, createApp as createEngineApp } from '@stripe/sync-engine'
-import { createApp as createServiceApp } from '../api/app.js'
-import { createServiceClient } from '../lib/service-client.js'
-import type { ServiceClient } from '../lib/service-client.js'
 import { createActivities } from '../temporal/activities.js'
 import { pipelineWorkflow, deleteSignal, statusQuery } from '../temporal/workflows.js'
 
@@ -77,11 +72,6 @@ let schema: string
 let engineServer: ServerType
 let engineUrl: string
 
-let serviceServer: ServerType
-let serviceUrl: string
-let serviceClient: ServiceClient
-let dataDir: string
-
 let temporalClient: Client
 let temporalConnection: Connection
 let nativeConnection: NativeConnection
@@ -90,7 +80,6 @@ const workflowsPath = path.resolve(process.cwd(), 'dist/temporal/workflows.js')
 
 beforeAll(async () => {
   schema = `integration_${Date.now()}`
-  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stripe-pg-integration-'))
 
   // 1. Postgres
   pool = new pg.Pool({ connectionString: POSTGRES_URL })
@@ -108,14 +97,7 @@ beforeAll(async () => {
   engineServer = serve({ fetch: engineApp.fetch, port: enginePort })
   engineUrl = `http://localhost:${enginePort}`
 
-  // 4. Service API (pipeline CRUD)
-  const servicePort = await findFreePort()
-  const serviceApp = createServiceApp({ connectors, dataDir })
-  serviceServer = serve({ fetch: serviceApp.fetch, port: servicePort })
-  serviceUrl = `http://localhost:${servicePort}`
-  serviceClient = createServiceClient(serviceUrl)
-
-  // 5. Temporal client (retry — auto-setup container may still be initializing)
+  // 4. Temporal client (retry — auto-setup container may still be initializing)
   for (let i = 0; i < 30; i++) {
     try {
       temporalConnection = await Connection.connect({ address: TEMPORAL_ADDRESS })
@@ -129,7 +111,6 @@ beforeAll(async () => {
   nativeConnection = await NativeConnection.connect({ address: TEMPORAL_ADDRESS })
 
   console.log(`\n  Engine:   ${engineUrl}`)
-  console.log(`  Service:  ${serviceUrl}`)
   console.log(`  Temporal: ${TEMPORAL_ADDRESS}`)
   console.log(`  Postgres: ${POSTGRES_URL} (schema: ${schema})`)
 }, 60_000)
@@ -140,10 +121,8 @@ afterAll(async () => {
   }
   await pool?.end().catch(() => {})
   engineServer?.close()
-  serviceServer?.close()
   await temporalConnection?.close().catch(() => {})
   await nativeConnection?.close().catch(() => {})
-  if (dataDir) fs.rmSync(dataDir, { recursive: true, force: true })
 })
 
 // ---------------------------------------------------------------------------
@@ -152,29 +131,33 @@ afterAll(async () => {
 
 describe('pipelineWorkflow: Stripe → Postgres (real Temporal + real Stripe + real Postgres)', () => {
   it('backfills Stripe data to Postgres via read+write workflow', async () => {
-    // Create pipeline via service API
-    const { data: pipeline, error } = await serviceClient.POST('/pipelines', {
-      body: {
-        source: { name: 'stripe', api_key: 'sk_test_fake', base_url: STRIPE_MOCK_URL },
-        destination: { name: 'postgres', connection_string: POSTGRES_URL, schema },
-        streams: [{ name: STREAM }],
+    const pipeline = {
+      id: `pipe_integration_${Date.now()}`,
+      source: {
+        name: 'stripe',
+        api_key: 'sk_test_fake',
+        base_url: STRIPE_MOCK_URL,
       },
-    })
-    expect(error).toBeUndefined()
-    expect(pipeline).toBeDefined()
-    console.log(`  Pipeline: ${pipeline!.id}`)
+      destination: {
+        name: 'postgres',
+        connection_string: POSTGRES_URL,
+        schema,
+      },
+      streams: [{ name: STREAM }],
+    }
+    console.log(`  Pipeline: ${pipeline.id}`)
 
     const worker = await Worker.create({
       connection: nativeConnection,
       taskQueue: 'integration-pg-queue',
       workflowsPath,
-      activities: createActivities({ serviceUrl, engineUrl }),
+      activities: createActivities({ engineUrl }),
     })
 
     await worker.runUntil(async () => {
       const handle = await temporalClient.workflow.start(pipelineWorkflow, {
-        args: [pipeline!.id],
-        workflowId: `integration-pg-${pipeline!.id}`,
+        args: [pipeline],
+        workflowId: `integration-pg-${pipeline.id}`,
         taskQueue: 'integration-pg-queue',
       })
 
@@ -182,9 +165,7 @@ describe('pipelineWorkflow: Stripe → Postgres (real Temporal + real Stripe + r
       await pollUntil(
         async () => {
           try {
-            const r = await pool.query(
-              `SELECT count(*) AS cnt FROM "${schema}"."${STREAM}"`
-            )
+            const r = await pool.query(`SELECT count(*) AS cnt FROM "${schema}"."${STREAM}"`)
             return parseInt(r.rows[0].cnt, 10) > 0
           } catch {
             return false
@@ -197,9 +178,7 @@ describe('pipelineWorkflow: Stripe → Postgres (real Temporal + real Stripe + r
       expect(status.iteration).toBeGreaterThan(0)
       console.log(`  Iterations: ${status.iteration}`)
 
-      const { rows } = await pool.query(
-        `SELECT count(*)::int AS n FROM "${schema}"."${STREAM}"`
-      )
+      const { rows } = await pool.query(`SELECT count(*)::int AS n FROM "${schema}"."${STREAM}"`)
       console.log(`  Rows synced: ${rows[0].n}`)
       expect(rows[0].n).toBeGreaterThan(0)
 

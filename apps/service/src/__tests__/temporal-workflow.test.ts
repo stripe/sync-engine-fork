@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { TestWorkflowEnvironment } from '@temporalio/testing'
 import { Worker } from '@temporalio/worker'
 import path from 'node:path'
+import type { PipelineConfig } from '@stripe/sync-engine'
 import type { SyncActivities } from '../temporal/activities.js'
 import type { RunResult } from '../temporal/types.js'
 
@@ -10,10 +11,18 @@ const workflowsPath = path.resolve(process.cwd(), 'dist/temporal/workflows.js')
 
 const noErrors: RunResult = { errors: [], state: {} }
 
+const testPipeline = {
+  id: 'test_pipe',
+  source: { name: 'test', api_key: 'sk_test_123' },
+  destination: { name: 'test' },
+}
+
 function stubActivities(overrides: Partial<SyncActivities> = {}): SyncActivities {
   return {
     setup: async () => {},
-    syncImmediate: async () => noErrors,
+    sync: async () => noErrors,
+    read: async () => ({ count: 0, state: {} }),
+    write: async () => ({ errors: [], state: {}, written: 0 }),
     teardown: async () => {},
     ...overrides,
   }
@@ -42,7 +51,7 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
         setup: async () => {
           setupCalled = true
         },
-        syncImmediate: async () => {
+        sync: async () => {
           runCallCount++
           return noErrors
         },
@@ -51,7 +60,7 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
 
     await worker.runUntil(async () => {
       const handle = await testEnv.client.workflow.start('pipelineWorkflow', {
-        args: ['sync_test_1'],
+        args: [testPipeline],
         workflowId: 'test-sync-1',
         taskQueue: 'test-queue-1',
       })
@@ -71,15 +80,15 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
   })
 
   it('processes stripe_event signals as optimistic updates', async () => {
-    const runCalls: { pipelineId: string; input?: unknown[] }[] = []
+    const syncCalls: { config: PipelineConfig; input?: unknown[] }[] = []
 
     const worker = await Worker.create({
       connection: testEnv.nativeConnection,
       taskQueue: 'test-queue-2',
       workflowsPath,
       activities: stubActivities({
-        syncImmediate: async (pipelineId: string, opts?) => {
-          runCalls.push({ pipelineId, input: opts?.input ?? undefined })
+        sync: async (config: PipelineConfig, opts?) => {
+          syncCalls.push({ config, input: opts?.input ?? undefined })
           return noErrors
         },
       }),
@@ -87,7 +96,7 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
 
     await worker.runUntil(async () => {
       const handle = await testEnv.client.workflow.start('pipelineWorkflow', {
-        args: ['sync_test_2'],
+        args: [testPipeline],
         workflowId: 'test-sync-2',
         taskQueue: 'test-queue-2',
       })
@@ -110,7 +119,7 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
       await handle.result()
 
       // Find event-bearing sync calls (input is defined)
-      const eventCalls = runCalls.filter((c) => c.input)
+      const eventCalls = syncCalls.filter((c) => c.input)
       expect(eventCalls.length).toBeGreaterThanOrEqual(1)
 
       const allEvents = eventCalls.flatMap((c) => c.input!)
@@ -121,14 +130,14 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
         ])
       )
 
-      // All calls should use the same pipelineId
-      for (const call of runCalls) {
-        expect(call.pipelineId).toBe('sync_test_2')
+      // All calls should use the same pipeline config
+      for (const call of syncCalls) {
+        expect(call.config.source.name).toBe('test')
       }
     })
   })
 
-  it('pauses and resumes processing', async () => {
+  it('pauses and resumes via update signal', async () => {
     const worker = await Worker.create({
       connection: testEnv.nativeConnection,
       taskQueue: 'test-queue-3',
@@ -138,19 +147,19 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
 
     await worker.runUntil(async () => {
       const handle = await testEnv.client.workflow.start('pipelineWorkflow', {
-        args: ['sync_test_3'],
+        args: [testPipeline],
         workflowId: 'test-sync-3',
         taskQueue: 'test-queue-3',
       })
 
       await new Promise((r) => setTimeout(r, 1000))
-      await handle.signal('pause')
+      await handle.signal('update', { paused: true })
       await new Promise((r) => setTimeout(r, 500))
 
       const status = await handle.query('status')
       expect(status.paused).toBe(true)
 
-      await handle.signal('resume')
+      await handle.signal('update', { paused: false })
       await new Promise((r) => setTimeout(r, 500))
       await handle.signal('delete')
       await handle.result()
@@ -159,28 +168,26 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
 
   it('triggers teardown on delete', async () => {
     let teardownCalled = false
-    let teardownSyncId: string | undefined
 
     const worker = await Worker.create({
       connection: testEnv.nativeConnection,
       taskQueue: 'test-queue-4',
       workflowsPath,
       activities: stubActivities({
-        syncImmediate: async () => {
+        sync: async () => {
           // Slow sync so delete arrives mid-reconciliation
           await new Promise((r) => setTimeout(r, 500))
           return noErrors
         },
-        teardown: async (pipelineId: string): Promise<void> => {
+        teardown: async (): Promise<void> => {
           teardownCalled = true
-          teardownSyncId = pipelineId
         },
       }),
     })
 
     await worker.runUntil(async () => {
       const handle = await testEnv.client.workflow.start('pipelineWorkflow', {
-        args: ['sync_test_4'],
+        args: [testPipeline],
         workflowId: 'test-sync-4',
         taskQueue: 'test-queue-4',
       })
@@ -190,7 +197,6 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
       await handle.result()
 
       expect(teardownCalled).toBe(true)
-      expect(teardownSyncId).toBe('sync_test_4')
     })
   })
 
@@ -210,7 +216,7 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
 
     await worker.runUntil(async () => {
       const handle = await testEnv.client.workflow.start('pipelineWorkflow', {
-        args: ['sync_test_5', { phase: 'running' }],
+        args: [testPipeline, { phase: 'running' }],
         workflowId: 'test-sync-5',
         taskQueue: 'test-queue-5',
       })
@@ -220,6 +226,59 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
       await handle.result()
 
       expect(setupCalled).toBe(false)
+    })
+  })
+
+  it('returns pipeline config via config query', async () => {
+    const worker = await Worker.create({
+      connection: testEnv.nativeConnection,
+      taskQueue: 'test-queue-6',
+      workflowsPath,
+      activities: stubActivities(),
+    })
+
+    await worker.runUntil(async () => {
+      const handle = await testEnv.client.workflow.start('pipelineWorkflow', {
+        args: [testPipeline],
+        workflowId: 'test-sync-6',
+        taskQueue: 'test-queue-6',
+      })
+
+      await new Promise((r) => setTimeout(r, 500))
+
+      const config = await handle.query('config')
+      expect(config.id).toBe('test_pipe')
+      expect(config.source.name).toBe('test')
+
+      await handle.signal('delete')
+      await handle.result()
+    })
+  })
+
+  it('returns sync state via state query', async () => {
+    const worker = await Worker.create({
+      connection: testEnv.nativeConnection,
+      taskQueue: 'test-queue-7',
+      workflowsPath,
+      activities: stubActivities({
+        sync: async () => ({ errors: [], state: { customers: { cursor: 'cus_100' } } }),
+      }),
+    })
+
+    await worker.runUntil(async () => {
+      const handle = await testEnv.client.workflow.start('pipelineWorkflow', {
+        args: [testPipeline],
+        workflowId: 'test-sync-7',
+        taskQueue: 'test-queue-7',
+      })
+
+      await new Promise((r) => setTimeout(r, 1500))
+
+      const state = await handle.query('state')
+      expect(state).toHaveProperty('customers')
+
+      await handle.signal('delete')
+      await handle.result()
     })
   })
 })

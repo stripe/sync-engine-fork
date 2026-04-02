@@ -1,32 +1,69 @@
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { describe, expect, it, beforeEach, afterEach } from 'vitest'
-import type { ConnectorResolver } from '@stripe/sync-engine'
-import { sourceTest, destinationTest } from '@stripe/sync-engine'
+import { describe, expect, it } from 'vitest'
+import type { WorkflowClient } from '@temporalio/client'
 import { createApp } from './app.js'
+import type { Pipeline } from '../lib/schemas.js'
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Mock Temporal client — in-memory pipeline storage
 // ---------------------------------------------------------------------------
 
-const resolver: ConnectorResolver = {
-  resolveSource: async () => sourceTest,
-  resolveDestination: async () => destinationTest,
+function mockWorkflowClient(): WorkflowClient {
+  const store = new Map<string, { pipeline: Pipeline; paused: boolean }>()
+
+  return {
+    start(_workflow: string, options: any) {
+      const [pipeline] = options.args as [Pipeline]
+      store.set(options.workflowId, { pipeline, paused: false })
+      return Promise.resolve({ workflowId: options.workflowId })
+    },
+    getHandle(workflowId: string) {
+      return {
+        signal(signalName: string, ...args: unknown[]) {
+          const entry = store.get(workflowId)
+          if (!entry) return Promise.reject(new Error(`Workflow not found: ${workflowId}`))
+          if (signalName === 'delete') {
+            store.delete(workflowId)
+          } else if (signalName === 'update') {
+            const patch = args[0] as Record<string, unknown>
+            if (patch.source) entry.pipeline.source = patch.source as any
+            if (patch.destination) entry.pipeline.destination = patch.destination as any
+            if (patch.streams !== undefined) entry.pipeline.streams = patch.streams as any
+            if ('paused' in patch) entry.paused = !!patch.paused
+          }
+          return Promise.resolve()
+        },
+        query(queryName: string) {
+          const entry = store.get(workflowId)
+          if (!entry) return Promise.reject(new Error(`Workflow not found: ${workflowId}`))
+          if (queryName === 'config') return Promise.resolve(entry.pipeline)
+          if (queryName === 'status')
+            return Promise.resolve({ phase: 'running', paused: entry.paused, iteration: 1 })
+          if (queryName === 'state') return Promise.resolve({})
+          return Promise.reject(new Error(`Unknown query: ${queryName}`))
+        },
+        terminate() {
+          store.delete(workflowId)
+          return Promise.resolve()
+        },
+      }
+    },
+    list() {
+      const entries = [...store.values()]
+      return {
+        async *[Symbol.asyncIterator]() {
+          for (const entry of entries) {
+            yield { memo: { pipeline: entry.pipeline } }
+          }
+        },
+      }
+    },
+  } as unknown as WorkflowClient
 }
 
-let dataDir: string
-
-beforeEach(() => {
-  dataDir = mkdtempSync(join(tmpdir(), 'sync-service-test-'))
-})
-
-afterEach(() => {
-  rmSync(dataDir, { recursive: true, force: true })
-})
-
 function app() {
-  return createApp({ dataDir, connectors: resolver })
+  return createApp({
+    temporal: { client: mockWorkflowClient(), taskQueue: 'test' },
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -50,22 +87,22 @@ describe('GET /openapi.json', () => {
 
     expect(paths).toContain('/pipelines')
     expect(paths).toContain('/pipelines/{id}')
-    expect(paths).toContain('/pipelines/{id}/sync')
     expect(paths).toContain('/webhooks/{pipeline_id}')
   })
 
-  it('tags operations for grouped CLI generation', async () => {
+  it('does not include removed pipeline operation paths', async () => {
     const res = await app().request('/openapi.json')
-    const spec = (await res.json()) as any
-    const allTags = new Set<string>()
-    for (const pathItem of Object.values(spec.paths) as any[]) {
-      for (const op of Object.values(pathItem) as any[]) {
-        if (op?.tags) op.tags.forEach((t: string) => allTags.add(t))
-      }
-    }
-    expect(allTags).toContain('Pipelines')
-    expect(allTags).toContain('Pipeline Operations')
-    expect(allTags).toContain('Webhooks')
+    const spec = (await res.json()) as { paths: Record<string, unknown> }
+    const paths = Object.keys(spec.paths)
+
+    expect(paths).not.toContain('/pipelines/{id}/sync')
+    expect(paths).not.toContain('/pipelines/{id}/setup')
+    expect(paths).not.toContain('/pipelines/{id}/teardown')
+    expect(paths).not.toContain('/pipelines/{id}/check')
+    expect(paths).not.toContain('/pipelines/{id}/read')
+    expect(paths).not.toContain('/pipelines/{id}/write')
+    expect(paths).not.toContain('/pipelines/{id}/pause')
+    expect(paths).not.toContain('/pipelines/{id}/resume')
   })
 })
 
@@ -98,27 +135,28 @@ describe('pipelines', () => {
   it('create → get → list → update → delete', async () => {
     const a = app()
 
-    // Create pipeline (inline source/destination config)
+    // Create pipeline
     const createRes = await a.request('/pipelines', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        source: { name: 'test', api_key: 'sk_test_123' },
-        destination: { name: 'test', connection_string: 'postgres://localhost/db' },
+        source: { name: 'stripe', api_key: 'sk_test_123' },
+        destination: { name: 'postgres', connection_string: 'postgres://localhost/db' },
         streams: [{ name: 'customers' }],
       }),
     })
     expect(createRes.status).toBe(201)
     const created = (await createRes.json()) as any
     expect(created.id).toMatch(/^pipe_/)
-    expect(created.source.name).toBe('test')
-    expect(created.source.api_key).toBe('sk_test_123')
+    expect(created.source.name).toBe('stripe')
 
     const pipelineId = created.id
 
-    // Get
+    // Get (includes status from query)
     const getRes = await a.request(`/pipelines/${pipelineId}`)
     expect(getRes.status).toBe(200)
+    const got = (await getRes.json()) as any
+    expect(got.status.phase).toBe('running')
 
     // List
     const listRes = await a.request('/pipelines')
@@ -136,8 +174,6 @@ describe('pipelines', () => {
       }),
     })
     expect(updateRes.status).toBe(200)
-    const updated = (await updateRes.json()) as any
-    expect(updated.streams[0].name).toBe('products')
 
     // Delete
     const deleteRes = await a.request(`/pipelines/${pipelineId}`, {
@@ -145,6 +181,10 @@ describe('pipelines', () => {
     })
     expect(deleteRes.status).toBe(200)
     expect(await deleteRes.json()).toEqual({ id: pipelineId, deleted: true })
+
+    // Get after delete → 404
+    const getAfterDelete = await a.request(`/pipelines/${pipelineId}`)
+    expect(getAfterDelete.status).toBe(404)
   })
 
   it('returns 404 for non-existent pipeline', async () => {

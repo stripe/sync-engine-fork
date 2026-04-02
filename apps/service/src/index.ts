@@ -11,20 +11,6 @@ export {
   LogEntry,
 } from './lib/schemas.js'
 
-// Store interfaces
-export type { PipelineStore, LogSink } from './lib/stores.js'
-export type { StateStore } from './lib/stores.js'
-
-// File-system store implementations
-export { filePipelineStore, fileStateStore, fileLogSink } from './lib/stores-fs.js'
-
-// Resolution
-export { resolve } from './lib/resolve.js'
-
-// Service
-export { SyncService } from './lib/service.js'
-export type { SyncServiceOptions } from './lib/service.js'
-
 // Temporal bridge
 export { TemporalBridge } from './temporal/bridge.js'
 export type { TemporalOptions } from './temporal/bridge.js'

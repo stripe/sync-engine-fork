@@ -1,27 +1,21 @@
-import type { PipelineStore } from '../lib/stores.js'
+import type { WorkflowClient } from '@temporalio/client'
+import type { Pipeline } from '../lib/schemas.js'
+import type { WorkflowStatus } from './types.js'
 
 // MARK: - Types
 
 export interface TemporalOptions {
-  /** @temporalio/client WorkflowClient instance (or compatible duck-type). */
-  client: {
-    start(workflow: string, options: any): Promise<any>
-    getHandle(workflowId: string): {
-      signal(signal: string, ...args: unknown[]): Promise<any>
-      terminate(reason?: string): Promise<any>
-    }
-  }
+  client: WorkflowClient
   taskQueue: string
 }
 
 // MARK: - TemporalBridge
 
-/** Thin bridge between the sync service and a Temporal WorkflowClient. */
+/** Bridge between the service API and Temporal workflows. */
 export class TemporalBridge {
   constructor(
-    private client: TemporalOptions['client'],
-    private taskQueue: string,
-    private pipelines: PipelineStore
+    private client: WorkflowClient,
+    private taskQueue: string
   ) {}
 
   /** Deterministic workflow ID for a given pipeline. */
@@ -31,19 +25,48 @@ export class TemporalBridge {
 
   /**
    * Start a `pipelineWorkflow` for the given pipeline.
-   * Uses deterministic workflow ID so one workflow per pipeline.
-   * The workflow receives only the pipelineId — it calls the service API
-   * which resolves config and state on each activity call.
+   * Stores the full pipeline in workflow memo for list visibility.
    */
   async start(
-    pipelineId: string,
+    pipeline: Pipeline,
     opts?: { mode?: 'sync' | 'read-write'; writeRps?: number }
   ): Promise<void> {
     await this.client.start('pipelineWorkflow', {
-      workflowId: this.workflowId(pipelineId),
+      workflowId: this.workflowId(pipeline.id),
       taskQueue: this.taskQueue,
-      args: [pipelineId, opts],
+      args: [pipeline, opts],
+      memo: { pipeline },
     })
+  }
+
+  /** List all pipeline workflows via the Temporal visibility API. */
+  async list(): Promise<Pipeline[]> {
+    const pipelines: Pipeline[] = []
+    for await (const workflow of this.client.list({
+      query: `WorkflowType = 'pipelineWorkflow'`,
+    })) {
+      const memo = workflow.memo as { pipeline?: Pipeline } | undefined
+      if (memo?.pipeline) {
+        pipelines.push(memo.pipeline)
+      }
+    }
+    return pipelines
+  }
+
+  /** Get pipeline config + status by querying the workflow. */
+  async get(pipelineId: string): Promise<{ pipeline: Pipeline; status: WorkflowStatus }> {
+    const handle = this.client.getHandle(this.workflowId(pipelineId))
+    const [pipeline, status] = await Promise.all([
+      handle.query<Pipeline>('config'),
+      handle.query<WorkflowStatus>('status'),
+    ])
+    return { pipeline, status }
+  }
+
+  /** Signal the workflow to update config (includes pause/resume via { paused }). */
+  async update(pipelineId: string, patch: Partial<Pipeline> & { paused?: boolean }): Promise<void> {
+    const handle = this.client.getHandle(this.workflowId(pipelineId))
+    await handle.signal('update', patch)
   }
 
   /** Signal the workflow to delete (triggers teardown + exit). */
@@ -54,18 +77,6 @@ export class TemporalBridge {
     } catch {
       // Workflow may already be completed — ignore signal failures
     }
-  }
-
-  /** Signal the workflow to pause. */
-  async pause(pipelineId: string): Promise<void> {
-    const handle = this.client.getHandle(this.workflowId(pipelineId))
-    await handle.signal('pause')
-  }
-
-  /** Signal the workflow to resume. */
-  async resume(pipelineId: string): Promise<void> {
-    const handle = this.client.getHandle(this.workflowId(pipelineId))
-    await handle.signal('resume')
   }
 
   /** Push a webhook event to the pipeline's Temporal workflow. */
