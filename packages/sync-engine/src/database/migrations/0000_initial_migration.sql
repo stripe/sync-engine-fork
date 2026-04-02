@@ -8,7 +8,15 @@ CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger
     LANGUAGE plpgsql
 AS $$
 BEGIN
-  NEW._updated_at = now();
+  -- Support both legacy "updated_at" and newer "_updated_at" columns.
+  -- jsonb_populate_record silently ignores keys that are not present on NEW.
+  NEW := jsonb_populate_record(
+    NEW,
+    jsonb_build_object(
+      'updated_at', now(),
+      '_updated_at', now()
+    )
+  );
   RETURN NEW;
 END;
 $$;

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { PostgresClient } from '../../database/postgres'
-import { setupTestDatabase, type TestDatabase } from '../testSetup'
+import { setupTestDatabase, sleep, type TestDatabase } from '../testSetup'
 
 describe('Observable Sync System Methods', () => {
   let postgresClient: PostgresClient
@@ -124,6 +124,33 @@ describe('Observable Sync System Methods', () => {
 
       expect(result.rows[0].status).toBe('error')
       expect(result.rows[0].error_message).toBe('Test error')
+    })
+  })
+
+  describe('set_updated_at trigger', () => {
+    it('should advance _updated_at on accounts updates', async () => {
+      const beforeResult = await db.pool.query(
+        `SELECT "_updated_at" FROM stripe.accounts WHERE id = $1`,
+        [testAccountId]
+      )
+      const beforeUpdatedAt = beforeResult.rows[0]._updated_at as Date
+
+      await sleep(10)
+
+      await db.pool.query(
+        `UPDATE stripe.accounts
+         SET "_raw_data" = jsonb_set("_raw_data", '{metadata}', '{"updated":true}'::jsonb, true)
+         WHERE id = $1`,
+        [testAccountId]
+      )
+
+      const afterResult = await db.pool.query(
+        `SELECT "_updated_at" FROM stripe.accounts WHERE id = $1`,
+        [testAccountId]
+      )
+      const afterUpdatedAt = afterResult.rows[0]._updated_at as Date
+
+      expect(afterUpdatedAt.getTime()).toBeGreaterThan(beforeUpdatedAt.getTime())
     })
   })
 
