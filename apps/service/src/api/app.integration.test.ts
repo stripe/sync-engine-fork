@@ -1,50 +1,76 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { Client, Connection } from '@temporalio/client'
 import { NativeConnection, Worker } from '@temporalio/worker'
-import createFetchClient from 'openapi-fetch'
+import { serve } from '@hono/node-server'
+import type { AddressInfo } from 'node:net'
 import path from 'node:path'
+import { execSync } from 'node:child_process'
+import createFetchClient from 'openapi-fetch'
+import {
+  createApp as createEngineApp,
+  createConnectorResolver,
+  sourceTest,
+  destinationTest,
+} from '@stripe/sync-engine'
+import { createActivities } from '../temporal/activities.js'
 import { createApp } from './app.js'
 import type { paths } from '../__generated__/openapi.js'
-import type { SyncActivities } from '../temporal/activities.js'
-import type { RunResult } from '../temporal/types.js'
 
 // ---------------------------------------------------------------------------
-// Temporal setup — real server (Docker), no-op activities
+// Real infra — Docker Temporal + engine HTTP server + real activities
 // ---------------------------------------------------------------------------
 
 const TEMPORAL_ADDRESS = process.env['TEMPORAL_ADDRESS'] ?? 'localhost:7233'
 const TASK_QUEUE = `test-app-${Date.now()}`
 const workflowsPath = path.resolve(process.cwd(), 'dist/temporal/workflows.js')
 
-const noopActivities: SyncActivities = {
-  setup: async () => {},
-  sync: async (): Promise<RunResult> => ({ errors: [], state: {} }),
-  read: async () => ({ count: 0, state: {} }),
-  write: async () => ({ errors: [], state: {}, written: 0 }),
-  teardown: async () => {},
-}
+const resolver = createConnectorResolver({
+  sources: { stripe: sourceTest, test: sourceTest },
+  destinations: { postgres: destinationTest, test: destinationTest },
+})
 
 let client: Client
 let worker: Worker
 let workerRunning: Promise<void>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let engineServer: any
 
 beforeAll(async () => {
+  // 1. Build service so dist/temporal/workflows.js is fresh
+  execSync('pnpm --filter @stripe/sync-service build', {
+    cwd: path.resolve(process.cwd(), '../..'),
+    stdio: 'pipe',
+  })
+
+  // 2. Start engine HTTP server on a random port
+  const engineApp = createEngineApp(resolver)
+  const engineUrl = await new Promise<string>((resolve) => {
+    engineServer = serve({ fetch: engineApp.fetch, port: 0 }, (info) => {
+      resolve(`http://localhost:${(info as AddressInfo).port}`)
+    })
+  })
+
+  // 3. Connect to real Temporal
   const connection = await Connection.connect({ address: TEMPORAL_ADDRESS })
   client = new Client({ connection })
 
+  // 4. Start worker with real workflows + real activities
   const nativeConnection = await NativeConnection.connect({ address: TEMPORAL_ADDRESS })
   worker = await Worker.create({
     connection: nativeConnection,
     taskQueue: TASK_QUEUE,
     workflowsPath,
-    activities: noopActivities,
+    activities: createActivities({ engineUrl }),
   })
   workerRunning = worker.run()
-}, 30_000)
+}, 60_000)
 
 afterAll(async () => {
   worker?.shutdown()
   await workerRunning
+  await new Promise<void>((resolve, reject) => {
+    engineServer?.close((err: Error | null) => (err ? reject(err) : resolve()))
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -54,6 +80,7 @@ afterAll(async () => {
 function createTestClient() {
   const app = createApp({
     temporal: { client: client.workflow, taskQueue: TASK_QUEUE },
+    resolver,
   })
   const api = createFetchClient<paths>({
     baseUrl: 'http://localhost',
@@ -73,19 +100,19 @@ describe('pipelines (integration)', () => {
     // Create
     const { data: created, error: createErr } = await api.POST('/pipelines', {
       body: {
-        source: { name: 'stripe', api_key: 'sk_test_123' },
-        destination: { name: 'postgres', connection_string: 'postgres://localhost/db' },
+        source: { type: 'test' },
+        destination: { type: 'test' },
         streams: [{ name: 'customers' }],
       },
     })
     expect(createErr).toBeUndefined()
     expect(created!.id).toMatch(/^pipe_/)
-    expect(created!.source.name).toBe('stripe')
+    expect(created!.source.type).toBe('test')
 
     const id = created!.id
 
     // Wait for workflow to start and become queryable
-    await new Promise((r) => setTimeout(r, 500))
+    await new Promise((r) => setTimeout(r, 1000))
 
     // Get (includes status from workflow query)
     const { data: got, error: getErr } = await api.GET('/pipelines/{id}', {
