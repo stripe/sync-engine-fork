@@ -132,6 +132,31 @@ async function writeHeaderRow(
   )
 }
 
+/** Read the first row from a sheet tab and treat it as headers. */
+export async function readHeaderRow(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  sheetName: string
+): Promise<string[]> {
+  const res = await withRetry(() =>
+    sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `'${sheetName}'!1:1`,
+    })
+  )
+  const [headerRow] = res.data.values ?? []
+  return Array.isArray(headerRow) ? headerRow.map((value) => String(value)) : []
+}
+
+function parseUpdatedRows(updatedRange: string): { startRow: number; endRow: number } {
+  const match = updatedRange.match(/![A-Z]+(\d+)(?::[A-Z]+(\d+))?$/i)
+  if (!match) throw new Error(`Unable to parse updated range: ${updatedRange}`)
+  return {
+    startRow: Number(match[1]),
+    endRow: Number(match[2] ?? match[1]),
+  }
+}
+
 /**
  * Create or update an "Overview" intro tab at index 0.
  * Lists the synced streams and warns users not to edit data tabs.
@@ -252,10 +277,10 @@ export async function appendRows(
   spreadsheetId: string,
   sheetName: string,
   rows: unknown[][]
-): Promise<void> {
+): Promise<{ startRow: number; endRow: number } | undefined> {
   if (rows.length === 0) return
 
-  await withRetry(() =>
+  const res = await withRetry(() =>
     sheets.spreadsheets.values.append({
       spreadsheetId,
       range: `'${sheetName}'!A1`,
@@ -264,6 +289,8 @@ export async function appendRows(
       requestBody: { values: rows },
     })
   )
+  const updatedRange = res.data.updates?.updatedRange
+  return updatedRange ? parseUpdatedRows(updatedRange) : undefined
 }
 
 /**
@@ -278,17 +305,16 @@ export async function updateRows(
 ): Promise<void> {
   if (updates.length === 0) return
 
-  const data = updates.map(({ rowNumber, values }) => ({
-    range: `'${sheetName}'!A${rowNumber}`,
-    values: [values],
-  }))
-
-  await withRetry(() =>
-    sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId,
-      requestBody: { valueInputOption: 'RAW', data },
-    })
-  )
+  for (const update of updates) {
+    await withRetry(() =>
+      sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `'${sheetName}'!A${update.rowNumber}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [update.values] },
+      })
+    )
+  }
 }
 
 /**

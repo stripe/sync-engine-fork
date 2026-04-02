@@ -2,6 +2,8 @@ import type { ConfiguredCatalog, DestinationOutput, Message } from '@stripe/sync
 import type { StateStore } from './state-store.js'
 import { logger } from '../logger.js'
 
+const SYSTEM_RECORD_FIELDS = new Set(['_row_key', '_row_number'])
+
 // MARK: - enforceCatalog
 
 /**
@@ -25,7 +27,11 @@ export function enforceCatalog(
           if (props) {
             yield {
               ...msg,
-              data: Object.fromEntries(Object.entries(msg.data).filter(([k]) => k in props)),
+              data: Object.fromEntries(
+                Object.entries(msg.data).filter(
+                  ([key]) => key in props || SYSTEM_RECORD_FIELDS.has(key)
+                )
+              ),
             }
           } else {
             yield msg

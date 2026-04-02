@@ -19,9 +19,17 @@ const testPipeline = {
 
 function stubActivities(overrides: Partial<SyncActivities> = {}): SyncActivities {
   return {
+    discoverCatalog: async () => ({ streams: [] }),
     setup: async () => ({}),
     syncImmediate: async () => noErrors,
+    readIntoQueueWithState: async () => ({ count: 0, state: {} }),
     readIntoQueue: async () => ({ count: 0, state: {} }),
+    writeGoogleSheetsFromQueue: async () => ({
+      errors: [],
+      state: {},
+      written: 0,
+      rowAssignments: {},
+    }),
     writeFromQueue: async () => ({ errors: [], state: {}, written: 0 }),
     teardown: async () => {},
     ...overrides,
@@ -281,6 +289,58 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
 
       await handle.signal('delete')
       await handle.result()
+    })
+  })
+})
+
+describe('pipelineGoogleSheetsWorkflow (unit — stubbed activities)', () => {
+  it('uses the Sheets-specific read path and catalog discovery', async () => {
+    let discoverCalls = 0
+    let readCalls = 0
+    let syncCalls = 0
+
+    const worker = await Worker.create({
+      connection: testEnv.nativeConnection,
+      taskQueue: 'test-queue-gs-1',
+      workflowsPath,
+      activities: stubActivities({
+        discoverCatalog: async () => {
+          discoverCalls++
+          return { streams: [] }
+        },
+        readIntoQueueWithState: async () => {
+          readCalls++
+          return { count: 0, state: {} }
+        },
+        syncImmediate: async () => {
+          syncCalls++
+          return noErrors
+        },
+      }),
+    })
+
+    await worker.runUntil(async () => {
+      const handle = await testEnv.client.workflow.start('pipelineGoogleSheetsWorkflow', {
+        args: [
+          {
+            ...testPipeline,
+            destination: {
+              type: 'google-sheets',
+              spreadsheet_id: 'sheet_123',
+            },
+          },
+        ],
+        workflowId: 'test-gs-sync-1',
+        taskQueue: 'test-queue-gs-1',
+      })
+
+      await new Promise((r) => setTimeout(r, 1500))
+      await handle.signal('delete')
+      await handle.result()
+
+      expect(discoverCalls).toBeGreaterThanOrEqual(1)
+      expect(readCalls).toBeGreaterThanOrEqual(1)
+      expect(syncCalls).toBe(0)
     })
   })
 })
