@@ -73,7 +73,7 @@ run_sync_cycle() {
   status=$(curl -sf -o /dev/null -w "%{http_code}" -X POST "$ENGINE_URL/setup" \
     -H "X-Pipeline: $params")
   echo "  Setup: HTTP $status"
-  [ "$status" = "204" ] || { echo "FAIL: expected 204, got $status"; exit 1; }
+  [ "$status" = "200" ] || { echo "FAIL: expected 200, got $status"; exit 1; }
 
   # Sync
   local output
