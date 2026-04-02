@@ -269,10 +269,7 @@ export function createApp(resolver: ConnectorResolver) {
   app.post('/sync', async (c) => {
     const params = parseSyncParams(c)
     const stateStore = await maybeDestinationStateStore(params.pipeline)
-    const { engine, close } = await resolveEngineWithRateLimiter(
-      params.pipeline,
-      stateStore
-    )
+    const { engine, close } = await resolveEngineWithRateLimiter(params.pipeline, stateStore)
 
     const input = hasBody(c) ? parseNdjsonStream(c.req.raw.body!) : undefined
     let output: AsyncIterable<DestinationOutput> = engine.sync(input)
