@@ -16,7 +16,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch",
+    "dev:serve": "tsx src/bin/sync-service.ts serve --temporal-address localhost:7233 --port 4020",
+    "dev:worker": "tsx src/bin/sync-service.ts worker --temporal-address localhost:7233",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "generate:types": "openapi-typescript src/__generated__/openapi.json -o src/__generated__/openapi.d.ts"
@@ -27,11 +28,11 @@
   ],
   "dependencies": {
     "@hono/node-server": "^1",
-    "@stripe/sync-hono-zod-openapi": "workspace:*",
     "@scalar/hono-api-reference": "^0.6",
     "@stripe/sync-destination-google-sheets": "workspace:*",
     "@stripe/sync-destination-postgres": "workspace:*",
     "@stripe/sync-engine": "workspace:*",
+    "@stripe/sync-hono-zod-openapi": "workspace:*",
     "@stripe/sync-protocol": "workspace:*",
     "@stripe/sync-source-stripe": "workspace:*",
     "@stripe/sync-ts-cli": "workspace:*",
@@ -49,6 +50,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@hyperjump/json-schema": "^1.17.5",
     "@temporalio/testing": "^1",
     "@types/node": "^24.10.1",
     "openapi-typescript": "^7",

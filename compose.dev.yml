@@ -1,6 +1,6 @@
 # Application layer — engine + service API + Temporal worker.
 # Use together with compose.yml:
-#   docker compose -f compose.yml -f compose.service.yml up --build -d
+#   docker compose -f compose.yml -f compose.dev.yml up --build -d
 #
 # Requires pre-built dist/ in build context: run `pnpm build` first.
 
@@ -8,7 +8,7 @@ services:
   engine:
     build:
       context: .
-      dockerfile: Dockerfile
+      target: engine
     ports:
       - '4010:3000'
     environment:
@@ -23,7 +23,7 @@ services:
   service:
     build:
       context: .
-      dockerfile: Dockerfile.service
+      target: service
     ports:
       - '4020:4020'
     command:
@@ -49,7 +49,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.service
+      target: service
     command:
       - worker
       - --temporal-address
@@ -62,4 +62,19 @@ services:
       engine:
         condition: service_healthy
       temporal:
+        condition: service_healthy
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    ports:
+      - '5173:5173'
+    environment:
+      ENGINE_URL: http://engine:3000
+      SERVICE_URL: http://service:4020
+    depends_on:
+      engine:
+        condition: service_healthy
+      service:
         condition: service_healthy

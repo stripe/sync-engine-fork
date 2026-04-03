@@ -1,4 +1,3 @@
-import path from 'node:path'
 import { Readable } from 'node:stream'
 import { defineCommand } from 'citty'
 import { createCliFromSpec } from '@stripe/sync-ts-cli/openapi'
@@ -106,9 +105,12 @@ const workerCmd = defineCommand({
     const kafkaBroker = args['kafka-broker'] || process.env['KAFKA_BROKER']
     const temporalAddress = args['temporal-address']
 
-    // workflowsPath: point Temporal at the compiled workflow directory
-    const pkgDir = path.resolve(import.meta.dirname ?? process.cwd(), '..')
-    const workflowsPath = path.resolve(pkgDir, 'dist/temporal/workflows')
+    // import.meta.url is the URL of cli.ts/cli.js, NOT the bin entry point:
+    //   tsx:      file:///.../apps/service/src/cli.ts  → ./temporal/workflows/index.ts
+    //   compiled: file:///.../apps/service/dist/cli.js → ./temporal/workflows/index.js
+    const { fileURLToPath } = await import('node:url')
+    const ext = import.meta.url.endsWith('.ts') ? '.ts' : '.js'
+    const workflowsPath = fileURLToPath(new URL(`./temporal/workflows/index${ext}`, import.meta.url))
 
     const worker = await createWorker({
       temporalAddress,

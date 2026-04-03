@@ -101,7 +101,10 @@ describe('GET /openapi.json', () => {
     expect(paths).toContain('/read')
     expect(paths).toContain('/write')
     expect(paths).toContain('/sync')
-    expect(paths).toContain('/connectors')
+    expect(paths).toContain('/meta/sources')
+    expect(paths).toContain('/meta/sources/:type')
+    expect(paths).toContain('/meta/destinations')
+    expect(paths).toContain('/meta/destinations/:type')
   })
 
   it('injects typed connector schemas into components', async () => {
@@ -139,11 +142,14 @@ describe('GET /openapi.json', () => {
 
     // Message union
     expect(schemas.Message.discriminator.propertyName).toBe('type')
-    expect(schemas.Message.oneOf).toHaveLength(6)
+    expect(schemas.Message.oneOf).toHaveLength(7)
 
-    // DestinationOutput union
+    // DestinationOutput union (state, error, log, eof)
     expect(schemas.DestinationOutput.discriminator.propertyName).toBe('type')
-    expect(schemas.DestinationOutput.oneOf).toHaveLength(3)
+    expect(schemas.DestinationOutput.oneOf).toHaveLength(4)
+
+    // EofMessage
+    expect(schemas.EofMessage.properties.type.const).toBe('eof')
 
     // NDJSON responses reference schemas (zod-openapi adds Output suffix for response-only types)
     const readNdjson =
@@ -198,15 +204,57 @@ describe('GET /openapi.json', () => {
   })
 })
 
-describe('GET /connectors', () => {
-  it('returns available connectors with config schemas', async () => {
+describe('GET /meta/sources', () => {
+  it('returns available source connectors', async () => {
     const app = createApp(resolver)
-    const res = await app.request('/connectors')
+    const res = await app.request('/meta/sources')
     expect(res.status).toBe(200)
     const body = (await res.json()) as any
-    expect(body.sources).toHaveProperty('test')
-    expect(body.destinations).toHaveProperty('test')
-    expect(body.sources.test.config_schema).toBeDefined()
+    expect(Array.isArray(body.data)).toBe(true)
+    expect(body.data.find((c: any) => c.type === 'test')?.config_schema).toBeDefined()
+  })
+})
+
+describe('GET /meta/sources/:type', () => {
+  it('returns spec for a known source type', async () => {
+    const app = createApp(resolver)
+    const res = await app.request('/meta/sources/test')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.config_schema).toBeDefined()
+  })
+
+  it('returns 404 for unknown source type', async () => {
+    const app = createApp(resolver)
+    const res = await app.request('/meta/sources/nonexistent')
+    expect(res.status).toBe(404)
+  })
+})
+
+describe('GET /meta/destinations', () => {
+  it('returns available destination connectors', async () => {
+    const app = createApp(resolver)
+    const res = await app.request('/meta/destinations')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(Array.isArray(body.data)).toBe(true)
+    expect(body.data.find((c: any) => c.type === 'test')?.config_schema).toBeDefined()
+  })
+})
+
+describe('GET /meta/destinations/:type', () => {
+  it('returns spec for a known destination type', async () => {
+    const app = createApp(resolver)
+    const res = await app.request('/meta/destinations/test')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.config_schema).toBeDefined()
+  })
+
+  it('returns 404 for unknown destination type', async () => {
+    const app = createApp(resolver)
+    const res = await app.request('/meta/destinations/nonexistent')
+    expect(res.status).toBe(404)
   })
 })
 
@@ -275,7 +323,7 @@ describe('POST /read', () => {
         type: 'record',
         stream: 'customers',
         data: { id: 'cus_1', name: 'Alice' },
-        emitted_at: Date.now(),
+        emitted_at: new Date().toISOString(),
       },
       { type: 'state', stream: 'customers', data: { status: 'complete' } },
     ])
@@ -289,9 +337,10 @@ describe('POST /read', () => {
     expect(res.headers.get('Content-Type')).toBe('application/x-ndjson')
 
     const events = await readNdjson<Message>(res)
-    expect(events).toHaveLength(2)
+    expect(events).toHaveLength(3)
     expect(events[0]!.type).toBe('record')
     expect(events[1]!.type).toBe('state')
+    expect(events[2]).toMatchObject({ type: 'eof', reason: 'complete' })
   })
 })
 
@@ -304,7 +353,7 @@ describe('POST /write', () => {
         type: 'record',
         stream: 'customers',
         data: { id: 'cus_1' },
-        emitted_at: 1000,
+        emitted_at: '2024-01-01T00:00:00.000Z',
       },
       {
         type: 'state',
@@ -352,7 +401,7 @@ describe('POST /sync', () => {
         type: 'record',
         stream: 'customers',
         data: { id: 'cus_1', name: 'Alice' },
-        emitted_at: Date.now(),
+        emitted_at: new Date().toISOString(),
       },
       { type: 'state', stream: 'customers', data: { status: 'complete' } },
     ])
@@ -365,32 +414,47 @@ describe('POST /sync', () => {
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toBe('application/x-ndjson')
 
-    const events = await readNdjson<StateMessage>(res)
-    expect(events).toHaveLength(1)
+    const events = await readNdjson<Record<string, unknown>>(res)
+    expect(events).toHaveLength(2)
     expect(events[0]!.type).toBe('state')
+    expect(events[1]).toMatchObject({ type: 'eof', reason: 'complete' })
   })
 })
 
 // ---------------------------------------------------------------------------
-// X-State-Checkpoint-Limit
+// state_limit and time_limit query params
 // ---------------------------------------------------------------------------
 
-describe('X-State-Checkpoint-Limit', () => {
-  it('POST /read stops after N state messages', async () => {
+describe('state_limit and time_limit', () => {
+  it('POST /read?state_limit=1 stops after 1 state message and emits eof', async () => {
     const app = createApp(resolver)
 
     const body = toNdjson([
-      { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_1' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: '1' } },
-      { type: 'record', stream: 'customers', data: { id: 'cus_2' }, emitted_at: 2 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_2' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: '2' } },
-      { type: 'record', stream: 'customers', data: { id: 'cus_3' }, emitted_at: 3 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_3' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
     ])
-    const res = await app.request('/read', {
+    const res = await app.request('/read?state_limit=1', {
       method: 'POST',
       headers: {
         'X-Pipeline': syncParams,
-        'X-State-Checkpoint-Limit': '1',
         ...bodyHeaders(body),
       },
       body,
@@ -398,26 +462,36 @@ describe('X-State-Checkpoint-Limit', () => {
 
     expect(res.status).toBe(200)
     const events = await readNdjson<Message>(res)
-    // Should get 1 record + 1 state, then stop
-    expect(events).toHaveLength(2)
+    // 1 record + 1 state + 1 eof
+    expect(events).toHaveLength(3)
     expect(events[0]!.type).toBe('record')
     expect(events[1]!.type).toBe('state')
+    expect(events[2]).toMatchObject({ type: 'eof', reason: 'state_limit' })
   })
 
-  it('POST /sync stops after N state messages', async () => {
+  it('POST /sync?state_limit=1 stops after 1 state message and emits eof', async () => {
     const app = createApp(resolver)
 
     const body = toNdjson([
-      { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_1' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: '1' } },
-      { type: 'record', stream: 'customers', data: { id: 'cus_2' }, emitted_at: 2 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_2' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: '2' } },
     ])
-    const res = await app.request('/sync', {
+    const res = await app.request('/sync?state_limit=1', {
       method: 'POST',
       headers: {
         'X-Pipeline': syncParams,
-        'X-State-Checkpoint-Limit': '1',
         ...bodyHeaders(body),
       },
       body,
@@ -425,18 +499,29 @@ describe('X-State-Checkpoint-Limit', () => {
 
     expect(res.status).toBe(200)
     const events = await readNdjson<Message>(res)
-    // destinationTest only yields state messages, so we get 1 state then stop
-    expect(events).toHaveLength(1)
+    // destinationTest only yields state messages, so we get 1 state + 1 eof
+    expect(events).toHaveLength(2)
     expect(events[0]!.type).toBe('state')
+    expect(events[1]).toMatchObject({ type: 'eof', reason: 'state_limit' })
   })
 
-  it('POST /read without limit returns all messages', async () => {
+  it('POST /read without limits returns all messages plus eof:complete', async () => {
     const app = createApp(resolver)
 
     const body = toNdjson([
-      { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_1' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: '1' } },
-      { type: 'record', stream: 'customers', data: { id: 'cus_2' }, emitted_at: 2 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_2' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: '2' } },
     ])
     const res = await app.request('/read', {
@@ -447,7 +532,9 @@ describe('X-State-Checkpoint-Limit', () => {
 
     expect(res.status).toBe(200)
     const events = await readNdjson<Message>(res)
-    expect(events).toHaveLength(4)
+    // 4 original messages + eof
+    expect(events).toHaveLength(5)
+    expect(events[4]).toMatchObject({ type: 'eof', reason: 'complete' })
   })
 })
 

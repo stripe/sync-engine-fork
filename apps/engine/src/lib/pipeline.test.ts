@@ -1,13 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { ConfiguredCatalog, DestinationOutput, Message } from '@stripe/sync-protocol'
-import {
-  enforceCatalog,
-  filterType,
-  log,
-  persistState,
-  pipe,
-  takeStateCheckpoints,
-} from './pipeline.js'
+import { enforceCatalog, filterType, log, persistState, pipe, takeLimits } from './pipeline.js'
 import type { StateStore } from './state-store.js'
 
 vi.mock('../logger.js', () => ({
@@ -60,7 +53,12 @@ async function* toAsync<T>(items: T[]): AsyncIterable<T> {
 describe('enforceCatalog()', () => {
   it('passes known record messages through unchanged when no fields configured', async () => {
     const msgs: Message[] = [
-      { type: 'record', stream: 'customers', data: { id: 'cus_1', name: 'Alice' }, emitted_at: 1 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_1', name: 'Alice' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
     ]
     const result = await drain(enforceCatalog(catalog([{ name: 'customers' }]))(toAsync(msgs)))
     expect(result).toHaveLength(1)
@@ -73,7 +71,7 @@ describe('enforceCatalog()', () => {
         type: 'record',
         stream: 'subscriptions',
         data: { id: 'sub_1', status: 'active', customer: 'cus_1' },
-        emitted_at: 1,
+        emitted_at: '2024-01-01T00:00:00.000Z',
       },
     ]
     const result = await drain(
@@ -134,7 +132,7 @@ describe('enforceCatalog()', () => {
         type: 'record',
         stream: 'subscriptions',
         data: { id: 'sub_1', status: 'active', customer: 'cus_1' },
-        emitted_at: 1,
+        emitted_at: '2024-01-01T00:00:00.000Z',
       },
     ]
     const result = await drain(enforceCatalog(catalog([{ name: 'subscriptions' }]))(toAsync(msgs)))
@@ -148,7 +146,12 @@ describe('enforceCatalog()', () => {
 
   it('drops record with unknown stream and logs error', async () => {
     const msgs: Message[] = [
-      { type: 'record', stream: 'unknown_stream', data: { id: '1' }, emitted_at: 1 },
+      {
+        type: 'record',
+        stream: 'unknown_stream',
+        data: { id: '1' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
     ]
     const result = await drain(enforceCatalog(catalog([{ name: 'customers' }]))(toAsync(msgs)))
     expect(result).toHaveLength(0)
@@ -192,7 +195,12 @@ describe('enforceCatalog()', () => {
 describe('log()', () => {
   it('passes all message types through unchanged', async () => {
     const msgs: Message[] = [
-      { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_1' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: 'abc' } },
       { type: 'log', level: 'info', message: 'hello' },
       { type: 'error', failure_type: 'system_error', message: 'oops' },
@@ -233,7 +241,12 @@ describe('log()', () => {
 
   it('does not log record or state messages', async () => {
     const msgs: Message[] = [
-      { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_1' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: 'abc' } },
     ]
     await drain(log(toAsync(msgs)))
@@ -250,7 +263,12 @@ describe('log()', () => {
 describe('filterType()', () => {
   it('filters to a single type', async () => {
     const msgs: Message[] = [
-      { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_1' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: 'abc' } },
       { type: 'log', level: 'info', message: 'hello' },
     ]
@@ -261,7 +279,12 @@ describe('filterType()', () => {
 
   it('filters to multiple types', async () => {
     const msgs: Message[] = [
-      { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_1' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: 'abc' } },
       { type: 'log', level: 'info', message: 'hello' },
       { type: 'error', failure_type: 'system_error', message: 'oops' },
@@ -353,52 +376,128 @@ describe('persistState()', () => {
 })
 
 // ---------------------------------------------------------------------------
-// takeStateCheckpoints()
+// takeLimits()
 // ---------------------------------------------------------------------------
 
-describe('takeStateCheckpoints()', () => {
-  it('stops after the Nth state message', async () => {
+describe('takeLimits()', () => {
+  it('stops after N state messages and emits eof with state_limit reason', async () => {
     const msgs: Message[] = [
-      { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_1' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: '1' } },
-      { type: 'record', stream: 'customers', data: { id: 'cus_2' }, emitted_at: 2 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_2' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: '2' } },
-      { type: 'record', stream: 'customers', data: { id: 'cus_3' }, emitted_at: 3 },
     ]
-    const result = await drain(takeStateCheckpoints<Message>(1)(toAsync(msgs)))
-    expect(result).toHaveLength(2)
+    const result = await drain(takeLimits<Message>({ stateLimit: 1 })(toAsync(msgs)))
+    expect(result).toHaveLength(3)
     expect(result[0]).toMatchObject({ type: 'record', data: { id: 'cus_1' } })
     expect(result[1]).toMatchObject({ type: 'state', data: { cursor: '1' } })
+    expect(result[2]).toMatchObject({ type: 'eof', reason: 'state_limit' })
   })
 
-  it('yields everything when limit exceeds state message count', async () => {
+  it('emits eof with complete reason when source exhausts', async () => {
     const msgs: Message[] = [
-      { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_1' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: '1' } },
     ]
-    const result = await drain(takeStateCheckpoints<Message>(5)(toAsync(msgs)))
+    const result = await drain(takeLimits<Message>({ stateLimit: 5 })(toAsync(msgs)))
+    expect(result).toHaveLength(3)
+    expect(result[2]).toMatchObject({ type: 'eof', reason: 'complete' })
+  })
+
+  it('emits eof complete with no limits set', async () => {
+    const msgs: Message[] = [{ type: 'state', stream: 'customers', data: { cursor: '1' } }]
+    const result = await drain(takeLimits<Message>()(toAsync(msgs)))
     expect(result).toHaveLength(2)
+    expect(result[1]).toMatchObject({ type: 'eof', reason: 'complete' })
   })
 
   it('counts state messages across multiple streams', async () => {
     const msgs: Message[] = [
-      { type: 'record', stream: 'customers', data: { id: 'cus_1' }, emitted_at: 1 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_1' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: 'a' } },
-      { type: 'record', stream: 'products', data: { id: 'prod_1' }, emitted_at: 2 },
+      {
+        type: 'record',
+        stream: 'products',
+        data: { id: 'prod_1' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'products', data: { cursor: 'b' } },
-      { type: 'record', stream: 'customers', data: { id: 'cus_2' }, emitted_at: 3 },
+      {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_2' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      },
       { type: 'state', stream: 'customers', data: { cursor: 'c' } },
     ]
-    const result = await drain(takeStateCheckpoints<Message>(2)(toAsync(msgs)))
-    expect(result).toHaveLength(4)
+    const result = await drain(takeLimits<Message>({ stateLimit: 2 })(toAsync(msgs)))
+    expect(result).toHaveLength(5)
     expect(result[3]).toMatchObject({ type: 'state', stream: 'products' })
+    expect(result[4]).toMatchObject({ type: 'eof', reason: 'state_limit' })
   })
 
-  it('yields the state message itself before stopping', async () => {
-    const msgs: Message[] = [{ type: 'state', stream: 'customers', data: { cursor: '1' } }]
-    const result = await drain(takeStateCheckpoints<Message>(1)(toAsync(msgs)))
+  it('stops on time limit at any message boundary', async () => {
+    async function* slowMessages(): AsyncIterable<Message> {
+      yield {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_1' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      }
+      await new Promise((r) => setTimeout(r, 60))
+      yield {
+        type: 'record',
+        stream: 'customers',
+        data: { id: 'cus_2' },
+        emitted_at: '2024-01-01T00:00:00.000Z',
+      }
+      yield { type: 'state', stream: 'customers', data: { cursor: '2' } }
+    }
+
+    const result = await drain(takeLimits<Message>({ timeLimitMs: 30 })(slowMessages()))
+    // Should get first record + eof (time expired before second record)
+    expect(result.at(-1)).toMatchObject({ type: 'eof', reason: 'time_limit' })
+    // Should have stopped before all 3 messages were yielded
+    expect(result.length).toBeLessThanOrEqual(3)
+  })
+
+  it('time limit and state limit: whichever fires first wins', async () => {
+    const msgs: Message[] = [
+      { type: 'state', stream: 'customers', data: { cursor: '1' } },
+      { type: 'state', stream: 'customers', data: { cursor: '2' } },
+      { type: 'state', stream: 'customers', data: { cursor: '3' } },
+    ]
+    // State limit of 1 fires before any time limit
+    const result = await drain(
+      takeLimits<Message>({ stateLimit: 1, timeLimitMs: 60_000 })(toAsync(msgs))
+    )
+    expect(result.at(-1)).toMatchObject({ type: 'eof', reason: 'state_limit' })
+  })
+
+  it('emits eof for empty stream', async () => {
+    const result = await drain(takeLimits<Message>()(toAsync([])))
     expect(result).toHaveLength(1)
-    expect(result[0]).toMatchObject({ type: 'state' })
+    expect(result[0]).toMatchObject({ type: 'eof', reason: 'complete' })
   })
 })
 
