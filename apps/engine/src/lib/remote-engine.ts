@@ -1,6 +1,6 @@
 import createClient from 'openapi-fetch'
 import type { paths } from '../__generated__/openapi.js'
-import type { Engine, SetupResult, ReadOpts, SyncOpts } from './engine.js'
+import type { Engine, SetupResult, SyncOpts } from './engine.js'
 import { parseNdjsonStream, toNdjsonStream } from './ndjson.js'
 import type {
   CheckResult,
@@ -37,10 +37,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
   // Cast once: streaming endpoints need untyped POST due to generator limitations (see above)
   const streamPost = client.POST as unknown as StreamPost
 
-  function stateHeaders(opts?: {
-    state?: Record<string, unknown>
-    stateLimit?: number
-  }): Record<string, string> {
+  function stateHeaders(opts?: SyncOpts): Record<string, string> {
     const h: Record<string, string> = {}
     if (opts?.state && Object.keys(opts.state).length > 0) {
       h['x-state'] = JSON.stringify(opts.state)
@@ -48,7 +45,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
     return h
   }
 
-  function queryParams(opts?: { stateLimit?: number; timeLimit?: number }): Record<string, string> {
+  function queryParams(opts?: SyncOpts): Record<string, string> {
     const q: Record<string, string> = {}
     if (opts?.stateLimit != null) q.state_limit = String(opts.stateLimit)
     if (opts?.timeLimit != null) q.time_limit = String(opts.timeLimit)
@@ -58,7 +55,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
   async function post(
     path: '/read' | '/write' | '/sync' | '/setup' | '/teardown',
     pipeline: PipelineConfig,
-    opts?: { state?: Record<string, unknown>; stateLimit?: number },
+    opts?: SyncOpts,
     body?: ReadableStream<Uint8Array>
   ): Promise<Response> {
     const ph = JSON.stringify(pipeline)
@@ -115,7 +112,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
 
     async *read(
       pipeline: PipelineConfig,
-      opts?: ReadOpts,
+      opts?: SyncOpts,
       input?: AsyncIterable<unknown>
     ): AsyncIterable<Message> {
       const body = input ? toNdjsonStream(input) : undefined

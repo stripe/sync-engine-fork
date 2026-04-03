@@ -16,20 +16,18 @@ import { logger } from '../logger.js'
 
 // MARK: - Engine interface
 
-export interface SetupResult {
-  source?: Record<string, unknown>
-  destination?: Record<string, unknown>
-}
+export const SetupResult = z.object({
+  source: z.record(z.string(), z.unknown()).optional(),
+  destination: z.record(z.string(), z.unknown()).optional(),
+})
+export type SetupResult = z.infer<typeof SetupResult>
 
-export interface ReadOpts {
-  state?: Record<string, unknown>
-  stateLimit?: number
-}
-
-export interface SyncOpts {
-  state?: Record<string, unknown>
-  stateLimit?: number
-}
+export const SyncOpts = z.object({
+  state: z.record(z.string(), z.unknown()).optional(),
+  stateLimit: z.number().int().positive().optional(),
+  timeLimit: z.number().positive().optional(),
+})
+export type SyncOpts = z.infer<typeof SyncOpts>
 
 export interface Engine {
   setup(pipeline: PipelineConfig): Promise<SetupResult>
@@ -38,7 +36,7 @@ export interface Engine {
   discover(source: PipelineConfig['source']): Promise<CatalogMessage>
   read(
     pipeline: PipelineConfig,
-    opts?: ReadOpts,
+    opts?: SyncOpts,
     input?: AsyncIterable<unknown>
   ): AsyncIterable<Message>
   write(
@@ -237,7 +235,7 @@ export function createEngine(resolver: ConnectorResolver): Engine {
 
     async *read(
       pipeline: PipelineConfig,
-      opts?: ReadOpts,
+      opts?: SyncOpts,
       input?: AsyncIterable<unknown>
     ): AsyncIterable<Message> {
       const baseContext = engineLogContext(pipeline)
@@ -267,8 +265,11 @@ export function createEngine(resolver: ConnectorResolver): Engine {
         }
       })()
       let output: AsyncIterable<Message> = parsed
-      if (opts?.stateLimit) {
-        output = takeLimits<Message>({ stateLimit: opts.stateLimit })(output)
+      if (opts?.stateLimit || opts?.timeLimit) {
+        output = takeLimits<Message>({
+          stateLimit: opts.stateLimit,
+          timeLimitMs: opts.timeLimit ? opts.timeLimit * 1000 : undefined,
+        })(output)
       }
       yield* output
     },
@@ -318,8 +319,11 @@ export function createEngine(resolver: ConnectorResolver): Engine {
         pipeline,
         this.read(pipeline, { state: opts?.state }, input)
       )
-      if (opts?.stateLimit) {
-        output = takeLimits<DestinationOutput>({ stateLimit: opts.stateLimit })(output)
+      if (opts?.stateLimit || opts?.timeLimit) {
+        output = takeLimits<DestinationOutput>({
+          stateLimit: opts.stateLimit,
+          timeLimitMs: opts.timeLimit ? opts.timeLimit * 1000 : undefined,
+        })(output)
       }
       yield* output
     },

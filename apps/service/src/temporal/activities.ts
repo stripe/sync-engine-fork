@@ -1,6 +1,6 @@
 import { heartbeat } from '@temporalio/activity'
 import { createRemoteEngine } from '@stripe/sync-engine'
-import type { PipelineConfig, Message, SetupResult } from '@stripe/sync-engine'
+import type { PipelineConfig, Message, SetupResult, SyncOpts } from '@stripe/sync-engine'
 import { Kafka } from 'kafkajs'
 
 export interface RunResult {
@@ -88,15 +88,12 @@ export function createActivities(opts: { engineUrl: string; kafkaBroker?: string
 
     async syncImmediate(
       config: PipelineConfig,
-      activityOpts?: { input?: unknown[]; state?: Record<string, unknown>; stateLimit?: number }
+      activityOpts?: SyncOpts & { input?: unknown[] }
     ): Promise<RunResult & { eof?: { reason: string } }> {
-      const input = activityOpts?.input?.length ? asIterable(activityOpts.input) : undefined
+      const { input: inputArr, ...syncOpts } = activityOpts ?? {}
+      const input = inputArr?.length ? asIterable(inputArr) : undefined
       const { errors, state, eof } = await drainMessages(
-        engine.sync(
-          config,
-          { state: activityOpts?.state, stateLimit: activityOpts?.stateLimit },
-          input
-        ) as AsyncIterable<Record<string, unknown>>
+        engine.sync(config, syncOpts, input) as AsyncIterable<Record<string, unknown>>
       )
       return { errors, state, eof }
     },
@@ -104,15 +101,12 @@ export function createActivities(opts: { engineUrl: string; kafkaBroker?: string
     async readIntoQueue(
       config: PipelineConfig,
       pipelineId: string,
-      activityOpts?: { input?: unknown[]; state?: Record<string, unknown>; stateLimit?: number }
+      activityOpts?: SyncOpts & { input?: unknown[] }
     ): Promise<{ count: number; state: Record<string, unknown>; eof?: { reason: string } }> {
-      const input = activityOpts?.input?.length ? asIterable(activityOpts.input) : undefined
+      const { input: inputArr, ...syncOpts } = activityOpts ?? {}
+      const input = inputArr?.length ? asIterable(inputArr) : undefined
       const { records, state, eof } = await drainMessages(
-        engine.read(
-          config,
-          { state: activityOpts?.state, stateLimit: activityOpts?.stateLimit },
-          input
-        ) as AsyncIterable<Record<string, unknown>>
+        engine.read(config, syncOpts, input) as AsyncIterable<Record<string, unknown>>
       )
 
       // If Kafka is configured, produce records to the pipeline topic
