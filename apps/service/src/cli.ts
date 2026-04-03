@@ -99,14 +99,12 @@ const workerCmd = defineCommand({
     const engineUrl = args['engine-url'] || 'http://localhost:4010'
     const temporalAddress = args['temporal-address']
 
-    // tsx strips rootDir:"src" from import.meta.url, so paths differ by context:
-    //   tsx:      file:///.../apps/service/bin/sync-service.ts  → ../src/temporal/workflows.ts
-    //   compiled: file:///.../apps/service/dist/bin/sync-service.js → ../temporal/workflows.js
+    // import.meta.url is the URL of cli.ts/cli.js, NOT the bin entry point:
+    //   tsx:      file:///.../apps/service/src/cli.ts  → ./temporal/workflows.ts
+    //   compiled: file:///.../apps/service/dist/cli.js → ./temporal/workflows.js
     const { fileURLToPath } = await import('node:url')
-    const isTsx = import.meta.url.endsWith('.ts')
-    const workflowsPath = fileURLToPath(
-      new URL(isTsx ? '../src/temporal/workflows.ts' : '../temporal/workflows.js', import.meta.url)
-    )
+    const ext = import.meta.url.endsWith('.ts') ? '.ts' : '.js'
+    const workflowsPath = fileURLToPath(new URL(`./temporal/workflows${ext}`, import.meta.url))
 
     const worker = await createWorker({
       temporalAddress,
