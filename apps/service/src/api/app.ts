@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute } from '@stripe/sync-hono-zod-openapi'
 import { z } from 'zod'
 import { apiReference } from '@scalar/hono-api-reference'
+import Stripe from 'stripe'
 import type { WorkflowClient } from '@temporalio/client'
 import type { ConnectorResolver } from '@stripe/sync-engine'
 import { endpointTable, addDiscriminators } from '@stripe/sync-engine/api/openapi-utils'
@@ -37,6 +38,9 @@ export interface AppOptions {
   temporal: { client: WorkflowClient; taskQueue: string }
   resolver: ConnectorResolver
 }
+
+// Shared Stripe instance used only for webhook signature verification (no API calls made).
+const stripe = new Stripe('placeholder')
 
 export function createApp(options: AppOptions) {
   const { client: temporal, taskQueue } = options.temporal
@@ -415,16 +419,51 @@ export function createApp(options: AppOptions) {
           content: { 'text/plain': { schema: z.literal('ok') } },
           description: 'Event accepted',
         },
+        400: {
+          content: { 'application/json': { schema: ErrorSchema } },
+          description: 'Missing or invalid signature, or pipeline not configured for webhooks',
+        },
+        404: {
+          content: { 'application/json': { schema: ErrorSchema } },
+          description: 'Pipeline not found',
+        },
       },
     }),
     async (c) => {
       const { pipeline_id } = c.req.valid('param')
       const body = await c.req.text()
+
+      // Look up the pipeline config to get the webhook_secret
+      let webhookSecret: string | undefined
+      try {
+        const handle = temporal.getHandle(pipeline_id)
+        const pipeline = await handle.query<Pipeline>('config')
+        webhookSecret = (pipeline.source as Record<string, unknown>).webhook_secret as
+          | string
+          | undefined
+      } catch {
+        return c.json({ error: `Pipeline ${pipeline_id} not found` }, 404)
+      }
+      if (!webhookSecret) {
+        return c.json({ error: 'Pipeline has no webhook_secret configured' }, 400)
+      }
+
+      // Verify Stripe signature
+      const sig = c.req.header('stripe-signature') ?? ''
+      try {
+        stripe.webhooks.constructEvent(body, sig, webhookSecret)
+      } catch (err) {
+        return c.json(
+          {
+            error: `Webhook signature verification failed: ${err instanceof Error ? err.message : String(err)}`,
+          },
+          400
+        )
+      }
+
+      // Enqueue the verified event
       const headers = Object.fromEntries(c.req.raw.headers.entries())
-      temporal
-        .getHandle(pipeline_id)
-        .signal('stripe_event', { body, headers })
-        .catch(() => {})
+      await temporal.getHandle(pipeline_id).signal('stripe_event', { body, headers })
       return c.text('ok', 200)
     }
   )
