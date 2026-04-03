@@ -243,27 +243,16 @@
             }
           },
           {
-            "in": "query",
-            "name": "state_limit",
+            "in": "header",
+            "name": "x-state-checkpoint-limit",
             "schema": {
-              "description": "Stop streaming after N state messages.",
-              "example": "100",
+              "description": "When set, stops streaming after N state checkpoint messages. Enables page-at-a-time sync.",
+              "example": "1",
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991
             },
-            "description": "Stop streaming after N state messages."
-          },
-          {
-            "in": "query",
-            "name": "time_limit",
-            "schema": {
-              "description": "Stop streaming after N seconds.",
-              "example": "10",
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "description": "Stop streaming after N seconds."
+            "description": "When set, stops streaming after N state checkpoint messages. Enables page-at-a-time sync."
           }
         ],
         "responses": {
@@ -366,27 +355,16 @@
             }
           },
           {
-            "in": "query",
-            "name": "state_limit",
+            "in": "header",
+            "name": "x-state-checkpoint-limit",
             "schema": {
-              "description": "Stop streaming after N state messages.",
-              "example": "100",
+              "description": "When set, stops streaming after N state checkpoint messages. Enables page-at-a-time sync.",
+              "example": "1",
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991
             },
-            "description": "Stop streaming after N state messages."
-          },
-          {
-            "in": "query",
-            "name": "time_limit",
-            "schema": {
-              "description": "Stop streaming after N seconds.",
-              "example": "10",
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "description": "Stop streaming after N seconds."
+            "description": "When set, stops streaming after N state checkpoint messages. Enables page-at-a-time sync."
           }
         ],
         "responses": {
@@ -479,8 +457,7 @@
           { "$ref": "#/components/schemas/CatalogMessage" },
           { "$ref": "#/components/schemas/LogMessage" },
           { "$ref": "#/components/schemas/ErrorMessage" },
-          { "$ref": "#/components/schemas/StreamStatusMessage" },
-          { "$ref": "#/components/schemas/EofMessage" }
+          { "$ref": "#/components/schemas/StreamStatusMessage" }
         ],
         "type": "object",
         "discriminator": {
@@ -491,8 +468,7 @@
             "catalog": "#/components/schemas/CatalogMessage",
             "log": "#/components/schemas/LogMessage",
             "error": "#/components/schemas/ErrorMessage",
-            "stream_status": "#/components/schemas/StreamStatusMessage",
-            "eof": "#/components/schemas/EofMessage"
+            "stream_status": "#/components/schemas/StreamStatusMessage"
           }
         }
       },
@@ -500,28 +476,37 @@
         "type": "object",
         "properties": {
           "type": { "type": "string", "const": "record" },
-          "stream": { "type": "string" },
+          "stream": {
+            "type": "string",
+            "description": "Stream (table) name this record belongs to."
+          },
           "data": {
             "type": "object",
             "propertyNames": { "type": "string" },
-            "additionalProperties": {}
+            "additionalProperties": {},
+            "description": "The record payload as a key-value map."
           },
           "emitted_at": {
             "type": "string",
             "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+            "description": "ISO 8601 timestamp when the record was emitted by the source."
           }
         },
-        "required": ["type", "stream", "data", "emitted_at"]
+        "required": ["type", "stream", "data", "emitted_at"],
+        "description": "One record for one stream."
       },
       "StateMessage": {
         "type": "object",
         "properties": {
           "type": { "type": "string", "const": "state" },
-          "stream": { "type": "string" },
-          "data": {}
+          "stream": { "type": "string", "description": "Stream being checkpointed." },
+          "data": {
+            "description": "Opaque checkpoint data — only the source understands its contents. The orchestrator persists it keyed by stream and passes it back on resume."
+          }
         },
-        "required": ["type", "stream", "data"]
+        "required": ["type", "stream", "data"],
+        "description": "Per-stream checkpoint for resumable syncs. Emitted by the source after each page/batch so the orchestrator can persist progress."
       },
       "CatalogMessage": {
         "type": "object",
@@ -532,36 +517,50 @@
             "items": {
               "type": "object",
               "properties": {
-                "name": { "type": "string" },
+                "name": {
+                  "type": "string",
+                  "description": "Collection name (e.g. \"customers\", \"invoices\", \"pg_public.users\")."
+                },
                 "primary_key": {
                   "type": "array",
-                  "items": { "type": "array", "items": { "type": "string" } }
+                  "items": { "type": "array", "items": { "type": "string" } },
+                  "description": "Paths to fields that uniquely identify a record within this stream. Supports composite keys and nested paths. e.g. [[\"id\"]] or [[\"account_id\"], [\"created\"]]"
                 },
                 "json_schema": {
+                  "description": "JSON Schema describing the record shape. Discovered at runtime or provided by config.",
                   "type": "object",
                   "propertyNames": { "type": "string" },
                   "additionalProperties": {}
                 },
                 "metadata": {
+                  "description": "Source-specific metadata that applies to every record in this stream. The destination can use these for schema naming, partitioning, etc. Examples: Stripe: { api_version, account_id, live_mode }.",
                   "type": "object",
                   "propertyNames": { "type": "string" },
                   "additionalProperties": {}
                 }
               },
-              "required": ["name", "primary_key"]
-            }
+              "required": ["name", "primary_key"],
+              "description": "A named collection of records — analogous to a table or API resource."
+            },
+            "description": "All streams available from this source."
           }
         },
-        "required": ["type", "streams"]
+        "required": ["type", "streams"],
+        "description": "Catalog of available streams. Emitted by a source during discover()."
       },
       "LogMessage": {
         "type": "object",
         "properties": {
           "type": { "type": "string", "const": "log" },
-          "level": { "type": "string", "enum": ["debug", "info", "warn", "error"] },
-          "message": { "type": "string" }
+          "level": {
+            "type": "string",
+            "enum": ["debug", "info", "warn", "error"],
+            "description": "Log severity level."
+          },
+          "message": { "type": "string", "description": "Human-readable log message." }
         },
-        "required": ["type", "level", "message"]
+        "required": ["type", "level", "message"],
+        "description": "Structured log output from a source or destination."
       },
       "ErrorMessage": {
         "type": "object",
@@ -569,37 +568,38 @@
           "type": { "type": "string", "const": "error" },
           "failure_type": {
             "type": "string",
-            "enum": ["config_error", "system_error", "transient_error", "auth_error"]
+            "enum": ["config_error", "system_error", "transient_error", "auth_error"],
+            "description": "Error category — lets the orchestrator decide whether to retry, alert, or abort."
           },
-          "message": { "type": "string" },
-          "stream": { "type": "string" },
-          "stack_trace": { "type": "string" }
+          "message": { "type": "string", "description": "Human-readable error description." },
+          "stream": {
+            "description": "Stream that triggered the error, if applicable.",
+            "type": "string"
+          },
+          "stack_trace": { "description": "Full stack trace for debugging.", "type": "string" }
         },
-        "required": ["type", "failure_type", "message"]
+        "required": ["type", "failure_type", "message"],
+        "description": "Structured error from a source or destination."
       },
       "StreamStatusMessage": {
         "type": "object",
         "properties": {
           "type": { "type": "string", "const": "stream_status" },
-          "stream": { "type": "string" },
-          "status": { "type": "string", "enum": ["started", "running", "complete", "incomplete"] }
+          "stream": { "type": "string", "description": "Stream being reported on." },
+          "status": {
+            "type": "string",
+            "enum": ["started", "running", "complete", "incomplete"],
+            "description": "Current phase of the stream within this sync run."
+          }
         },
-        "required": ["type", "stream", "status"]
-      },
-      "EofMessage": {
-        "type": "object",
-        "properties": {
-          "type": { "type": "string", "const": "eof" },
-          "reason": { "type": "string", "enum": ["complete", "state_limit", "time_limit", "error"] }
-        },
-        "required": ["type", "reason"]
+        "required": ["type", "stream", "status"],
+        "description": "Per-stream status update from a source. Enables progress reporting in CLI / dashboard."
       },
       "DestinationOutput": {
         "oneOf": [
           { "$ref": "#/components/schemas/StateMessageOutput" },
           { "$ref": "#/components/schemas/ErrorMessageOutput" },
-          { "$ref": "#/components/schemas/LogMessageOutput" },
-          { "$ref": "#/components/schemas/EofMessageOutput" }
+          { "$ref": "#/components/schemas/LogMessageOutput" }
         ],
         "type": "object",
         "discriminator": {
@@ -607,8 +607,7 @@
           "mapping": {
             "state": "#/components/schemas/StateMessageOutput",
             "error": "#/components/schemas/ErrorMessageOutput",
-            "log": "#/components/schemas/LogMessageOutput",
-            "eof": "#/components/schemas/EofMessageOutput"
+            "log": "#/components/schemas/LogMessageOutput"
           }
         }
       },
@@ -621,29 +620,38 @@
             "items": {
               "type": "object",
               "properties": {
-                "name": { "type": "string" },
+                "name": {
+                  "type": "string",
+                  "description": "Collection name (e.g. \"customers\", \"invoices\", \"pg_public.users\")."
+                },
                 "primary_key": {
                   "type": "array",
-                  "items": { "type": "array", "items": { "type": "string" } }
+                  "items": { "type": "array", "items": { "type": "string" } },
+                  "description": "Paths to fields that uniquely identify a record within this stream. Supports composite keys and nested paths. e.g. [[\"id\"]] or [[\"account_id\"], [\"created\"]]"
                 },
                 "json_schema": {
+                  "description": "JSON Schema describing the record shape. Discovered at runtime or provided by config.",
                   "type": "object",
                   "propertyNames": { "type": "string" },
                   "additionalProperties": {}
                 },
                 "metadata": {
+                  "description": "Source-specific metadata that applies to every record in this stream. The destination can use these for schema naming, partitioning, etc. Examples: Stripe: { api_version, account_id, live_mode }.",
                   "type": "object",
                   "propertyNames": { "type": "string" },
                   "additionalProperties": {}
                 }
               },
               "required": ["name", "primary_key"],
-              "additionalProperties": false
-            }
+              "additionalProperties": false,
+              "description": "A named collection of records — analogous to a table or API resource."
+            },
+            "description": "All streams available from this source."
           }
         },
         "required": ["type", "streams"],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Catalog of available streams. Emitted by a source during discover()."
       },
       "MessageOutput": {
         "oneOf": [
@@ -652,8 +660,7 @@
           { "$ref": "#/components/schemas/CatalogMessageOutput" },
           { "$ref": "#/components/schemas/LogMessageOutput" },
           { "$ref": "#/components/schemas/ErrorMessageOutput" },
-          { "$ref": "#/components/schemas/StreamStatusMessageOutput" },
-          { "$ref": "#/components/schemas/EofMessageOutput" }
+          { "$ref": "#/components/schemas/StreamStatusMessageOutput" }
         ],
         "type": "object",
         "discriminator": {
@@ -664,8 +671,7 @@
             "catalog": "#/components/schemas/CatalogMessageOutput",
             "log": "#/components/schemas/LogMessageOutput",
             "error": "#/components/schemas/ErrorMessageOutput",
-            "stream_status": "#/components/schemas/StreamStatusMessageOutput",
-            "eof": "#/components/schemas/EofMessageOutput"
+            "stream_status": "#/components/schemas/StreamStatusMessageOutput"
           }
         }
       },
@@ -673,40 +679,54 @@
         "type": "object",
         "properties": {
           "type": { "type": "string", "const": "record" },
-          "stream": { "type": "string" },
+          "stream": {
+            "type": "string",
+            "description": "Stream (table) name this record belongs to."
+          },
           "data": {
             "type": "object",
             "propertyNames": { "type": "string" },
-            "additionalProperties": {}
+            "additionalProperties": {},
+            "description": "The record payload as a key-value map."
           },
           "emitted_at": {
             "type": "string",
             "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+            "description": "ISO 8601 timestamp when the record was emitted by the source."
           }
         },
         "required": ["type", "stream", "data", "emitted_at"],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "One record for one stream."
       },
       "StateMessageOutput": {
         "type": "object",
         "properties": {
           "type": { "type": "string", "const": "state" },
-          "stream": { "type": "string" },
-          "data": {}
+          "stream": { "type": "string", "description": "Stream being checkpointed." },
+          "data": {
+            "description": "Opaque checkpoint data — only the source understands its contents. The orchestrator persists it keyed by stream and passes it back on resume."
+          }
         },
         "required": ["type", "stream", "data"],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Per-stream checkpoint for resumable syncs. Emitted by the source after each page/batch so the orchestrator can persist progress."
       },
       "LogMessageOutput": {
         "type": "object",
         "properties": {
           "type": { "type": "string", "const": "log" },
-          "level": { "type": "string", "enum": ["debug", "info", "warn", "error"] },
-          "message": { "type": "string" }
+          "level": {
+            "type": "string",
+            "enum": ["debug", "info", "warn", "error"],
+            "description": "Log severity level."
+          },
+          "message": { "type": "string", "description": "Human-readable log message." }
         },
         "required": ["type", "level", "message"],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Structured log output from a source or destination."
       },
       "ErrorMessageOutput": {
         "type": "object",
@@ -714,33 +734,34 @@
           "type": { "type": "string", "const": "error" },
           "failure_type": {
             "type": "string",
-            "enum": ["config_error", "system_error", "transient_error", "auth_error"]
+            "enum": ["config_error", "system_error", "transient_error", "auth_error"],
+            "description": "Error category — lets the orchestrator decide whether to retry, alert, or abort."
           },
-          "message": { "type": "string" },
-          "stream": { "type": "string" },
-          "stack_trace": { "type": "string" }
+          "message": { "type": "string", "description": "Human-readable error description." },
+          "stream": {
+            "description": "Stream that triggered the error, if applicable.",
+            "type": "string"
+          },
+          "stack_trace": { "description": "Full stack trace for debugging.", "type": "string" }
         },
         "required": ["type", "failure_type", "message"],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Structured error from a source or destination."
       },
       "StreamStatusMessageOutput": {
         "type": "object",
         "properties": {
           "type": { "type": "string", "const": "stream_status" },
-          "stream": { "type": "string" },
-          "status": { "type": "string", "enum": ["started", "running", "complete", "incomplete"] }
+          "stream": { "type": "string", "description": "Stream being reported on." },
+          "status": {
+            "type": "string",
+            "enum": ["started", "running", "complete", "incomplete"],
+            "description": "Current phase of the stream within this sync run."
+          }
         },
         "required": ["type", "stream", "status"],
-        "additionalProperties": false
-      },
-      "EofMessageOutput": {
-        "type": "object",
-        "properties": {
-          "type": { "type": "string", "const": "eof" },
-          "reason": { "type": "string", "enum": ["complete", "state_limit", "time_limit", "error"] }
-        },
-        "required": ["type", "reason"],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Per-stream status update from a source. Enables progress reporting in CLI / dashboard."
       },
       "StripeSourceConfig": {
         "type": "object",
