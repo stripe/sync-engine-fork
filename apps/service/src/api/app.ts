@@ -19,14 +19,6 @@ function workflowTypeForPipeline(pipeline: Pipeline): string {
     : DEFAULT_PIPELINE_WORKFLOW
 }
 
-function googleSheetsSpreadsheetKey(destination: Pipeline['destination']): string | undefined {
-  if (destination.type !== 'google-sheets') return undefined
-  if (typeof destination.spreadsheet_id === 'string') return `id:${destination.spreadsheet_id}`
-  if (typeof destination.spreadsheet_title === 'string')
-    return `title:${destination.spreadsheet_title}`
-  return undefined
-}
-
 // MARK: - Helpers
 
 let _idCounter = Date.now()
@@ -301,8 +293,7 @@ export function createApp(options: AppOptions) {
         }
         if (
           current.destination.type === 'google-sheets' &&
-          googleSheetsSpreadsheetKey(current.destination) !==
-            googleSheetsSpreadsheetKey(next.destination)
+          current.destination.spreadsheet_id !== next.destination.spreadsheet_id
         ) {
           return c.json(
             {

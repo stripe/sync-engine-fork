@@ -265,6 +265,52 @@ describe('pipeline CRUD', () => {
     await a.request(`/pipelines/${created.id}`, { method: 'DELETE' })
   })
 
+  it('allows changing spreadsheet title when spreadsheet_id is unchanged', async () => {
+    const a = liveApp()
+
+    const createRes = await a.request('/pipelines', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        source: { type: 'test' },
+        destination: {
+          type: 'google-sheets',
+          spreadsheet_id: 'sheet_123',
+          spreadsheet_title: 'Original Sheet',
+          client_id: 'client',
+          client_secret: 'secret',
+          access_token: 'token',
+          refresh_token: 'refresh',
+        },
+      }),
+    })
+    const created = await createRes.json()
+    await waitForPipeline(a, created.id)
+
+    const updateRes = await a.request(`/pipelines/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        destination: {
+          type: 'google-sheets',
+          spreadsheet_id: 'sheet_123',
+          spreadsheet_title: 'Renamed Sheet',
+          client_id: 'client',
+          client_secret: 'secret',
+          access_token: 'token',
+          refresh_token: 'refresh',
+        },
+      }),
+    })
+
+    expect(updateRes.status).toBe(200)
+    const updated = await updateRes.json()
+    expect(updated.destination.spreadsheet_id).toBe('sheet_123')
+    expect(updated.destination.spreadsheet_title).toBe('Renamed Sheet')
+
+    await a.request(`/pipelines/${created.id}`, { method: 'DELETE' })
+  })
+
   it('pause and resume return pipeline with updated status', async () => {
     const a = liveApp()
 
