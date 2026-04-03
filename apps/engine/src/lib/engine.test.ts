@@ -344,9 +344,9 @@ describe('engine config validation', () => {
   it('creates engine with valid configs', () => {
     const engine = createEngine(makeResolver(sourceTest, destinationTest))
     expect(engine).toBeDefined()
-    expect(typeof engine.read).toBe('function')
-    expect(typeof engine.write).toBe('function')
-    expect(typeof engine.sync).toBe('function')
+    expect(typeof engine.pipelineRead).toBe('function')
+    expect(typeof engine.pipelineWrite).toBe('function')
+    expect(typeof engine.pipelineSync).toBe('function')
   })
 
   it('throws on invalid source config', async () => {
@@ -360,7 +360,7 @@ describe('engine config validation', () => {
     }
     const pipeline = { source: { type: 'test' }, destination: { type: 'test' } }
     const engine = createEngine(makeResolver(source, destinationTest))
-    await expect(drain(engine.read(pipeline))).rejects.toThrow()
+    await expect(drain(engine.pipelineRead(pipeline))).rejects.toThrow()
   })
 
   it('throws on invalid destination config', async () => {
@@ -381,7 +381,7 @@ describe('engine config validation', () => {
       destination: { type: 'test' },
     }
     const engine = createEngine(makeResolver(sourceTest, destination))
-    await expect(drain(engine.write(pipeline, toAsync([])))).rejects.toThrow()
+    await expect(drain(engine.pipelineWrite(pipeline, toAsync([])))).rejects.toThrow()
   })
 
   it('applies defaults from connector spec', async () => {
@@ -400,7 +400,7 @@ describe('engine config validation', () => {
 
     const pipeline = { source: { type: 'test' }, destination: { type: 'test' } }
     const engine = createEngine(makeResolver(source, destinationTest))
-    return drain(engine.sync(pipeline))
+    return drain(engine.pipelineSync(pipeline))
   })
 
   it('fromJSONSchema({}).parse(anything) works — backward compat with mock specs', () => {
@@ -417,7 +417,7 @@ describe('engine config validation', () => {
 // ---------------------------------------------------------------------------
 
 describe('engine message validation', () => {
-  it('valid messages pass through engine.read()', async () => {
+  it('valid messages pass through engine.pipelineRead()', async () => {
     const engine = createEngine(makeResolver(sourceTest, destinationTest))
     const pipeline = {
       source: { type: 'test', streams: { customers: {} } },
@@ -425,7 +425,7 @@ describe('engine message validation', () => {
     }
 
     const results = await drain(
-      engine.read(
+      engine.pipelineRead(
         pipeline,
         undefined,
         toAsync([
@@ -459,7 +459,7 @@ describe('engine message validation', () => {
     }
     const engine = createEngine(makeResolver(badSource, destinationTest))
 
-    await expect(drain(engine.read(defaultPipeline))).rejects.toThrow()
+    await expect(drain(engine.pipelineRead(defaultPipeline))).rejects.toThrow()
   })
 
   it('destination output validation catches malformed messages', async () => {
@@ -484,7 +484,7 @@ describe('engine message validation', () => {
 
     await expect(
       drain(
-        engine.sync(
+        engine.pipelineSync(
           pipeline,
           undefined,
           toAsync([
@@ -515,7 +515,7 @@ describe('engine stream membership validation', () => {
     }
 
     const results = await drain(
-      engine.read(
+      engine.pipelineRead(
         pipeline,
         undefined,
         toAsync([
@@ -553,7 +553,7 @@ describe('engine stream membership validation', () => {
     }
     const engine = createEngine(makeResolver(source, destinationTest))
 
-    const results = await drain(engine.read(defaultPipeline))
+    const results = await drain(engine.pipelineRead(defaultPipeline))
     expect(results).toHaveLength(2)
     expect(results[0]!.type).toBe('log')
     expect(results[1]!.type).toBe('error')
@@ -561,10 +561,10 @@ describe('engine stream membership validation', () => {
 })
 
 // ---------------------------------------------------------------------------
-// engine.sync() pipeline tests
+// engine.pipelineSync() pipeline tests
 // ---------------------------------------------------------------------------
 
-describe('engine.sync() pipeline', () => {
+describe('engine.pipelineSync() pipeline', () => {
   it('basic pipeline: yields state messages from source → destination', async () => {
     const engine = createEngine(makeResolver(sourceTest, destinationTest))
     const pipeline = {
@@ -572,7 +572,7 @@ describe('engine.sync() pipeline', () => {
       destination: { type: 'test' },
     }
     const results = await drain(
-      engine.sync(
+      engine.pipelineSync(
         pipeline,
         undefined,
         toAsync([
@@ -616,7 +616,7 @@ describe('engine.sync() pipeline', () => {
       streams: [{ name: 'customers' }],
     }
     const results = await drain(
-      engine.sync(
+      engine.pipelineSync(
         pipeline,
         undefined,
         toAsync([
@@ -683,9 +683,9 @@ describe('engine.sync() pipeline', () => {
     }
 
     const engine = createEngine(makeResolver(mixedSource, destinationTest))
-    const results = await drain(engine.sync(defaultPipeline))
+    const results = await drain(engine.pipelineSync(defaultPipeline))
 
-    // Only the state message passes through engine.sync() (record goes to dest but
+    // Only the state message passes through engine.pipelineSync() (record goes to dest but
     // dest only yields state back; log/error/stream_status are routed to callbacks)
     expect(results).toHaveLength(1)
     expect(results[0]!.type).toBe('state')

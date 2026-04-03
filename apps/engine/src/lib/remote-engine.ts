@@ -28,8 +28,8 @@ type StreamPost = (path: string, init: Record<string, unknown>) => Promise<{ res
  *
  * Usage:
  *   const engine = createRemoteEngine('http://localhost:3001')
- *   await engine.setup(pipeline)
- *   for await (const msg of engine.sync(pipeline)) { ... }
+ *   await engine.pipelineSetup(pipeline)
+ *   for await (const msg of engine.pipelineSync(pipeline)) { ... }
  */
 export function createRemoteEngine(engineUrl: string): Engine {
   const client = createClient<paths>({ baseUrl: engineUrl })
@@ -81,7 +81,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
   }
 
   return {
-    async listConnectors(): Promise<{
+    async connectorList(): Promise<{
       sources: Record<string, ConnectorInfo>
       destinations: Record<string, ConnectorInfo>
     }> {
@@ -93,17 +93,17 @@ export function createRemoteEngine(engineUrl: string): Engine {
       }
     },
 
-    async setup(pipeline: PipelineConfig): Promise<SetupResult> {
+    async pipelineSetup(pipeline: PipelineConfig): Promise<SetupResult> {
       const res = await post('/setup', pipeline)
       const text = await res.text()
       return text ? JSON.parse(text) : {}
     },
 
-    async teardown(pipeline: PipelineConfig) {
+    async pipelineTeardown(pipeline: PipelineConfig) {
       await post('/teardown', pipeline)
     },
 
-    async check(pipeline: PipelineConfig) {
+    async pipelineCheck(pipeline: PipelineConfig) {
       const { data, error } = await client.GET('/check', {
         params: { header: { 'x-pipeline': JSON.stringify(pipeline) } },
       })
@@ -111,7 +111,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
       return data as { source: CheckResult; destination: CheckResult }
     },
 
-    async discover(source: PipelineConfig['source']): Promise<CatalogMessage> {
+    async sourceDiscover(source: PipelineConfig['source']): Promise<CatalogMessage> {
       // Only source config is needed for discover — pass a minimal pipeline header
       const ph = JSON.stringify({ source, destination: { type: '_' } })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -122,7 +122,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
       return data as CatalogMessage
     },
 
-    async *read(
+    async *pipelineRead(
       pipeline: PipelineConfig,
       opts?: SyncOpts,
       input?: AsyncIterable<unknown>
@@ -132,7 +132,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
       yield* parseNdjsonStream<Message>(res.body!)
     },
 
-    async *write(
+    async *pipelineWrite(
       pipeline: PipelineConfig,
       messages: AsyncIterable<Message>
     ): AsyncIterable<DestinationOutput> {
@@ -140,7 +140,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
       yield* parseNdjsonStream<DestinationOutput>(res.body!)
     },
 
-    async *sync(
+    async *pipelineSync(
       pipeline: PipelineConfig,
       opts?: SyncOpts,
       input?: AsyncIterable<unknown>

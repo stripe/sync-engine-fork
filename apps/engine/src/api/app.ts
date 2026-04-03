@@ -187,7 +187,7 @@ export function createApp(resolver: ConnectorResolver) {
 
   app.openapi(
     createRoute({
-      operationId: 'setup',
+      operationId: 'pipeline_setup',
       method: 'post',
       path: '/setup',
       tags: ['Stateless Sync API'],
@@ -209,7 +209,7 @@ export function createApp(resolver: ConnectorResolver) {
       const startedAt = Date.now()
       logger.info(context, 'Engine API /setup started')
       try {
-        const result = await engine.setup(params.pipeline)
+        const result = await engine.pipelineSetup(params.pipeline)
         logger.info(
           { ...context, durationMs: Date.now() - startedAt },
           'Engine API /setup completed'
@@ -227,7 +227,7 @@ export function createApp(resolver: ConnectorResolver) {
 
   app.openapi(
     createRoute({
-      operationId: 'teardown',
+      operationId: 'pipeline_teardown',
       method: 'post',
       path: '/teardown',
       tags: ['Stateless Sync API'],
@@ -241,14 +241,14 @@ export function createApp(resolver: ConnectorResolver) {
     }),
     async (c) => {
       const params = parseSyncParams(c)
-      await engine.teardown(params.pipeline)
+      await engine.pipelineTeardown(params.pipeline)
       return c.body(null, 204)
     }
   )
 
   app.openapi(
     createRoute({
-      operationId: 'check',
+      operationId: 'pipeline_check',
       method: 'get',
       path: '/check',
       tags: ['Stateless Sync API'],
@@ -278,14 +278,14 @@ export function createApp(resolver: ConnectorResolver) {
     }),
     async (c) => {
       const params = parseSyncParams(c)
-      const result = await engine.check(params.pipeline)
+      const result = await engine.pipelineCheck(params.pipeline)
       return c.json(result, 200)
     }
   )
 
   app.openapi(
     createRoute({
-      operationId: 'discover',
+      operationId: 'source_discover',
       method: 'post',
       path: '/discover',
       tags: ['Stateless Sync API'],
@@ -307,7 +307,7 @@ export function createApp(resolver: ConnectorResolver) {
     }),
     async (c) => {
       const params = parseSyncParams(c)
-      const catalog = await engine.discover(params.pipeline.source)
+      const catalog = await engine.sourceDiscover(params.pipeline.source)
       return c.json(catalog, 200)
     }
   )
@@ -317,7 +317,7 @@ export function createApp(resolver: ConnectorResolver) {
 
   app.openapi(
     createRoute({
-      operationId: 'read',
+      operationId: 'pipeline_read',
       method: 'post',
       path: '/read',
       tags: ['Stateless Sync API'],
@@ -345,14 +345,14 @@ export function createApp(resolver: ConnectorResolver) {
       const output = takeLimits<Message>({
         stateLimit: params.stateLimit,
         timeLimitMs: params.timeLimitMs,
-      })(engine.read(params.pipeline, { state: params.state }, input))
+      })(engine.pipelineRead(params.pipeline, { state: params.state }, input))
       return ndjsonResponse(logApiStream('Engine API /read', output, context, startedAt))
     }) as any
   )
 
   app.openapi(
     createRoute({
-      operationId: 'write',
+      operationId: 'pipeline_write',
       method: 'post',
       path: '/write',
       tags: ['Stateless Sync API'],
@@ -386,7 +386,7 @@ export function createApp(resolver: ConnectorResolver) {
       return ndjsonResponse(
         logApiStream(
           'Engine API /write',
-          engine.write(params.pipeline, messages),
+          engine.pipelineWrite(params.pipeline, messages),
           context,
           startedAt
         )
@@ -396,7 +396,7 @@ export function createApp(resolver: ConnectorResolver) {
 
   app.openapi(
     createRoute({
-      operationId: 'sync',
+      operationId: 'pipeline_sync',
       method: 'post',
       path: '/sync',
       tags: ['Stateless Sync API'],
@@ -420,14 +420,14 @@ export function createApp(resolver: ConnectorResolver) {
       const output = takeLimits<DestinationOutput>({
         stateLimit: params.stateLimit,
         timeLimitMs: params.timeLimitMs,
-      })(engine.sync(params.pipeline, { state: params.state }, input))
+      })(engine.pipelineSync(params.pipeline, { state: params.state }, input))
       return ndjsonResponse(output)
     }) as any
   )
 
   app.openapi(
     createRoute({
-      operationId: 'listConnectors',
+      operationId: 'connector_list',
       method: 'get',
       path: '/connectors',
       tags: ['Connectors'],
@@ -447,7 +447,7 @@ export function createApp(resolver: ConnectorResolver) {
       },
     }),
     async (c) => {
-      return c.json(await engine.listConnectors(), 200)
+      return c.json(await engine.connectorList(), 200)
     }
   )
 

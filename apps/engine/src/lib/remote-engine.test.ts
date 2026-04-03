@@ -96,21 +96,21 @@ describe('createRemoteEngine', () => {
   describe('setup()', () => {
     it('resolves without error', async () => {
       const engine = createRemoteEngine(engineUrl)
-      await expect(engine.setup(pipeline)).resolves.toEqual({})
+      await expect(engine.pipelineSetup(pipeline)).resolves.toEqual({})
     })
   })
 
   describe('teardown()', () => {
     it('resolves without error', async () => {
       const engine = createRemoteEngine(engineUrl)
-      await expect(engine.teardown(pipeline)).resolves.toBeUndefined()
+      await expect(engine.pipelineTeardown(pipeline)).resolves.toBeUndefined()
     })
   })
 
   describe('check()', () => {
     it('returns source and destination check results', async () => {
       const engine = createRemoteEngine(engineUrl)
-      const result = await engine.check(pipeline)
+      const result = await engine.pipelineCheck(pipeline)
       expect(result).toEqual({
         source: { status: 'succeeded' },
         destination: { status: 'succeeded' },
@@ -130,7 +130,7 @@ describe('createRemoteEngine', () => {
         },
         { type: 'state', stream: 'customers', data: { cursor: 'cus_1' } },
       ]
-      const messages = await collect(engine.read(pipeline, undefined, asIterable(input)))
+      const messages = await collect(engine.pipelineRead(pipeline, undefined, asIterable(input)))
       expect(messages).toHaveLength(3)
       expect(messages[0]!.type).toBe('record')
       expect(messages[1]!.type).toBe('state')
@@ -140,7 +140,7 @@ describe('createRemoteEngine', () => {
     it('returns eof:complete when called without input', async () => {
       const engine = createRemoteEngine(engineUrl)
       // sourceTest yields nothing when $stdin is absent — only eof
-      const messages = await collect(engine.read(pipeline))
+      const messages = await collect(engine.pipelineRead(pipeline))
       expect(messages).toHaveLength(1)
       expect(messages[0]).toMatchObject({ type: 'eof', reason: 'complete' })
     })
@@ -158,7 +158,7 @@ describe('createRemoteEngine', () => {
         },
         { type: 'state', stream: 'customers', data: { cursor: 'cus_1' } },
       ]
-      const output = await collect(engine.write(pipeline, asIterable(messages)))
+      const output = await collect(engine.pipelineWrite(pipeline, asIterable(messages)))
       expect(output).toHaveLength(1)
       expect(output[0]!.type).toBe('state')
       expect((output[0] as { stream: string }).stream).toBe('customers')
@@ -177,7 +177,7 @@ describe('createRemoteEngine', () => {
         },
         { type: 'state', stream: 'customers', data: { cursor: 'cus_1' } },
       ]
-      const output = await collect(engine.sync(pipeline, undefined, asIterable(input)))
+      const output = await collect(engine.pipelineSync(pipeline, undefined, asIterable(input)))
       expect(output).toHaveLength(2)
       expect(output[0]!.type).toBe('state')
       expect(output[1]).toMatchObject({ type: 'eof', reason: 'complete' })
@@ -185,7 +185,7 @@ describe('createRemoteEngine', () => {
 
     it('returns eof:complete without input (no source data)', async () => {
       const engine = createRemoteEngine(engineUrl)
-      const output = await collect(engine.sync(pipeline))
+      const output = await collect(engine.pipelineSync(pipeline))
       expect(output).toHaveLength(1)
       expect(output[0]).toMatchObject({ type: 'eof', reason: 'complete' })
     })
@@ -194,7 +194,7 @@ describe('createRemoteEngine', () => {
   describe('listConnectors()', () => {
     it('returns available sources and destinations', async () => {
       const engine = createRemoteEngine(engineUrl)
-      const result = await engine.listConnectors()
+      const result = await engine.connectorList()
       expect(result.sources).toHaveProperty('test')
       expect(result.destinations).toHaveProperty('test')
       expect(result.sources['test']).toHaveProperty('config_schema')
@@ -208,7 +208,7 @@ describe('createRemoteEngine', () => {
         destination: { type: 'nonexistent' },
       }
       const engine = createRemoteEngine(engineUrl)
-      await expect(engine.setup(badPipeline)).rejects.toThrow(/failed/)
+      await expect(engine.pipelineSetup(badPipeline)).rejects.toThrow(/failed/)
     })
   })
 })

@@ -113,7 +113,7 @@ let targetStream: string
 
 beforeAll(async () => {
   const engine = createEngine(makeResolver())
-  const discovered = await engine.discover({
+  const discovered = await engine.sourceDiscover({
     type: 'stripe',
     api_key: 'sk_test_fake',
     base_url: STRIPE_MOCK_URL,
@@ -128,7 +128,7 @@ beforeAll(async () => {
 describe('selective sync', () => {
   it('syncs only the requested stream — other tables not created', async () => {
     const engine = createEngine(makeResolver())
-    await collect(engine.sync(makePipeline({ streams: [{ name: targetStream }] })))
+    await collect(engine.pipelineSync(makePipeline({ streams: [{ name: targetStream }] })))
 
     // Only target table exists
     const { rows: tables } = await pool.query(
@@ -151,7 +151,7 @@ describe('selective backfill', () => {
     const engine = createEngine(makeResolver())
     const pipeline = makePipeline({ streams: [{ name: targetStream }] })
     const preSeededState = { [targetStream]: { pageCursor: null, status: 'complete' } }
-    await collect(engine.sync(pipeline, { state: preSeededState }))
+    await collect(engine.pipelineSync(pipeline, { state: preSeededState }))
 
     // Table WAS created by setup()
     const { rows: tables } = await pool.query(
@@ -172,7 +172,7 @@ describe('engine read → write', () => {
   it('read returns records and state messages', async () => {
     const engine = createEngine(makeResolver())
     const pipeline = makePipeline({ streams: [{ name: targetStream }] })
-    const messages = await collect<Message>(engine.read(pipeline))
+    const messages = await collect<Message>(engine.pipelineRead(pipeline))
 
     const records = messages.filter((m) => m.type === 'record')
     const states = messages.filter((m) => m.type === 'state')
@@ -191,15 +191,15 @@ describe('engine read → write', () => {
     const pipeline = makePipeline({ streams: [{ name: targetStream }] })
 
     // Setup first (creates tables)
-    await engine.setup(pipeline)
+    await engine.pipelineSetup(pipeline)
 
     // Read → collect → feed into write
-    const readMessages = await collect<Message>(engine.read(pipeline))
+    const readMessages = await collect<Message>(engine.pipelineRead(pipeline))
     async function* toAsync<T>(arr: T[]): AsyncGenerator<T> {
       for (const item of arr) yield item
     }
     const writeOutput = await collect<DestinationOutput>(
-      engine.write(pipeline, toAsync(readMessages))
+      engine.pipelineWrite(pipeline, toAsync(readMessages))
     )
     const stateMessages = writeOutput.filter((s) => s.type === 'state')
 
@@ -217,7 +217,7 @@ describe('resumable sync via state', () => {
   it('sync emits state messages for persistence', async () => {
     const engine = createEngine(makeResolver())
     const pipeline = makePipeline({ streams: [{ name: targetStream }] })
-    const results = await collect(engine.sync(pipeline))
+    const results = await collect(engine.pipelineSync(pipeline))
 
     const stateMessages = results.filter((m) => m.type === 'state')
     expect(stateMessages.length).toBeGreaterThan(0)
@@ -228,7 +228,7 @@ describe('resumable sync via state', () => {
     const engine = createEngine(makeResolver())
     const pipeline = makePipeline({ streams: [{ name: targetStream }] })
     const preSeededState = { [targetStream]: { pageCursor: null, status: 'complete' } }
-    await collect(engine.sync(pipeline, { state: preSeededState }))
+    await collect(engine.pipelineSync(pipeline, { state: preSeededState }))
 
     // Table created by setup() but no records written (backfill skipped by complete state)
     const { rows } = await pool.query(
