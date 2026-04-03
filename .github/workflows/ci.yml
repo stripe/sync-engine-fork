@@ -175,6 +175,7 @@ jobs:
             --build-arg COMMIT_URL="${COMMIT_URL}" \
             --cache-from type=registry,ref=ghcr.io/${{ github.repository }}:cache-arm64 \
             --cache-to type=registry,ref=ghcr.io/${{ github.repository }}:cache-arm64,mode=max \
+            --file apps/engine/Dockerfile \
             --tag ghcr.io/${{ github.repository }}:${{ github.sha }}-arm64 \
             --push \
             .
@@ -185,7 +186,7 @@ jobs:
             --build-arg COMMIT_URL="${COMMIT_URL}" \
             --cache-from type=registry,ref=ghcr.io/${{ github.repository }}-service:cache-arm64 \
             --cache-to type=registry,ref=ghcr.io/${{ github.repository }}-service:cache-arm64,mode=max \
-            --file Dockerfile.service \
+            --file apps/service/Dockerfile \
             --tag ghcr.io/${{ github.repository }}-service:${{ github.sha }}-arm64 \
             --push \
             .
@@ -233,6 +234,7 @@ jobs:
             --build-arg COMMIT_URL="${COMMIT_URL}" \
             --cache-from type=registry,ref=ghcr.io/${{ github.repository }}:cache-amd64 \
             --cache-to type=registry,ref=ghcr.io/${{ github.repository }}:cache-amd64,mode=max \
+            --file apps/engine/Dockerfile \
             --tag ghcr.io/${{ github.repository }}:${{ github.sha }}-amd64 \
             --push \
             .
@@ -243,7 +245,7 @@ jobs:
             --build-arg COMMIT_URL="${COMMIT_URL}" \
             --cache-from type=registry,ref=ghcr.io/${{ github.repository }}-service:cache-amd64 \
             --cache-to type=registry,ref=ghcr.io/${{ github.repository }}-service:cache-amd64,mode=max \
-            --file Dockerfile.service \
+            --file apps/service/Dockerfile \
             --tag ghcr.io/${{ github.repository }}-service:${{ github.sha }}-amd64 \
             --push \
             .
