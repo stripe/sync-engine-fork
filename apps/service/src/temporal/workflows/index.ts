@@ -1,2 +1,2 @@
-export { pipelineWorkflow } from './pipeline.js'
-export { pipelineGoogleSheetsWorkflow } from './pipeline-google-sheets.js'
+export { pipelineWorkflow } from './pipeline-workflow.js'
+export { googleSheetPipelineWorkflow } from './google-sheet-pipeline-workflow.js'

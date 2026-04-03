@@ -22,7 +22,7 @@ function stubActivities(overrides: Partial<SyncActivities> = {}): SyncActivities
     discoverCatalog: async () => ({ streams: [] }),
     setup: async () => ({}),
     syncImmediate: async () => noErrors,
-    readIntoQueueWithState: async () => ({ count: 0, state: {} }),
+    readGoogleSheetsIntoQueue: async () => ({ count: 0, state: {} }),
     readIntoQueue: async () => ({ count: 0, state: {} }),
     writeGoogleSheetsFromQueue: async () => ({
       errors: [],
@@ -320,7 +320,7 @@ describe('pipelineGoogleSheetsWorkflow (unit — stubbed activities)', () => {
     })
 
     await worker.runUntil(async () => {
-      const handle = await testEnv.client.workflow.start('pipelineGoogleSheetsWorkflow', {
+      const handle = await testEnv.client.workflow.start('googleSheetPipelineWorkflow', {
         args: [
           {
             ...testPipeline,
@@ -391,7 +391,7 @@ describe('pipelineGoogleSheetsWorkflow (unit — stubbed activities)', () => {
     })
 
     await worker.runUntil(async () => {
-      const handle = await testEnv.client.workflow.start('pipelineGoogleSheetsWorkflow', {
+      const handle = await testEnv.client.workflow.start('googleSheetPipelineWorkflow', {
         args: [
           {
             ...testPipeline,
