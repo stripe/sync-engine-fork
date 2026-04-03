@@ -71,13 +71,12 @@ function parseConnectorFlags(): {
 export async function createProgram() {
   const flags = parseConnectorFlags()
   const resolver = createConnectorResolver(defaultConnectors, {
-      path: flags.connectorsFromPath,
-      npm: flags.connectorsFromNpm,
-      commandMap: parseJsonOrFile(flags.connectorsFromCommandMap) as
-        | Record<string, string>
-        | undefined,
-    }
-  )
+    path: flags.connectorsFromPath,
+    npm: flags.connectorsFromNpm,
+    commandMap: parseJsonOrFile(flags.connectorsFromCommandMap) as
+      | Record<string, string>
+      | undefined,
+  })
   const app = createApp(resolver)
   const res = await app.request('/openapi.json')
   const spec = await res.json()

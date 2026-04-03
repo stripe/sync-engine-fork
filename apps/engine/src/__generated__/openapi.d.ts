@@ -421,46 +421,6 @@ export interface components {
       /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
       ssl_ca_pem?: string
     }
-    DestinationPostgresDestinationConfig: {
-      /**
-       * @description discriminator enum property added by openapi-typescript
-       * @enum {string}
-       */
-      type: 'DestinationPostgresDestinationConfig'
-      /** @description Postgres connection string (alias for connection_string) */
-      url?: string
-      /** @description Postgres connection string */
-      connection_string?: string
-      /** @description Postgres host (required for AWS IAM) */
-      host?: string
-      /**
-       * @description Postgres port
-       * @default 5432
-       */
-      port: number
-      /** @description Database name (required for AWS IAM) */
-      database?: string
-      /** @description Database user (required for AWS IAM) */
-      user?: string
-      /** @description Target schema name (e.g. "stripe_sync") */
-      schema: string
-      /**
-       * @description Records to buffer before flushing
-       * @default 100
-       */
-      batch_size: number
-      /** @description AWS RDS IAM authentication config */
-      aws?: {
-        /** @description AWS region for RDS instance */
-        region: string
-        /** @description IAM role ARN to assume (cross-account) */
-        role_arn?: string
-        /** @description External ID for STS AssumeRole */
-        external_id?: string
-      }
-      /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
-      ssl_ca_pem?: string
-    }
     GoogleSheetsDestinationConfig: {
       /**
        * @description discriminator enum property added by openapi-typescript
@@ -488,39 +448,10 @@ export interface components {
        */
       batch_size: number
     }
-    DestinationGoogleSheetsDestinationConfig: {
-      /**
-       * @description discriminator enum property added by openapi-typescript
-       * @enum {string}
-       */
-      type: 'DestinationGoogleSheetsDestinationConfig'
-      /** @description Google OAuth2 client ID (env: GOOGLE_CLIENT_ID) */
-      client_id?: string
-      /** @description Google OAuth2 client secret (env: GOOGLE_CLIENT_SECRET) */
-      client_secret?: string
-      /** @description OAuth2 access token */
-      access_token: string
-      /** @description OAuth2 refresh token */
-      refresh_token: string
-      /** @description Target spreadsheet ID (created if omitted) */
-      spreadsheet_id?: string
-      /**
-       * @description Title when creating a new spreadsheet
-       * @default Stripe Sync
-       */
-      spreadsheet_title: string
-      /**
-       * @description Rows per Sheets API append call
-       * @default 50
-       */
-      batch_size: number
-    }
     SourceConfig: components['schemas']['StripeSourceConfig']
     DestinationConfig:
       | components['schemas']['PostgresDestinationConfig']
-      | components['schemas']['DestinationPostgresDestinationConfig']
       | components['schemas']['GoogleSheetsDestinationConfig']
-      | components['schemas']['DestinationGoogleSheetsDestinationConfig']
     PipelineConfig: {
       source: components['schemas']['SourceConfig']
       destination: components['schemas']['DestinationConfig']

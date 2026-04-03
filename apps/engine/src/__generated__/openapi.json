@@ -38,12 +38,10 @@
           {
             "in": "header",
             "name": "x-pipeline",
-            "schema": {
-              "type": "string",
-              "contentMediaType": "application/json",
-              "contentSchema": { "$ref": "#/components/schemas/PipelineConfig" }
-            },
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }"
+            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+            }
           }
         ],
         "responses": {
@@ -85,12 +83,10 @@
           {
             "in": "header",
             "name": "x-pipeline",
-            "schema": {
-              "type": "string",
-              "contentMediaType": "application/json",
-              "contentSchema": { "$ref": "#/components/schemas/PipelineConfig" }
-            },
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }"
+            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+            }
           }
         ],
         "responses": {
@@ -121,12 +117,10 @@
           {
             "in": "header",
             "name": "x-pipeline",
-            "schema": {
-              "type": "string",
-              "contentMediaType": "application/json",
-              "contentSchema": { "$ref": "#/components/schemas/PipelineConfig" }
-            },
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }"
+            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+            }
           }
         ],
         "responses": {
@@ -188,12 +182,10 @@
           {
             "in": "header",
             "name": "x-pipeline",
-            "schema": {
-              "type": "string",
-              "contentMediaType": "application/json",
-              "contentSchema": { "$ref": "#/components/schemas/PipelineConfig" }
-            },
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }"
+            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+            }
           }
         ],
         "responses": {
@@ -231,26 +223,24 @@
           {
             "in": "header",
             "name": "x-pipeline",
-            "schema": {
-              "type": "string",
-              "contentMediaType": "application/json",
-              "contentSchema": { "$ref": "#/components/schemas/PipelineConfig" }
-            },
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }"
+            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+            }
           },
           {
             "in": "header",
             "name": "x-state",
-            "schema": {
-              "type": "string",
-              "contentMediaType": "application/json",
-              "contentSchema": {
-                "type": "object",
-                "additionalProperties": true,
-                "description": "Per-stream cursor state keyed by stream name"
+            "description": "JSON-encoded per-stream cursor state. Engine uses this if present, falls back to StateStore.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "Per-stream cursor state keyed by stream name"
+                }
               }
-            },
-            "description": "JSON-encoded per-stream cursor state. Engine uses this if present, falls back to StateStore."
+            }
           },
           {
             "in": "header",
@@ -298,12 +288,10 @@
           {
             "in": "header",
             "name": "x-pipeline",
-            "schema": {
-              "type": "string",
-              "contentMediaType": "application/json",
-              "contentSchema": { "$ref": "#/components/schemas/PipelineConfig" }
-            },
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }"
+            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+            }
           }
         ],
         "requestBody": {
@@ -347,26 +335,24 @@
           {
             "in": "header",
             "name": "x-pipeline",
-            "schema": {
-              "type": "string",
-              "contentMediaType": "application/json",
-              "contentSchema": { "$ref": "#/components/schemas/PipelineConfig" }
-            },
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }"
+            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+            }
           },
           {
             "in": "header",
             "name": "x-state",
-            "schema": {
-              "type": "string",
-              "contentMediaType": "application/json",
-              "contentSchema": {
-                "type": "object",
-                "additionalProperties": true,
-                "description": "Per-stream cursor state keyed by stream name"
+            "description": "JSON-encoded per-stream cursor state. Engine uses this if present, falls back to StateStore.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "Per-stream cursor state keyed by stream name"
+                }
               }
-            },
-            "description": "JSON-encoded per-stream cursor state. Engine uses this if present, falls back to StateStore."
+            }
           },
           {
             "in": "header",
@@ -704,7 +690,6 @@
         "additionalProperties": false
       },
       "StripeSourceConfig": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
           "type": { "type": "string", "enum": ["stripe"] },
@@ -777,7 +762,6 @@
         "additionalProperties": false
       },
       "PostgresDestinationConfig": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
           "type": { "type": "string", "enum": ["postgres"] },
@@ -821,89 +805,10 @@
         "required": ["type", "port", "schema", "batch_size"],
         "additionalProperties": false
       },
-      "DestinationPostgresDestinationConfig": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "type": { "type": "string", "enum": ["destination-postgres"] },
-          "url": {
-            "description": "Postgres connection string (alias for connection_string)",
-            "type": "string"
-          },
-          "connection_string": { "description": "Postgres connection string", "type": "string" },
-          "host": { "description": "Postgres host (required for AWS IAM)", "type": "string" },
-          "port": { "default": 5432, "description": "Postgres port", "type": "number" },
-          "database": { "description": "Database name (required for AWS IAM)", "type": "string" },
-          "user": { "description": "Database user (required for AWS IAM)", "type": "string" },
-          "schema": {
-            "type": "string",
-            "description": "Target schema name (e.g. \"stripe_sync\")"
-          },
-          "batch_size": {
-            "default": 100,
-            "description": "Records to buffer before flushing",
-            "type": "number"
-          },
-          "aws": {
-            "description": "AWS RDS IAM authentication config",
-            "type": "object",
-            "properties": {
-              "region": { "type": "string", "description": "AWS region for RDS instance" },
-              "role_arn": {
-                "description": "IAM role ARN to assume (cross-account)",
-                "type": "string"
-              },
-              "external_id": { "description": "External ID for STS AssumeRole", "type": "string" }
-            },
-            "required": ["region"],
-            "additionalProperties": false
-          },
-          "ssl_ca_pem": {
-            "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)",
-            "type": "string"
-          }
-        },
-        "required": ["type", "port", "schema", "batch_size"],
-        "additionalProperties": false
-      },
       "GoogleSheetsDestinationConfig": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
           "type": { "type": "string", "enum": ["google-sheets"] },
-          "client_id": {
-            "description": "Google OAuth2 client ID (env: GOOGLE_CLIENT_ID)",
-            "type": "string"
-          },
-          "client_secret": {
-            "description": "Google OAuth2 client secret (env: GOOGLE_CLIENT_SECRET)",
-            "type": "string"
-          },
-          "access_token": { "type": "string", "description": "OAuth2 access token" },
-          "refresh_token": { "type": "string", "description": "OAuth2 refresh token" },
-          "spreadsheet_id": {
-            "description": "Target spreadsheet ID (created if omitted)",
-            "type": "string"
-          },
-          "spreadsheet_title": {
-            "default": "Stripe Sync",
-            "description": "Title when creating a new spreadsheet",
-            "type": "string"
-          },
-          "batch_size": {
-            "default": 50,
-            "description": "Rows per Sheets API append call",
-            "type": "number"
-          }
-        },
-        "required": ["type", "access_token", "refresh_token", "spreadsheet_title", "batch_size"],
-        "additionalProperties": false
-      },
-      "DestinationGoogleSheetsDestinationConfig": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "type": { "type": "string", "enum": ["destination-google-sheets"] },
           "client_id": {
             "description": "Google OAuth2 client ID (env: GOOGLE_CLIENT_ID)",
             "type": "string"
@@ -940,9 +845,7 @@
         "discriminator": { "propertyName": "type" },
         "oneOf": [
           { "$ref": "#/components/schemas/PostgresDestinationConfig" },
-          { "$ref": "#/components/schemas/DestinationPostgresDestinationConfig" },
-          { "$ref": "#/components/schemas/GoogleSheetsDestinationConfig" },
-          { "$ref": "#/components/schemas/DestinationGoogleSheetsDestinationConfig" }
+          { "$ref": "#/components/schemas/GoogleSheetsDestinationConfig" }
         ]
       },
       "PipelineConfig": {

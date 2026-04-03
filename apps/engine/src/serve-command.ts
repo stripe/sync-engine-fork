@@ -12,16 +12,13 @@ export function serveAction(opts: {
   connectorsFromNpm?: boolean
 }) {
   const port = opts.port ?? Number(process.env['PORT'] || 3000)
-  const resolver = createConnectorResolver(
-    defaultConnectors,
-    {
-      commandMap: parseJsonOrFile(opts.connectorsFromCommandMap) as
-        | Record<string, string>
-        | undefined,
-      path: opts.connectorsFromPath,
-      npm: opts.connectorsFromNpm ?? false,
-    }
-  )
+  const resolver = createConnectorResolver(defaultConnectors, {
+    commandMap: parseJsonOrFile(opts.connectorsFromCommandMap) as
+      | Record<string, string>
+      | undefined,
+    path: opts.connectorsFromPath,
+    npm: opts.connectorsFromNpm ?? false,
+  })
   const app = createApp(resolver)
   serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, `Sync Engine listening on http://localhost:${info.port}`)
