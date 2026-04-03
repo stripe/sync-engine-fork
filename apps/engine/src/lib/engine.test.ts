@@ -441,9 +441,10 @@ describe('engine message validation', () => {
         ])
       )
     )
-    expect(results).toHaveLength(2)
+    expect(results).toHaveLength(3)
     expect(results[0]!.type).toBe('record')
     expect(results[1]!.type).toBe('state')
+    expect(results[2]).toMatchObject({ type: 'eof', reason: 'complete' })
   })
 
   it('malformed source message throws', async () => {
@@ -556,9 +557,10 @@ describe('engine stream membership validation', () => {
     const engine = createEngine(makeResolver(source, destinationTest))
 
     const results = await drain(engine.pipeline_read(defaultPipeline))
-    expect(results).toHaveLength(2)
+    expect(results).toHaveLength(3)
     expect(results[0]!.type).toBe('log')
     expect(results[1]!.type).toBe('error')
+    expect(results[2]).toMatchObject({ type: 'eof', reason: 'complete' })
   })
 })
 
@@ -601,13 +603,14 @@ describe('engine.pipeline_sync() pipeline', () => {
       )
     )
 
-    // Pipeline yields 1 state message (destinationTest passes state through)
-    expect(results).toHaveLength(1)
+    // Pipeline yields 1 state message (destinationTest passes state through) + eof:complete
+    expect(results).toHaveLength(2)
     expect(results[0]).toMatchObject({
       type: 'state',
       stream: 'customers',
       data: { status: 'complete' },
     })
+    expect(results[1]).toMatchObject({ type: 'eof', reason: 'complete' })
   })
 
   it('stream filtering: only configures requested streams', async () => {
@@ -688,9 +691,10 @@ describe('engine.pipeline_sync() pipeline', () => {
     const results = await drain(engine.pipeline_sync(defaultPipeline))
 
     // Only the state message passes through engine.pipeline_sync() (record goes to dest but
-    // dest only yields state back; log/error/stream_status are routed to callbacks)
-    expect(results).toHaveLength(1)
+    // dest only yields state back; log/error/stream_status are routed to callbacks) + eof:complete
+    expect(results).toHaveLength(2)
     expect(results[0]!.type).toBe('state')
+    expect(results[1]).toMatchObject({ type: 'eof', reason: 'complete' })
 
     vi.restoreAllMocks()
   })

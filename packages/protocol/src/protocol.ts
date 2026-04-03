@@ -231,7 +231,7 @@ export interface SyncParams {
   pipeline: PipelineConfig
   state?: Record<string, unknown>
   stateLimit?: number
-  timeLimitMs?: number
+  timeLimit?: number
 }
 
 // MARK: - Message unions

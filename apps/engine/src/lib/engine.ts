@@ -302,14 +302,10 @@ export function createEngine(resolver: ConnectorResolver): Engine {
           yield Message.parse(msg)
         }
       })()
-      let output: AsyncIterable<Message> = parsed
-      if (opts?.stateLimit || opts?.timeLimit) {
-        output = takeLimits<Message>({
-          stateLimit: opts.stateLimit,
-          timeLimitMs: opts.timeLimit ? opts.timeLimit * 1000 : undefined,
-        })(output)
-      }
-      yield* output
+      yield* takeLimits<Message>({
+        stateLimit: opts?.stateLimit,
+        timeLimitMs: opts?.timeLimit ? opts.timeLimit * 1000 : undefined,
+      })(parsed)
     },
 
     async *pipeline_write(
@@ -353,17 +349,14 @@ export function createEngine(resolver: ConnectorResolver): Engine {
     ): AsyncIterable<DestinationOutput> {
       await this.pipeline_setup(pipeline)
       // Pass state to read() but not stateLimit — stateLimit on sync controls destination output
-      let output: AsyncIterable<DestinationOutput> = this.pipeline_write(
+      const writeOutput = this.pipeline_write(
         pipeline,
         this.pipeline_read(pipeline, { state: opts?.state }, input)
       )
-      if (opts?.stateLimit || opts?.timeLimit) {
-        output = takeLimits<DestinationOutput>({
-          stateLimit: opts.stateLimit,
-          timeLimitMs: opts.timeLimit ? opts.timeLimit * 1000 : undefined,
-        })(output)
-      }
-      yield* output
+      yield* takeLimits<DestinationOutput>({
+        stateLimit: opts?.stateLimit,
+        timeLimitMs: opts?.timeLimit ? opts.timeLimit * 1000 : undefined,
+      })(writeOutput)
     },
   }
 }

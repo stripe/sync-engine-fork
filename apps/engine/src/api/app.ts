@@ -11,7 +11,6 @@ import {
   DestinationOutput as DestinationOutputSchema,
   CatalogMessage as CatalogMessageSchema,
 } from '@stripe/sync-protocol'
-import { takeLimits } from '../lib/pipeline.js'
 import { ndjsonResponse } from '@stripe/sync-ts-cli/ndjson'
 import { logger } from '../logger.js'
 import {
@@ -113,9 +112,9 @@ export function createApp(resolver: ConnectorResolver) {
     const stateLimitStr = c.req.query('state_limit')
     const stateLimit = stateLimitStr ? Number(stateLimitStr) : undefined
     const timeLimitStr = c.req.query('time_limit')
-    const timeLimitMs = timeLimitStr ? Number(timeLimitStr) * 1000 : undefined
+    const timeLimit = timeLimitStr ? Number(timeLimitStr) : undefined
 
-    return { pipeline, state, stateLimit, timeLimitMs }
+    return { pipeline, state, stateLimit, timeLimit }
   }
 
   // ── Shared header param schemas ─────────────────────────────────
@@ -342,10 +341,11 @@ export function createApp(resolver: ConnectorResolver) {
       logger.info(context, 'Engine API /read started')
 
       const input = inputPresent ? parseNdjsonStream(c.req.raw.body!) : undefined
-      const output = takeLimits<Message>({
-        stateLimit: params.stateLimit,
-        timeLimitMs: params.timeLimitMs,
-      })(engine.pipeline_read(params.pipeline, { state: params.state }, input))
+      const output = engine.pipeline_read(
+        params.pipeline,
+        { state: params.state, stateLimit: params.stateLimit, timeLimit: params.timeLimit },
+        input
+      )
       return ndjsonResponse(logApiStream('Engine API /read', output, context, startedAt))
     }) as any
   )
@@ -417,10 +417,11 @@ export function createApp(resolver: ConnectorResolver) {
     (async (c: any) => {
       const params = parseSyncParams(c)
       const input = hasBody(c) ? parseNdjsonStream(c.req.raw.body!) : undefined
-      const output = takeLimits<DestinationOutput>({
-        stateLimit: params.stateLimit,
-        timeLimitMs: params.timeLimitMs,
-      })(engine.pipeline_sync(params.pipeline, { state: params.state }, input))
+      const output = engine.pipeline_sync(
+        params.pipeline,
+        { state: params.state, stateLimit: params.stateLimit, timeLimit: params.timeLimit },
+        input
+      )
       return ndjsonResponse(output)
     }) as any
   )
