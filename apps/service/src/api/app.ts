@@ -6,7 +6,7 @@ import type { ConnectorResolver } from '@stripe/sync-engine'
 import { endpointTable, addDiscriminators } from '@stripe/sync-engine/api/openapi-utils'
 import { createSchemas } from '../lib/createSchemas.js'
 import type { Pipeline } from '../lib/createSchemas.js'
-import type { WorkflowStatus } from '../temporal/workflows.js'
+import type { WorkflowStatus } from '../temporal/workflows/_shared.js'
 
 const DEFAULT_PIPELINE_WORKFLOW = 'pipelineWorkflow'
 const GOOGLE_SHEETS_PIPELINE_WORKFLOW = 'pipelineGoogleSheetsWorkflow'

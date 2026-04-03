@@ -24,7 +24,7 @@ const STRIPE_API_KEY = process.env['STRIPE_API_KEY']!
 const POSTGRES_URL = process.env['POSTGRES_URL'] ?? process.env['DATABASE_URL']!
 const TASK_QUEUE = `test-app-${Date.now()}`
 const SCHEMA = `integration_${Date.now()}`
-const workflowsPath = path.resolve(process.cwd(), 'dist/temporal/workflows.js')
+const workflowsPath = path.resolve(process.cwd(), 'dist/temporal/workflows')
 
 const SKIP_CLEANUP = process.env['SKIP_CLEANUP'] === '1'
 

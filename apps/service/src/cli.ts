@@ -106,9 +106,9 @@ const workerCmd = defineCommand({
     const kafkaBroker = args['kafka-broker'] || process.env['KAFKA_BROKER']
     const temporalAddress = args['temporal-address']
 
-    // workflowsPath: resolve relative to the package dist directory
+    // workflowsPath: point Temporal at the compiled workflow directory
     const pkgDir = path.resolve(import.meta.dirname ?? process.cwd(), '..')
-    const workflowsPath = path.resolve(pkgDir, 'dist/temporal/workflows.js')
+    const workflowsPath = path.resolve(pkgDir, 'dist/temporal/workflows')
 
     const worker = await createWorker({
       temporalAddress,

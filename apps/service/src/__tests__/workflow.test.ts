@@ -6,8 +6,8 @@ import type { PipelineConfig } from '@stripe/sync-engine'
 import type { SyncActivities } from '../temporal/activities.js'
 import type { RunResult } from '../temporal/activities.js'
 
-// workflowsPath must point to compiled JS (Temporal bundles it for V8 sandbox)
-const workflowsPath = path.resolve(process.cwd(), 'dist/temporal/workflows.js')
+// workflowsPath points to the compiled workflow directory.
+const workflowsPath = path.resolve(process.cwd(), 'dist/temporal/workflows')
 
 const noErrors: RunResult = { errors: [], state: {} }
 

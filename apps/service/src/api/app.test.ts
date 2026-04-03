@@ -107,7 +107,7 @@ describe('POST /pipelines workflow dispatch', () => {
 // Pipeline CRUD + pause/resume (in-memory Temporal, stub activities)
 // ---------------------------------------------------------------------------
 
-const workflowsPath = path.resolve(process.cwd(), 'dist/temporal/workflows.js')
+const workflowsPath = path.resolve(process.cwd(), 'dist/temporal/workflows')
 const noErrors: RunResult = { errors: [], state: {} }
 
 function stubActivities(): SyncActivities {

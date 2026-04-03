@@ -15,7 +15,7 @@ import {
   updateSignal,
   WorkflowStatus,
   writeFromQueue,
-} from './shared.js'
+} from './_shared.js'
 import { CONTINUE_AS_NEW_THRESHOLD, deepEqual, EVENT_BATCH_SIZE } from '../../lib/utils.js'
 
 export interface PipelineWorkflowOpts {
