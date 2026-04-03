@@ -275,10 +275,16 @@ describe('spec', () => {
 describe('check', () => {
   it('yields a connection_status message', async () => {
     const { sheets } = createMemorySheets()
+    // Create a spreadsheet so check can find it
+    const res = await sheets.spreadsheets.create({
+      requestBody: { properties: { title: 'Check Test' } },
+    })
+    const spreadsheetId = res.data.spreadsheetId!
     const dest = createDestination(sheets)
 
     const output: unknown[] = []
-    for await (const msg of dest.check({ config: cfg() })) output.push(msg)
+    for await (const msg of dest.check({ config: cfg({ spreadsheet_id: spreadsheetId }) }))
+      output.push(msg)
 
     expect(output).toHaveLength(1)
     expect(output[0]).toMatchObject({
@@ -352,9 +358,13 @@ describe('check', () => {
       ['cus_2', 'Bob'],
     ])
 
-    const metaLog = output.find((message) => message.type === 'log' && message.level === 'debug')
+    const metaLog = output.find(
+      (message) => message.type === 'log' && message.log.level === 'debug'
+    )
     expect(metaLog).toBeDefined()
-    const meta = parseGoogleSheetsMetaLog((metaLog as { message: string }).message)
+    const meta = parseGoogleSheetsMetaLog(
+      (metaLog as { log: { message: string } }).log.message
+    )
     expect(meta).toEqual({
       type: 'row_assignments',
       assignments: { customers: { '["cus_2"]': 3 } },
