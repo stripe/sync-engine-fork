@@ -1,4 +1,5 @@
 import { defineQuery, defineSignal, proxyActivities } from '@temporalio/workflow'
+import type { PipelineConfig } from '@stripe/sync-protocol'
 
 import type { SyncActivities } from '../activities.js'
 import { retryPolicy } from '../../lib/utils.js'
@@ -9,25 +10,12 @@ export interface WorkflowStatus {
   iteration: number
 }
 
-type SyncMode = 'incremental' | 'full_refresh'
-
-interface StreamDef {
-  name: string
-  sync_mode?: SyncMode
-  fields?: string[]
-}
-
-export interface Pipeline {
+export type Pipeline = PipelineConfig & {
+  // Keep `id` on the workflow-local shape for now so configQuery still returns
+  // the full pipeline resource expected by the API and queue-backed activities
+  // can continue using it as the pipeline key. A cleaner split would derive
+  // this from Temporal workflow metadata, but that is a broader refactor.
   id: string
-  source: { type: string; [key: string]: unknown }
-  destination: { type: string; [key: string]: unknown }
-  streams?: StreamDef[]
-}
-
-export type PipelineConfig = {
-  source: { type: string; [key: string]: unknown }
-  destination: { type: string; [key: string]: unknown }
-  streams?: StreamDef[]
 }
 
 export type RowIndex = Record<string, Record<string, number>>
