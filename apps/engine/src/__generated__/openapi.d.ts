@@ -895,7 +895,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        data: {
+                        items: {
                             config_schema: {
                                 [key: string]: unknown;
                             };
@@ -955,7 +955,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        data: {
+                        items: {
                             config_schema: {
                                 [key: string]: unknown;
                             };
