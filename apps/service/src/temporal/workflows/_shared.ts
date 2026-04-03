@@ -47,7 +47,7 @@ export const { syncImmediate, readIntoQueue, writeFromQueue } = proxyActivities<
   retry: retryPolicy,
 })
 
-export const { discoverCatalog, readIntoQueueWithState, writeGoogleSheetsFromQueue } =
+export const { discoverCatalog, readGoogleSheetsIntoQueue, writeGoogleSheetsFromQueue } =
   proxyActivities<SyncActivities>({
     startToCloseTimeout: '10m',
     heartbeatTimeout: '2m',

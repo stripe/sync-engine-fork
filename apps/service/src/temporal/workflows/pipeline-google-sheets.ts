@@ -6,7 +6,7 @@ import {
   deleteSignal,
   discoverCatalog,
   Pipeline,
-  readIntoQueueWithState,
+  readGoogleSheetsIntoQueue,
   RowIndex,
   setup,
   stateQuery,
@@ -133,7 +133,7 @@ export async function pipelineGoogleSheetsWorkflow(
 
       if (inputQueue.length > 0) {
         const batch = inputQueue.splice(0, EVENT_BATCH_SIZE)
-        const { count } = await readIntoQueueWithState(config, pipeline.id, {
+        const { count } = await readGoogleSheetsIntoQueue(config, pipeline.id, {
           input: batch,
           catalog,
         })
@@ -144,7 +144,7 @@ export async function pipelineGoogleSheetsWorkflow(
 
       if (!readComplete) {
         const before = readState
-        const { count, state: nextReadState } = await readIntoQueueWithState(config, pipeline.id, {
+        const { count, state: nextReadState } = await readGoogleSheetsIntoQueue(config, pipeline.id, {
           state: readState,
           stateLimit: 1,
           catalog,
