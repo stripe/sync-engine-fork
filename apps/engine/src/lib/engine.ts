@@ -29,7 +29,15 @@ export const SyncOpts = z.object({
 })
 export type SyncOpts = z.infer<typeof SyncOpts>
 
+export interface ConnectorInfo {
+  config_schema: Record<string, unknown>
+}
+
 export interface Engine {
+  listConnectors(): Promise<{
+    sources: Record<string, ConnectorInfo>
+    destinations: Record<string, ConnectorInfo>
+  }>
   setup(pipeline: PipelineConfig): Promise<SetupResult>
   teardown(pipeline: PipelineConfig): Promise<void>
   check(pipeline: PipelineConfig): Promise<{ source: CheckResult; destination: CheckResult }>
@@ -138,6 +146,19 @@ export function buildCatalog(
 
 export function createEngine(resolver: ConnectorResolver): Engine {
   return {
+    async listConnectors() {
+      const sources = Object.fromEntries(
+        [...resolver.sources()].map(([name, r]) => [name, { config_schema: r.rawConfigJsonSchema }])
+      )
+      const destinations = Object.fromEntries(
+        [...resolver.destinations()].map(([name, r]) => [
+          name,
+          { config_schema: r.rawConfigJsonSchema },
+        ])
+      )
+      return { sources, destinations }
+    },
+
     async discover(sourceInput: PipelineConfig['source']): Promise<CatalogMessage> {
       const connector = await resolver.resolveSource(sourceInput.type)
       const { type: _, ...rawConfig } = sourceInput

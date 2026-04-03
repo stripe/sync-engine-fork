@@ -452,17 +452,8 @@ export function createApp(resolver: ConnectorResolver) {
         },
       },
     }),
-    (c) => {
-      const sources = Object.fromEntries(
-        [...resolver.sources()].map(([name, r]) => [name, { config_schema: r.rawConfigJsonSchema }])
-      )
-      const destinations = Object.fromEntries(
-        [...resolver.destinations()].map(([name, r]) => [
-          name,
-          { config_schema: r.rawConfigJsonSchema },
-        ])
-      )
-      return c.json({ sources, destinations }, 200)
+    async (c) => {
+      return c.json(await engine.listConnectors(), 200)
     }
   )
 

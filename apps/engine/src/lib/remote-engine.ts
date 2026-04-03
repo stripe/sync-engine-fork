@@ -1,6 +1,6 @@
 import createClient from 'openapi-fetch'
 import type { paths } from '../__generated__/openapi.js'
-import type { Engine, SetupResult, SyncOpts } from './engine.js'
+import type { Engine, SetupResult, SyncOpts, ConnectorInfo } from './engine.js'
 import { parseNdjsonStream, toNdjsonStream } from './ndjson.js'
 import type {
   CheckResult,
@@ -81,6 +81,18 @@ export function createRemoteEngine(engineUrl: string): Engine {
   }
 
   return {
+    async listConnectors(): Promise<{
+      sources: Record<string, ConnectorInfo>
+      destinations: Record<string, ConnectorInfo>
+    }> {
+      const { data, error } = await client.GET('/connectors')
+      if (error) throw new Error(`Engine /connectors failed: ${JSON.stringify(error)}`)
+      return data as {
+        sources: Record<string, ConnectorInfo>
+        destinations: Record<string, ConnectorInfo>
+      }
+    },
+
     async setup(pipeline: PipelineConfig): Promise<SetupResult> {
       const res = await post('/setup', pipeline)
       const text = await res.text()

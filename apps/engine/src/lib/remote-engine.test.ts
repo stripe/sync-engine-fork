@@ -191,6 +191,16 @@ describe('createRemoteEngine', () => {
     })
   })
 
+  describe('listConnectors()', () => {
+    it('returns available sources and destinations', async () => {
+      const engine = createRemoteEngine(engineUrl)
+      const result = await engine.listConnectors()
+      expect(result.sources).toHaveProperty('test')
+      expect(result.destinations).toHaveProperty('test')
+      expect(result.sources['test']).toHaveProperty('config_schema')
+    })
+  })
+
   describe('error handling', () => {
     it('throws on HTTP errors (nonexistent connector)', async () => {
       const badPipeline: PipelineConfig = {
