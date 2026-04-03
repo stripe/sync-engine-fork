@@ -11,6 +11,15 @@ import type {
 import type { sheets_v4 } from 'googleapis'
 import { google } from 'googleapis'
 import { z } from 'zod'
+import {
+  GOOGLE_SHEETS_META_LOG_PREFIX,
+  formatGoogleSheetsMetaLog,
+  parseGoogleSheetsMetaLog,
+  ROW_KEY_FIELD,
+  ROW_NUMBER_FIELD,
+  serializeRowKey,
+  stripSystemFields,
+} from './metadata.js'
 import { configSchema } from './spec.js'
 import type { Config } from './spec.js'
 import {
@@ -20,6 +29,7 @@ import {
   ensureSheet,
   ensureSpreadsheet,
   protectSheets,
+  readHeaderRow,
   updateRows,
 } from './writer.js'
 
@@ -28,11 +38,21 @@ export {
   ensureSheet,
   appendRows,
   updateRows,
+  readHeaderRow,
   readSheet,
   createIntroSheet,
   protectSheets,
   deleteSpreadsheet,
 } from './writer.js'
+export {
+  GOOGLE_SHEETS_META_LOG_PREFIX,
+  formatGoogleSheetsMetaLog,
+  parseGoogleSheetsMetaLog,
+  ROW_KEY_FIELD,
+  ROW_NUMBER_FIELD,
+  serializeRowKey,
+  stripSystemFields,
+} from './metadata.js'
 
 // MARK: - Spec
 
@@ -75,6 +95,21 @@ function isTransient(err: unknown): boolean {
   if (!(err instanceof Error) || !('code' in err)) return false
   const code = (err as { code: number }).code
   return code === 429 || code >= 500
+}
+
+function extendHeaders(
+  existingHeaders: string[],
+  data: Record<string, unknown>
+): { headers: string[]; changed: boolean } {
+  const headers = [...existingHeaders]
+  let changed = false
+  for (const key of Object.keys(data)) {
+    if (!headers.includes(key)) {
+      headers.push(key)
+      changed = true
+    }
+  }
+  return { headers, changed }
 }
 
 // MARK: - Destination
@@ -154,6 +189,12 @@ export function createDestination(
     ): AsyncIterable<DestinationOutput> {
       const sheets = sheetsClient ?? makeSheetsClient(config)
       const batchSize = config.batch_size ?? 50
+      const primaryKeys = new Map<string, string[][]>(
+        catalog.streams.map((configuredStream) => [
+          configuredStream.stream.name,
+          configuredStream.stream.primary_key,
+        ])
+      )
 
       if (config.spreadsheet_id) {
         spreadsheetId = config.spreadsheet_id
@@ -161,19 +202,85 @@ export function createDestination(
         spreadsheetId = await ensureSpreadsheet(sheets, config.spreadsheet_title)
       }
 
-      // Per-stream state: column headers and buffered rows
+      // Per-stream state: column headers plus buffered appends/updates.
       const streamHeaders = new Map<string, string[]>()
-      const streamBuffers = new Map<string, unknown[][]>()
+      const appendBuffers = new Map<string, Array<{ row: string[]; rowKey?: string }>>()
+      const updateBuffers = new Map<string, Array<{ rowNumber: number; values: string[] }>>()
+      const rowAssignments: Record<string, Record<string, number>> = {}
+
+      const ensureHeadersForRecord = async (
+        streamName: string,
+        cleanData: Record<string, unknown>
+      ): Promise<string[]> => {
+        let headers = streamHeaders.get(streamName)
+
+        if (!headers) {
+          try {
+            headers = await readHeaderRow(sheets, spreadsheetId!, streamName)
+          } catch (error) {
+            const code =
+              error instanceof Error && 'code' in error
+                ? (error as { code?: number }).code
+                : undefined
+            if (code !== 400 && code !== 404) throw error
+            headers = []
+          }
+
+          if (headers.length === 0) {
+            headers = Object.keys(cleanData)
+            await ensureSheet(sheets, spreadsheetId!, streamName, headers)
+          }
+
+          streamHeaders.set(streamName, headers)
+          appendBuffers.set(streamName, [])
+          updateBuffers.set(streamName, [])
+        }
+
+        const next = extendHeaders(headers, cleanData)
+        if (next.changed) {
+          await ensureSheet(sheets, spreadsheetId!, streamName, next.headers)
+          streamHeaders.set(streamName, next.headers)
+          headers = next.headers
+        }
+
+        return headers
+      }
 
       const flushStream = async (streamName: string) => {
-        const buffer = streamBuffers.get(streamName)
-        if (!buffer || buffer.length === 0) return
-        await appendRows(sheets, spreadsheetId!, streamName, buffer)
-        streamBuffers.set(streamName, [])
+        const updates = updateBuffers.get(streamName)
+        if (updates && updates.length > 0) {
+          await updateRows(sheets, spreadsheetId!, streamName, updates)
+          updateBuffers.set(streamName, [])
+        }
+
+        const appends = appendBuffers.get(streamName)
+        if (!appends || appends.length === 0) return
+
+        const range = await appendRows(
+          sheets,
+          spreadsheetId!,
+          streamName,
+          appends.map((entry) => entry.row)
+        )
+        if (range) {
+          const expectedEndRow = range.startRow + appends.length - 1
+          if (range.endRow !== expectedEndRow) {
+            throw new Error(
+              `Append row mismatch for ${streamName}: expected ${expectedEndRow}, got ${range.endRow}`
+            )
+          }
+          for (let index = 0; index < appends.length; index++) {
+            const rowKey = appends[index]?.rowKey
+            if (!rowKey) continue
+            rowAssignments[streamName] ??= {}
+            rowAssignments[streamName][rowKey] = range.startRow + index
+          }
+        }
+        appendBuffers.set(streamName, [])
       }
 
       const flushAll = async () => {
-        for (const streamName of streamBuffers.keys()) {
+        for (const streamName of new Set([...appendBuffers.keys(), ...updateBuffers.keys()])) {
           await flushStream(streamName)
         }
       }
@@ -182,21 +289,28 @@ export function createDestination(
         for await (const msg of $stdin) {
           if (msg.type === 'record') {
             const { stream, data } = msg
+            const cleanData = stripSystemFields(data)
+            const headers = await ensureHeadersForRecord(stream, cleanData)
+            const row = headers.map((header) => stringify(cleanData[header]))
+            const rowNumber =
+              typeof data[ROW_NUMBER_FIELD] === 'number' ? data[ROW_NUMBER_FIELD] : undefined
+            const primaryKey = primaryKeys.get(stream)
+            const rowKey =
+              typeof data[ROW_KEY_FIELD] === 'string'
+                ? data[ROW_KEY_FIELD]
+                : primaryKey
+                  ? serializeRowKey(primaryKey, cleanData)
+                  : undefined
 
-            // First record for this stream — discover headers, create tab
-            if (!streamHeaders.has(stream)) {
-              const headers = Object.keys(data)
-              streamHeaders.set(stream, headers)
-              streamBuffers.set(stream, [])
-              await ensureSheet(sheets, spreadsheetId!, stream, headers)
+            if (rowNumber !== undefined) {
+              updateBuffers.get(stream)!.push({ rowNumber, values: row })
+            } else {
+              appendBuffers.get(stream)!.push({ row, rowKey })
             }
 
-            const headers = streamHeaders.get(stream)!
-            const row = headers.map((h) => stringify(data[h]))
-            const buffer = streamBuffers.get(stream)!
-            buffer.push(row)
-
-            if (buffer.length >= batchSize) {
+            const appendCount = appendBuffers.get(stream)?.length ?? 0
+            const updateCount = updateBuffers.get(stream)?.length ?? 0
+            if (appendCount + updateCount >= batchSize) {
               await flushStream(stream)
             }
           } else if (msg.type === 'state') {
@@ -223,6 +337,18 @@ export function createDestination(
           stack_trace: err instanceof Error ? err.stack : undefined,
         }
         yield errorMsg
+        return
+      }
+
+      if (Object.keys(rowAssignments).length > 0) {
+        yield {
+          type: 'log',
+          level: 'debug',
+          message: formatGoogleSheetsMetaLog({
+            type: 'row_assignments',
+            assignments: rowAssignments,
+          }),
+        }
       }
 
       const logMsg: LogMessage = {

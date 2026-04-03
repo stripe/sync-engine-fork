@@ -92,27 +92,37 @@ const workerCmd = defineCommand({
       default: 'http://localhost:4010',
       description: 'Sync engine URL for sync execution (default: http://localhost:4010)',
     },
+    'kafka-broker': {
+      type: 'string',
+      description:
+        'Kafka broker for queue-backed workflows (for example localhost:9092). Can also be set via KAFKA_BROKER.',
+    },
   },
   async run({ args }) {
     const { createWorker } = await import('./temporal/worker.js')
     const taskQueue = args['temporal-task-queue'] || 'sync-engine'
     const namespace = args['temporal-namespace'] || 'default'
     const engineUrl = args['engine-url'] || 'http://localhost:4010'
+    const kafkaBroker = args['kafka-broker'] || process.env['KAFKA_BROKER']
     const temporalAddress = args['temporal-address']
 
-    // workflowsPath: resolve relative to the package dist directory
+    // workflowsPath: point Temporal at the compiled workflow directory
     const pkgDir = path.resolve(import.meta.dirname ?? process.cwd(), '..')
-    const workflowsPath = path.resolve(pkgDir, 'dist/temporal/workflows.js')
+    const workflowsPath = path.resolve(pkgDir, 'dist/temporal/workflows')
 
     const worker = await createWorker({
       temporalAddress,
       namespace,
       taskQueue,
       engineUrl,
+      kafkaBroker,
       workflowsPath,
     })
 
-    logger.info({ temporalAddress, namespace, taskQueue, engineUrl }, 'Starting Temporal worker')
+    logger.info(
+      { temporalAddress, namespace, taskQueue, engineUrl, kafkaBroker },
+      'Starting Temporal worker'
+    )
 
     await worker.run()
   },
