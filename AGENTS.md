@@ -76,7 +76,6 @@ See [docs/architecture/principles.md](docs/architecture/principles.md) for the c
 - All serializable inputs/outputs (Zod schemas, JSON wire format) must use **snake_case** field names.
 - Source connectors must use `console.error` for logging (stdout is the NDJSON stream).
 - Generated OpenAPI specs live in each package's `src/__generated__/openapi.json` — regenerate after route/schema changes.
-- Zod schema fields must use `.describe()` for descriptions — JSDoc comments on Zod fields are stripped by TypeScript and never reach the generated OpenAPI spec.
 - Non-trivial PRs should be accompanied by a plan artifact in `docs/plans/YYYY-MM-DD-<slug>.md`. Save it before or alongside the first implementation commit.
 
 ## Key Gotchas
