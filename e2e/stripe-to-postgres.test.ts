@@ -92,7 +92,7 @@ describeWithEnv('stripe → postgres e2e', ['STRIPE_API_KEY'], ({ STRIPE_API_KEY
 
   it('backfills product and price data to postgres', async () => {
     const engine = createEngine(resolver)
-    await collectStates(engine.pipelineSync(makePipeline()))
+    await collectStates(engine.pipeline_sync(makePipeline()))
 
     for (const stream of STREAMS) {
       const { rows } = await pool.query(`SELECT count(*)::int AS n FROM "${SCHEMA}"."${stream}"`)
@@ -109,7 +109,7 @@ describeWithEnv('stripe → postgres e2e', ['STRIPE_API_KEY'], ({ STRIPE_API_KEY
 
     const engine = createEngine(resolver)
     const pipeline = makePipeline({ websocket: true })
-    const iter = engine.pipelineSync(pipeline)[Symbol.asyncIterator]()
+    const iter = engine.pipeline_sync(pipeline)[Symbol.asyncIterator]()
 
     try {
       // Phase 1: consume until backfill completes for all streams

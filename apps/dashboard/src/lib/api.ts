@@ -12,15 +12,16 @@ export interface ConnectorInfo {
   config_schema: Record<string, unknown>
 }
 
-export interface ConnectorsResponse {
-  sources: Record<string, ConnectorInfo>
-  destinations: Record<string, ConnectorInfo>
+export async function getSources(): Promise<Record<string, ConnectorInfo>> {
+  const { data, error, response } = await engine.GET('/meta/sources')
+  if (error) throw new Error(`GET /meta/sources: ${(response as Response).status}`)
+  return data as Record<string, ConnectorInfo>
 }
 
-export async function getConnectors(): Promise<ConnectorsResponse> {
-  const { data, error, response } = await engine.GET('/connectors')
-  if (error) throw new Error(`GET /connectors: ${(response as Response).status}`)
-  return data as ConnectorsResponse
+export async function getDestinations(): Promise<Record<string, ConnectorInfo>> {
+  const { data, error, response } = await engine.GET('/meta/destinations')
+  if (error) throw new Error(`GET /meta/destinations: ${(response as Response).status}`)
+  return data as Record<string, ConnectorInfo>
 }
 
 export interface CatalogResponse {

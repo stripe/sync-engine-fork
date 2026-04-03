@@ -3,7 +3,7 @@
   "info": {
     "title": "Stripe Sync Engine",
     "version": "1.0.0",
-    "description": "Stripe Sync Engine — stateless, one-shot source/destination sync over HTTP.\nAll sync endpoints accept configuration via the `X-Pipeline` header (JSON-encoded PipelineConfig). Optional cursor state can be provided via `X-State`.\n\n## Endpoints\n\n| Method | Path | Summary |\n|--------|------|---------|\n| GET | /health | Health check |\n| POST | /setup | Set up destination schema |\n| POST | /teardown | Tear down destination schema |\n| GET | /check | Check connector connection |\n| POST | /discover | Discover available streams |\n| POST | /read | Read records from source |\n| POST | /write | Write records to destination |\n| POST | /sync | Run sync pipeline (read → write) |\n| GET | /connectors | List available connectors and their config schemas |"
+    "description": "Stripe Sync Engine — stateless, one-shot source/destination sync over HTTP.\nAll sync endpoints accept configuration via the `X-Pipeline` header (JSON-encoded PipelineConfig). Optional cursor state can be provided via `X-State`.\n\n## Endpoints\n\n| Method | Path | Summary |\n|--------|------|---------|\n| GET | /health | Health check |\n| POST | /setup | Set up destination schema |\n| POST | /teardown | Tear down destination schema |\n| GET | /check | Check connector connection |\n| POST | /discover | Discover available streams |\n| POST | /read | Read records from source |\n| POST | /write | Write records to destination |\n| POST | /sync | Run sync pipeline (read → write) |\n| GET | /meta/sources | List available source connectors |\n| GET | /meta/sources/:type | Get source connector spec |\n| GET | /meta/destinations | List available destination connectors |\n| GET | /meta/destinations/:type | Get destination connector spec |"
   },
   "paths": {
     "/health": {
@@ -30,7 +30,7 @@
     },
     "/setup": {
       "post": {
-        "operationId": "setup",
+        "operationId": "pipeline_setup",
         "tags": ["Stateless Sync API"],
         "summary": "Set up destination schema",
         "description": "Creates destination tables and applies migrations. Safe to call multiple times.",
@@ -75,7 +75,7 @@
     },
     "/teardown": {
       "post": {
-        "operationId": "teardown",
+        "operationId": "pipeline_teardown",
         "tags": ["Stateless Sync API"],
         "summary": "Tear down destination schema",
         "description": "Drops destination tables. Irreversible.",
@@ -109,7 +109,7 @@
     },
     "/check": {
       "get": {
-        "operationId": "check",
+        "operationId": "pipeline_check",
         "tags": ["Stateless Sync API"],
         "summary": "Check connector connection",
         "description": "Validates the source/destination config and tests connectivity.",
@@ -174,7 +174,7 @@
     },
     "/discover": {
       "post": {
-        "operationId": "discover",
+        "operationId": "source_discover",
         "tags": ["Stateless Sync API"],
         "summary": "Discover available streams",
         "description": "Returns the catalog of available streams for the configured source. Each stream includes its name, primary key, and optional JSON schema.",
@@ -215,7 +215,7 @@
     },
     "/read": {
       "post": {
-        "operationId": "read",
+        "operationId": "pipeline_read",
         "tags": ["Stateless Sync API"],
         "summary": "Read records from source",
         "description": "Streams NDJSON messages (records, state, catalog). Optional NDJSON body provides live events as input.",
@@ -291,7 +291,7 @@
     },
     "/write": {
       "post": {
-        "operationId": "write",
+        "operationId": "pipeline_write",
         "tags": ["Stateless Sync API"],
         "summary": "Write records to destination",
         "description": "Reads NDJSON messages from the request body and writes them to the destination. Pipe /read output as input.",
@@ -338,7 +338,7 @@
     },
     "/sync": {
       "post": {
-        "operationId": "sync",
+        "operationId": "pipeline_sync",
         "tags": ["Stateless Sync API"],
         "summary": "Run sync pipeline (read → write)",
         "description": "Without a request body, reads from the source connector and writes to the destination (backfill mode). With an NDJSON request body, uses the provided messages as input instead of reading from the source (push mode — e.g. piped webhook events).",
@@ -414,58 +414,131 @@
         }
       }
     },
-    "/connectors": {
+    "/meta/sources": {
       "get": {
-        "operationId": "listConnectors",
-        "tags": ["Connectors"],
-        "summary": "List available connectors and their config schemas",
+        "operationId": "meta_sources",
+        "tags": ["Meta"],
+        "summary": "List available source connectors",
         "responses": {
           "200": {
-            "description": "Available connectors with their JSON Schema configs",
+            "description": "Available source connectors with their JSON Schema configs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": { "type": "string" },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "config_schema": {
+                        "type": "object",
+                        "propertyNames": { "type": "string" },
+                        "additionalProperties": {}
+                      }
+                    },
+                    "required": ["config_schema"],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meta/sources/:type": {
+      "get": {
+        "operationId": "meta_source",
+        "tags": ["Meta"],
+        "summary": "Get source connector spec",
+        "parameters": [
+          { "in": "path", "name": "type", "schema": { "type": "string" }, "required": true }
+        ],
+        "responses": {
+          "200": {
+            "description": "Source connector spec",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "sources": {
+                    "config_schema": {
                       "type": "object",
                       "propertyNames": { "type": "string" },
-                      "additionalProperties": {
-                        "type": "object",
-                        "properties": {
-                          "config_schema": {
-                            "type": "object",
-                            "propertyNames": { "type": "string" },
-                            "additionalProperties": {}
-                          }
-                        },
-                        "required": ["config_schema"],
-                        "additionalProperties": false
-                      }
-                    },
-                    "destinations": {
-                      "type": "object",
-                      "propertyNames": { "type": "string" },
-                      "additionalProperties": {
-                        "type": "object",
-                        "properties": {
-                          "config_schema": {
-                            "type": "object",
-                            "propertyNames": { "type": "string" },
-                            "additionalProperties": {}
-                          }
-                        },
-                        "required": ["config_schema"],
-                        "additionalProperties": false
-                      }
+                      "additionalProperties": {}
                     }
                   },
-                  "required": ["sources", "destinations"],
+                  "required": ["config_schema"],
                   "additionalProperties": false
                 }
               }
             }
+          },
+          "404": { "description": "Source connector not found" }
+        }
+      }
+    },
+    "/meta/destinations": {
+      "get": {
+        "operationId": "meta_destinations",
+        "tags": ["Meta"],
+        "summary": "List available destination connectors",
+        "responses": {
+          "200": {
+            "description": "Available destination connectors with their JSON Schema configs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": { "type": "string" },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "config_schema": {
+                        "type": "object",
+                        "propertyNames": { "type": "string" },
+                        "additionalProperties": {}
+                      }
+                    },
+                    "required": ["config_schema"],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
           }
+        }
+      }
+    },
+    "/meta/destinations/:type": {
+      "get": {
+        "operationId": "meta_destination",
+        "tags": ["Meta"],
+        "summary": "Get destination connector spec",
+        "parameters": [
+          { "in": "path", "name": "type", "schema": { "type": "string" }, "required": true }
+        ],
+        "responses": {
+          "200": {
+            "description": "Destination connector spec",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "config_schema": {
+                      "type": "object",
+                      "propertyNames": { "type": "string" },
+                      "additionalProperties": {}
+                    }
+                  },
+                  "required": ["config_schema"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": { "description": "Destination connector not found" }
         }
       }
     }

@@ -34,7 +34,7 @@ export interface paths {
      * Set up destination schema
      * @description Creates destination tables and applies migrations. Safe to call multiple times.
      */
-    post: operations['setup']
+    post: operations['pipeline_setup']
     delete?: never
     options?: never
     head?: never
@@ -54,7 +54,7 @@ export interface paths {
      * Tear down destination schema
      * @description Drops destination tables. Irreversible.
      */
-    post: operations['teardown']
+    post: operations['pipeline_teardown']
     delete?: never
     options?: never
     head?: never
@@ -72,7 +72,7 @@ export interface paths {
      * Check connector connection
      * @description Validates the source/destination config and tests connectivity.
      */
-    get: operations['check']
+    get: operations['pipeline_check']
     put?: never
     post?: never
     delete?: never
@@ -94,7 +94,7 @@ export interface paths {
      * Discover available streams
      * @description Returns the catalog of available streams for the configured source. Each stream includes its name, primary key, and optional JSON schema.
      */
-    post: operations['discover']
+    post: operations['source_discover']
     delete?: never
     options?: never
     head?: never
@@ -114,7 +114,7 @@ export interface paths {
      * Read records from source
      * @description Streams NDJSON messages (records, state, catalog). Optional NDJSON body provides live events as input.
      */
-    post: operations['read']
+    post: operations['pipeline_read']
     delete?: never
     options?: never
     head?: never
@@ -134,7 +134,7 @@ export interface paths {
      * Write records to destination
      * @description Reads NDJSON messages from the request body and writes them to the destination. Pipe /read output as input.
      */
-    post: operations['write']
+    post: operations['pipeline_write']
     delete?: never
     options?: never
     head?: never
@@ -154,22 +154,73 @@ export interface paths {
      * Run sync pipeline (read → write)
      * @description Without a request body, reads from the source connector and writes to the destination (backfill mode). With an NDJSON request body, uses the provided messages as input instead of reading from the source (push mode — e.g. piped webhook events).
      */
-    post: operations['sync']
+    post: operations['pipeline_sync']
     delete?: never
     options?: never
     head?: never
     patch?: never
     trace?: never
   }
-  '/connectors': {
+  '/meta/sources': {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    /** List available connectors and their config schemas */
-    get: operations['listConnectors']
+    /** List available source connectors */
+    get: operations['meta_sources']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/meta/sources/:type': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get source connector spec */
+    get: operations['meta_source']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/meta/destinations': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List available destination connectors */
+    get: operations['meta_destinations']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/meta/destinations/:type': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get destination connector spec */
+    get: operations['meta_destination']
     put?: never
     post?: never
     delete?: never
@@ -581,7 +632,7 @@ export interface operations {
       }
     }
   }
-  setup: {
+  pipeline_setup: {
     parameters: {
       query?: never
       header?: {
@@ -617,7 +668,7 @@ export interface operations {
       }
     }
   }
-  teardown: {
+  pipeline_teardown: {
     parameters: {
       query?: never
       header?: {
@@ -649,7 +700,7 @@ export interface operations {
       }
     }
   }
-  check: {
+  pipeline_check: {
     parameters: {
       query?: never
       header?: {
@@ -694,7 +745,7 @@ export interface operations {
       }
     }
   }
-  discover: {
+  source_discover: {
     parameters: {
       query?: never
       header?: {
@@ -728,7 +779,7 @@ export interface operations {
       }
     }
   }
-  read: {
+  pipeline_read: {
     parameters: {
       query?: {
         /** @description Stop streaming after N state messages. */
@@ -769,7 +820,7 @@ export interface operations {
       }
     }
   }
-  write: {
+  pipeline_write: {
     parameters: {
       query?: never
       header?: {
@@ -807,7 +858,7 @@ export interface operations {
       }
     }
   }
-  sync: {
+  pipeline_sync: {
     parameters: {
       query?: {
         /** @description Stop streaming after N state messages. */
@@ -848,7 +899,7 @@ export interface operations {
       }
     }
   }
-  listConnectors: {
+  meta_sources: {
     parameters: {
       query?: never
       header?: never
@@ -857,29 +908,112 @@ export interface operations {
     }
     requestBody?: never
     responses: {
-      /** @description Available connectors with their JSON Schema configs */
+      /** @description Available source connectors with their JSON Schema configs */
       200: {
         headers: {
           [name: string]: unknown
         }
         content: {
           'application/json': {
-            sources: {
-              [key: string]: {
-                config_schema: {
-                  [key: string]: unknown
-                }
-              }
-            }
-            destinations: {
-              [key: string]: {
-                config_schema: {
-                  [key: string]: unknown
-                }
+            [key: string]: {
+              config_schema: {
+                [key: string]: unknown
               }
             }
           }
         }
+      }
+    }
+  }
+  meta_source: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        type: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Source connector spec */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            config_schema: {
+              [key: string]: unknown
+            }
+          }
+        }
+      }
+      /** @description Source connector not found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  meta_destinations: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Available destination connectors with their JSON Schema configs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            [key: string]: {
+              config_schema: {
+                [key: string]: unknown
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  meta_destination: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        type: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Destination connector spec */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            config_schema: {
+              [key: string]: unknown
+            }
+          }
+        }
+      }
+      /** @description Destination connector not found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
       }
     }
   }

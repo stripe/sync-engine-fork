@@ -136,7 +136,7 @@ describe('sync lifecycle — run, checkpoint, resume', () => {
     ]
 
     // Run pipeline with $stdin passthrough, persist each state checkpoint
-    for await (const msg of engine.pipelineSync(pipeline, undefined, toAsync(input))) {
+    for await (const msg of engine.pipeline_sync(pipeline, undefined, toAsync(input))) {
       if (msg.type === 'state') {
         await pool.query(
           `INSERT INTO "${SCHEMA}"."${STATE_TABLE}" (stream, data)
@@ -180,7 +180,11 @@ describe('sync lifecycle — run, checkpoint, resume', () => {
       state('customers', { after: 'cus_5' }),
     ]
 
-    for await (const msg of engine.pipelineSync(pipeline, { state: loadedState }, toAsync(input))) {
+    for await (const msg of engine.pipeline_sync(
+      pipeline,
+      { state: loadedState },
+      toAsync(input)
+    )) {
       if (msg.type === 'state') {
         await pool.query(
           `INSERT INTO "${SCHEMA}"."${STATE_TABLE}" (stream, data)

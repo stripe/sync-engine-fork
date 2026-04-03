@@ -81,29 +81,50 @@ export function createRemoteEngine(engineUrl: string): Engine {
   }
 
   return {
-    async connectorList(): Promise<{
-      sources: Record<string, ConnectorInfo>
-      destinations: Record<string, ConnectorInfo>
-    }> {
-      const { data, error } = await client.GET('/connectors')
-      if (error) throw new Error(`Engine /connectors failed: ${JSON.stringify(error)}`)
-      return data as {
-        sources: Record<string, ConnectorInfo>
-        destinations: Record<string, ConnectorInfo>
-      }
+    async meta_sources(): Promise<Record<string, ConnectorInfo>> {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (client.GET as any)('/meta/sources')
+      if (error) throw new Error(`Engine /meta/sources failed: ${JSON.stringify(error)}`)
+      return data as Record<string, ConnectorInfo>
     },
 
-    async pipelineSetup(pipeline: PipelineConfig): Promise<SetupResult> {
+    async meta_source(type: string): Promise<ConnectorInfo> {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (client.GET as any)('/meta/sources/{type}', {
+        params: { path: { type } },
+      })
+      if (error) throw new Error(`Engine /meta/sources/${type} failed: ${JSON.stringify(error)}`)
+      return data as ConnectorInfo
+    },
+
+    async meta_destinations(): Promise<Record<string, ConnectorInfo>> {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (client.GET as any)('/meta/destinations')
+      if (error) throw new Error(`Engine /meta/destinations failed: ${JSON.stringify(error)}`)
+      return data as Record<string, ConnectorInfo>
+    },
+
+    async meta_destination(type: string): Promise<ConnectorInfo> {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (client.GET as any)('/meta/destinations/{type}', {
+        params: { path: { type } },
+      })
+      if (error)
+        throw new Error(`Engine /meta/destinations/${type} failed: ${JSON.stringify(error)}`)
+      return data as ConnectorInfo
+    },
+
+    async pipeline_setup(pipeline: PipelineConfig): Promise<SetupResult> {
       const res = await post('/setup', pipeline)
       const text = await res.text()
       return text ? JSON.parse(text) : {}
     },
 
-    async pipelineTeardown(pipeline: PipelineConfig) {
+    async pipeline_teardown(pipeline: PipelineConfig) {
       await post('/teardown', pipeline)
     },
 
-    async pipelineCheck(pipeline: PipelineConfig) {
+    async pipeline_check(pipeline: PipelineConfig) {
       const { data, error } = await client.GET('/check', {
         params: { header: { 'x-pipeline': JSON.stringify(pipeline) } },
       })
@@ -111,7 +132,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
       return data as { source: CheckResult; destination: CheckResult }
     },
 
-    async sourceDiscover(source: PipelineConfig['source']): Promise<CatalogMessage> {
+    async source_discover(source: PipelineConfig['source']): Promise<CatalogMessage> {
       // Only source config is needed for discover — pass a minimal pipeline header
       const ph = JSON.stringify({ source, destination: { type: '_' } })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -122,7 +143,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
       return data as CatalogMessage
     },
 
-    async *pipelineRead(
+    async *pipeline_read(
       pipeline: PipelineConfig,
       opts?: SyncOpts,
       input?: AsyncIterable<unknown>
@@ -132,7 +153,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
       yield* parseNdjsonStream<Message>(res.body!)
     },
 
-    async *pipelineWrite(
+    async *pipeline_write(
       pipeline: PipelineConfig,
       messages: AsyncIterable<Message>
     ): AsyncIterable<DestinationOutput> {
@@ -140,7 +161,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
       yield* parseNdjsonStream<DestinationOutput>(res.body!)
     },
 
-    async *pipelineSync(
+    async *pipeline_sync(
       pipeline: PipelineConfig,
       opts?: SyncOpts,
       input?: AsyncIterable<unknown>

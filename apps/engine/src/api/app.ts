@@ -209,7 +209,7 @@ export function createApp(resolver: ConnectorResolver) {
       const startedAt = Date.now()
       logger.info(context, 'Engine API /setup started')
       try {
-        const result = await engine.pipelineSetup(params.pipeline)
+        const result = await engine.pipeline_setup(params.pipeline)
         logger.info(
           { ...context, durationMs: Date.now() - startedAt },
           'Engine API /setup completed'
@@ -241,7 +241,7 @@ export function createApp(resolver: ConnectorResolver) {
     }),
     async (c) => {
       const params = parseSyncParams(c)
-      await engine.pipelineTeardown(params.pipeline)
+      await engine.pipeline_teardown(params.pipeline)
       return c.body(null, 204)
     }
   )
@@ -278,7 +278,7 @@ export function createApp(resolver: ConnectorResolver) {
     }),
     async (c) => {
       const params = parseSyncParams(c)
-      const result = await engine.pipelineCheck(params.pipeline)
+      const result = await engine.pipeline_check(params.pipeline)
       return c.json(result, 200)
     }
   )
@@ -307,7 +307,7 @@ export function createApp(resolver: ConnectorResolver) {
     }),
     async (c) => {
       const params = parseSyncParams(c)
-      const catalog = await engine.sourceDiscover(params.pipeline.source)
+      const catalog = await engine.source_discover(params.pipeline.source)
       return c.json(catalog, 200)
     }
   )
@@ -345,7 +345,7 @@ export function createApp(resolver: ConnectorResolver) {
       const output = takeLimits<Message>({
         stateLimit: params.stateLimit,
         timeLimitMs: params.timeLimitMs,
-      })(engine.pipelineRead(params.pipeline, { state: params.state }, input))
+      })(engine.pipeline_read(params.pipeline, { state: params.state }, input))
       return ndjsonResponse(logApiStream('Engine API /read', output, context, startedAt))
     }) as any
   )
@@ -386,7 +386,7 @@ export function createApp(resolver: ConnectorResolver) {
       return ndjsonResponse(
         logApiStream(
           'Engine API /write',
-          engine.pipelineWrite(params.pipeline, messages),
+          engine.pipeline_write(params.pipeline, messages),
           context,
           startedAt
         )
@@ -420,34 +420,106 @@ export function createApp(resolver: ConnectorResolver) {
       const output = takeLimits<DestinationOutput>({
         stateLimit: params.stateLimit,
         timeLimitMs: params.timeLimitMs,
-      })(engine.pipelineSync(params.pipeline, { state: params.state }, input))
+      })(engine.pipeline_sync(params.pipeline, { state: params.state }, input))
       return ndjsonResponse(output)
     }) as any
   )
 
   app.openapi(
     createRoute({
-      operationId: 'connector_list',
+      operationId: 'meta_sources',
       method: 'get',
-      path: '/connectors',
-      tags: ['Connectors'],
-      summary: 'List available connectors and their config schemas',
+      path: '/meta/sources',
+      tags: ['Meta'],
+      summary: 'List available source connectors',
       responses: {
         200: {
-          description: 'Available connectors with their JSON Schema configs',
+          description: 'Available source connectors with their JSON Schema configs',
           content: {
             'application/json': {
-              schema: z.object({
-                sources: z.record(z.string(), ConnectorInfo),
-                destinations: z.record(z.string(), ConnectorInfo),
-              }),
+              schema: z.record(z.string(), ConnectorInfo),
             },
           },
         },
       },
     }),
     async (c) => {
-      return c.json(await engine.connectorList(), 200)
+      return c.json(await engine.meta_sources(), 200)
+    }
+  )
+
+  app.openapi(
+    createRoute({
+      operationId: 'meta_source',
+      method: 'get',
+      path: '/meta/sources/:type',
+      tags: ['Meta'],
+      summary: 'Get source connector spec',
+      requestParams: { path: z.object({ type: z.string() }) },
+      responses: {
+        200: {
+          description: 'Source connector spec',
+          content: { 'application/json': { schema: ConnectorInfo } },
+        },
+        404: { description: 'Source connector not found' },
+      },
+    }),
+    async (c) => {
+      const { type } = c.req.valid('param')
+      try {
+        return c.json(await engine.meta_source(type), 200)
+      } catch {
+        return c.json({ error: `Unknown source connector: ${type}` }, 404)
+      }
+    }
+  )
+
+  app.openapi(
+    createRoute({
+      operationId: 'meta_destinations',
+      method: 'get',
+      path: '/meta/destinations',
+      tags: ['Meta'],
+      summary: 'List available destination connectors',
+      responses: {
+        200: {
+          description: 'Available destination connectors with their JSON Schema configs',
+          content: {
+            'application/json': {
+              schema: z.record(z.string(), ConnectorInfo),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      return c.json(await engine.meta_destinations(), 200)
+    }
+  )
+
+  app.openapi(
+    createRoute({
+      operationId: 'meta_destination',
+      method: 'get',
+      path: '/meta/destinations/:type',
+      tags: ['Meta'],
+      summary: 'Get destination connector spec',
+      requestParams: { path: z.object({ type: z.string() }) },
+      responses: {
+        200: {
+          description: 'Destination connector spec',
+          content: { 'application/json': { schema: ConnectorInfo } },
+        },
+        404: { description: 'Destination connector not found' },
+      },
+    }),
+    async (c) => {
+      const { type } = c.req.valid('param')
+      try {
+        return c.json(await engine.meta_destination(type), 200)
+      } catch {
+        return c.json({ error: `Unknown destination connector: ${type}` }, 404)
+      }
     }
   )
 

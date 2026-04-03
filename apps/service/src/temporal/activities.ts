@@ -83,7 +83,7 @@ export function createActivities(opts: { engineUrl: string; kafkaBroker?: string
 
   return {
     async setup(config: PipelineConfig): Promise<SetupResult> {
-      return engine.pipelineSetup(config)
+      return engine.pipeline_setup(config)
     },
 
     async syncImmediate(
@@ -93,7 +93,7 @@ export function createActivities(opts: { engineUrl: string; kafkaBroker?: string
       const { input: inputArr, ...syncOpts } = activityOpts ?? {}
       const input = inputArr?.length ? asIterable(inputArr) : undefined
       const { errors, state, eof } = await drainMessages(
-        engine.pipelineSync(config, syncOpts, input) as AsyncIterable<Record<string, unknown>>
+        engine.pipeline_sync(config, syncOpts, input) as AsyncIterable<Record<string, unknown>>
       )
       return { errors, state, eof }
     },
@@ -106,7 +106,7 @@ export function createActivities(opts: { engineUrl: string; kafkaBroker?: string
       const { input: inputArr, ...syncOpts } = activityOpts ?? {}
       const input = inputArr?.length ? asIterable(inputArr) : undefined
       const { records, state, eof } = await drainMessages(
-        engine.pipelineRead(config, syncOpts, input) as AsyncIterable<Record<string, unknown>>
+        engine.pipeline_read(config, syncOpts, input) as AsyncIterable<Record<string, unknown>>
       )
 
       // If Kafka is configured, produce records to the pipeline topic
@@ -162,7 +162,7 @@ export function createActivities(opts: { engineUrl: string; kafkaBroker?: string
       }
 
       const { errors, state } = await drainMessages(
-        engine.pipelineWrite(
+        engine.pipeline_write(
           config,
           asIterable(records) as AsyncIterable<Message>
         ) as AsyncIterable<Record<string, unknown>>
@@ -172,7 +172,7 @@ export function createActivities(opts: { engineUrl: string; kafkaBroker?: string
     },
 
     async teardown(config: PipelineConfig): Promise<void> {
-      await engine.pipelineTeardown(config)
+      await engine.pipeline_teardown(config)
     },
   }
 }
