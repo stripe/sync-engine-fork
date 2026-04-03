@@ -26,11 +26,11 @@ async function* toAsyncIter<T>(items: T[]): AsyncIterableIterator<T> {
 const now = new Date().toISOString()
 
 function record(stream: string, data: Record<string, unknown>): DestinationInput {
-  return { type: 'record', stream, data, emitted_at: now }
+  return { type: 'record', record: { stream, data, emitted_at: now } }
 }
 
 function state(stream: string, data: unknown): DestinationInput {
-  return { type: 'state', stream, data }
+  return { type: 'state', state: { stream, data } }
 }
 
 const catalog = { streams: [] } as never
@@ -103,10 +103,13 @@ describe('destination-google-sheets', () => {
       dest.write({ config: cfg({ batch_size: 100 }), catalog }, toAsyncIter(messages))
     )
 
-    // State should be re-emitted
+    // State should be re-emitted (envelope format)
     const states = output.filter((m) => m.type === 'state')
     expect(states).toHaveLength(1)
-    expect(states[0]).toMatchObject({ type: 'state', stream: 'orders', data: { cursor: 'o2' } })
+    expect(states[0]).toMatchObject({
+      type: 'state',
+      state: { stream: 'orders', data: { cursor: 'o2' } },
+    })
 
     // All 3 records should be written (2 flushed by state, 1 flushed at end)
     const id = dest.spreadsheetId!
@@ -252,7 +255,36 @@ describe('destination-google-sheets', () => {
 
     const logs = output.filter((m) => m.type === 'log')
     expect(logs).toHaveLength(1)
-    expect(logs[0]).toMatchObject({ type: 'log', level: 'info' })
+    expect(logs[0]).toMatchObject({ type: 'log', log: { level: 'info' } })
+  })
+})
+
+describe('spec', () => {
+  it('yields a spec message with config JSON Schema', async () => {
+    const { sheets } = createMemorySheets()
+    const dest = createDestination(sheets)
+
+    const output: unknown[] = []
+    for await (const msg of dest.spec()) output.push(msg)
+
+    expect(output).toHaveLength(1)
+    expect(output[0]).toMatchObject({ type: 'spec', spec: { config: expect.any(Object) } })
+  })
+})
+
+describe('check', () => {
+  it('yields a connection_status message', async () => {
+    const { sheets } = createMemorySheets()
+    const dest = createDestination(sheets)
+
+    const output: unknown[] = []
+    for await (const msg of dest.check({ config: cfg() })) output.push(msg)
+
+    expect(output).toHaveLength(1)
+    expect(output[0]).toMatchObject({
+      type: 'connection_status',
+      connection_status: { status: 'succeeded' },
+    })
   })
 
   it('updates existing rows and emits row assignments for new appends', async () => {
@@ -384,25 +416,29 @@ describe('makeSheetsClient env var fallback', () => {
     }
   })
 
-  it('falls back to env vars when config omits client_id/client_secret', () => {
+  it('falls back to env vars when config omits client_id/client_secret', async () => {
     process.env['GOOGLE_CLIENT_ID'] = 'env-client-id'
     process.env['GOOGLE_CLIENT_SECRET'] = 'env-client-secret'
 
     // No sheetsClient injected — makeSheetsClient will be called with env vars.
-    // We just verify it doesn't throw (real Google API won't be hit in spec/check).
+    // We just verify it doesn't throw (real Google API won't be hit in spec).
     const dest = createDestination()
-    const specResult = dest.spec()
-    expect(specResult.config).toBeDefined()
+    const output: unknown[] = []
+    for await (const msg of dest.spec()) output.push(msg)
+    expect(output).toHaveLength(1)
+    expect(output[0]).toMatchObject({ type: 'spec', spec: { config: expect.any(Object) } })
   })
 
-  it('config values take priority over env vars', () => {
+  it('config values take priority over env vars', async () => {
     process.env['GOOGLE_CLIENT_ID'] = 'env-client-id'
     process.env['GOOGLE_CLIENT_SECRET'] = 'env-client-secret'
 
     // When config provides values, env vars are ignored — verify no error
     const dest = createDestination()
-    const specResult = dest.spec()
-    expect(specResult.config).toBeDefined()
+    const output: unknown[] = []
+    for await (const msg of dest.spec()) output.push(msg)
+    expect(output).toHaveLength(1)
+    expect(output[0]).toMatchObject({ type: 'spec', spec: { config: expect.any(Object) } })
   })
 
   it('throws when neither config nor env var provides client_id', async () => {
@@ -412,7 +448,9 @@ describe('makeSheetsClient env var fallback', () => {
 
     await expect(async () => {
       // check() calls makeSheetsClient internally (no injected sheets client)
-      await dest.check({ config })
+      for await (const _msg of dest.check({ config })) {
+        // consume
+      }
     }).rejects.toThrow('client_id required (provide in config or set GOOGLE_CLIENT_ID)')
   })
 
@@ -424,7 +462,9 @@ describe('makeSheetsClient env var fallback', () => {
     const config = cfg({ client_id: undefined, client_secret: undefined })
 
     await expect(async () => {
-      await dest.check({ config })
+      for await (const _msg of dest.check({ config })) {
+        // consume
+      }
     }).rejects.toThrow('client_secret required (provide in config or set GOOGLE_CLIENT_SECRET)')
   })
 })
