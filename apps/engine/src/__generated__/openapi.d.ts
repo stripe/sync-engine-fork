@@ -189,6 +189,7 @@ export interface components {
       | components['schemas']['LogMessage']
       | components['schemas']['ErrorMessage']
       | components['schemas']['StreamStatusMessage']
+      | components['schemas']['EofMessage']
     RecordMessage: {
       /**
        * @description discriminator enum property added by openapi-typescript
@@ -199,7 +200,8 @@ export interface components {
       data: {
         [key: string]: unknown
       }
-      emitted_at: number
+      /** Format: date-time */
+      emitted_at: string
     }
     StateMessage: {
       /**
@@ -259,10 +261,20 @@ export interface components {
       /** @enum {string} */
       status: 'started' | 'running' | 'complete' | 'incomplete'
     }
+    EofMessage: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'eof'
+      /** @enum {string} */
+      reason: 'complete' | 'state_limit' | 'time_limit' | 'error'
+    }
     DestinationOutput:
       | components['schemas']['StateMessageOutput']
       | components['schemas']['ErrorMessageOutput']
       | components['schemas']['LogMessageOutput']
+      | components['schemas']['EofMessageOutput']
     CatalogMessageOutput: {
       /**
        * @description discriminator enum property added by openapi-typescript
@@ -287,6 +299,7 @@ export interface components {
       | components['schemas']['LogMessageOutput']
       | components['schemas']['ErrorMessageOutput']
       | components['schemas']['StreamStatusMessageOutput']
+      | components['schemas']['EofMessageOutput']
     RecordMessageOutput: {
       /**
        * @description discriminator enum property added by openapi-typescript
@@ -297,7 +310,8 @@ export interface components {
       data: {
         [key: string]: unknown
       }
-      emitted_at: number
+      /** Format: date-time */
+      emitted_at: string
     }
     StateMessageOutput: {
       /**
@@ -339,6 +353,15 @@ export interface components {
       stream: string
       /** @enum {string} */
       status: 'started' | 'running' | 'complete' | 'incomplete'
+    }
+    EofMessageOutput: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'eof'
+      /** @enum {string} */
+      reason: 'complete' | 'state_limit' | 'time_limit' | 'error'
     }
     StripeSourceConfig: {
       /**
@@ -643,14 +666,17 @@ export interface operations {
   }
   read: {
     parameters: {
-      query?: never
+      query?: {
+        /** @description Stop streaming after N state messages. */
+        state_limit?: number
+        /** @description Stop streaming after N seconds. */
+        time_limit?: number
+      }
       header?: {
         /** @description JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams } */
         'x-pipeline'?: string
         /** @description JSON-encoded per-stream cursor state. Engine uses this if present, falls back to StateStore. */
         'x-state'?: string
-        /** @description When set, stops streaming after N state checkpoint messages. Enables page-at-a-time sync. */
-        'x-state-checkpoint-limit'?: number
       }
       path?: never
       cookie?: never
@@ -719,14 +745,17 @@ export interface operations {
   }
   sync: {
     parameters: {
-      query?: never
+      query?: {
+        /** @description Stop streaming after N state messages. */
+        state_limit?: number
+        /** @description Stop streaming after N seconds. */
+        time_limit?: number
+      }
       header?: {
         /** @description JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams } */
         'x-pipeline'?: string
         /** @description JSON-encoded per-stream cursor state. Engine uses this if present, falls back to StateStore. */
         'x-state'?: string
-        /** @description When set, stops streaming after N state checkpoint messages. Enables page-at-a-time sync. */
-        'x-state-checkpoint-limit'?: number
       }
       path?: never
       cookie?: never

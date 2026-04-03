@@ -140,7 +140,7 @@ export interface operations {
         }
         content: {
           'application/json': {
-            /** @enum {boolean} */
+            /** @constant */
             ok: true
           }
         }
@@ -200,7 +200,7 @@ export interface operations {
                 rate_limit?: number
                 /** @description Number of time-range segments for parallel backfill (default: 200) */
                 backfill_concurrency?: number
-                /** @enum {string} */
+                /** @constant */
                 type: 'stripe'
               }
               destination:
@@ -220,10 +220,7 @@ export interface operations {
                     database?: string
                     /** @description Database user (required for AWS IAM) */
                     user?: string
-                    /**
-                     * @description Target schema name
-                     * @default public
-                     */
+                    /** @description Target schema name (e.g. "stripe_sync") */
                     schema: string
                     /**
                      * @description Records to buffer before flushing
@@ -241,7 +238,7 @@ export interface operations {
                     }
                     /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
                     ssl_ca_pem?: string
-                    /** @enum {string} */
+                    /** @constant */
                     type: 'postgres'
                   }
                 | {
@@ -265,7 +262,7 @@ export interface operations {
                      * @default 50
                      */
                     batch_size: number
-                    /** @enum {string} */
+                    /** @constant */
                     type: 'google-sheets'
                   }
               streams?: {
@@ -274,6 +271,11 @@ export interface operations {
                 sync_mode?: 'incremental' | 'full_refresh'
                 backfill_limit?: number
               }[]
+              status?: {
+                phase: string
+                paused: boolean
+                iteration: number
+              }
             }[]
             has_more: boolean
           }
@@ -326,7 +328,7 @@ export interface operations {
             rate_limit?: number
             /** @description Number of time-range segments for parallel backfill (default: 200) */
             backfill_concurrency?: number
-            /** @enum {string} */
+            /** @constant */
             type: 'stripe'
           }
           destination:
@@ -346,11 +348,8 @@ export interface operations {
                 database?: string
                 /** @description Database user (required for AWS IAM) */
                 user?: string
-                /**
-                 * @description Target schema name
-                 * @default public
-                 */
-                schema?: string
+                /** @description Target schema name (e.g. "stripe_sync") */
+                schema: string
                 /**
                  * @description Records to buffer before flushing
                  * @default 100
@@ -367,7 +366,7 @@ export interface operations {
                 }
                 /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
                 ssl_ca_pem?: string
-                /** @enum {string} */
+                /** @constant */
                 type: 'postgres'
               }
             | {
@@ -391,7 +390,7 @@ export interface operations {
                  * @default 50
                  */
                 batch_size?: number
-                /** @enum {string} */
+                /** @constant */
                 type: 'google-sheets'
               }
           streams?: {
@@ -447,7 +446,7 @@ export interface operations {
               rate_limit?: number
               /** @description Number of time-range segments for parallel backfill (default: 200) */
               backfill_concurrency?: number
-              /** @enum {string} */
+              /** @constant */
               type: 'stripe'
             }
             destination:
@@ -467,10 +466,7 @@ export interface operations {
                   database?: string
                   /** @description Database user (required for AWS IAM) */
                   user?: string
-                  /**
-                   * @description Target schema name
-                   * @default public
-                   */
+                  /** @description Target schema name (e.g. "stripe_sync") */
                   schema: string
                   /**
                    * @description Records to buffer before flushing
@@ -488,7 +484,7 @@ export interface operations {
                   }
                   /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
                   ssl_ca_pem?: string
-                  /** @enum {string} */
+                  /** @constant */
                   type: 'postgres'
                 }
               | {
@@ -512,7 +508,7 @@ export interface operations {
                    * @default 50
                    */
                   batch_size: number
-                  /** @enum {string} */
+                  /** @constant */
                   type: 'google-sheets'
                 }
             streams?: {
@@ -531,7 +527,7 @@ export interface operations {
         }
         content: {
           'application/json': {
-            error?: unknown
+            error: unknown
           }
         }
       }
@@ -591,7 +587,7 @@ export interface operations {
               rate_limit?: number
               /** @description Number of time-range segments for parallel backfill (default: 200) */
               backfill_concurrency?: number
-              /** @enum {string} */
+              /** @constant */
               type: 'stripe'
             }
             destination:
@@ -611,10 +607,7 @@ export interface operations {
                   database?: string
                   /** @description Database user (required for AWS IAM) */
                   user?: string
-                  /**
-                   * @description Target schema name
-                   * @default public
-                   */
+                  /** @description Target schema name (e.g. "stripe_sync") */
                   schema: string
                   /**
                    * @description Records to buffer before flushing
@@ -632,7 +625,7 @@ export interface operations {
                   }
                   /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
                   ssl_ca_pem?: string
-                  /** @enum {string} */
+                  /** @constant */
                   type: 'postgres'
                 }
               | {
@@ -656,7 +649,7 @@ export interface operations {
                    * @default 50
                    */
                   batch_size: number
-                  /** @enum {string} */
+                  /** @constant */
                   type: 'google-sheets'
                 }
             streams?: {
@@ -680,7 +673,7 @@ export interface operations {
         }
         content: {
           'application/json': {
-            error?: unknown
+            error: unknown
           }
         }
       }
@@ -705,7 +698,7 @@ export interface operations {
         content: {
           'application/json': {
             id: string
-            /** @enum {boolean} */
+            /** @constant */
             deleted: true
           }
         }
@@ -717,7 +710,18 @@ export interface operations {
         }
         content: {
           'application/json': {
-            error?: unknown
+            error: unknown
+          }
+        }
+      }
+      /** @description Teardown or deletion failed */
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            error: unknown
           }
         }
       }
@@ -770,7 +774,7 @@ export interface operations {
             rate_limit?: number
             /** @description Number of time-range segments for parallel backfill (default: 200) */
             backfill_concurrency?: number
-            /** @enum {string} */
+            /** @constant */
             type: 'stripe'
           }
           destination?:
@@ -790,11 +794,8 @@ export interface operations {
                 database?: string
                 /** @description Database user (required for AWS IAM) */
                 user?: string
-                /**
-                 * @description Target schema name
-                 * @default public
-                 */
-                schema?: string
+                /** @description Target schema name (e.g. "stripe_sync") */
+                schema: string
                 /**
                  * @description Records to buffer before flushing
                  * @default 100
@@ -811,7 +812,7 @@ export interface operations {
                 }
                 /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
                 ssl_ca_pem?: string
-                /** @enum {string} */
+                /** @constant */
                 type: 'postgres'
               }
             | {
@@ -835,7 +836,7 @@ export interface operations {
                  * @default 50
                  */
                 batch_size?: number
-                /** @enum {string} */
+                /** @constant */
                 type: 'google-sheets'
               }
           streams?: {
@@ -891,7 +892,7 @@ export interface operations {
               rate_limit?: number
               /** @description Number of time-range segments for parallel backfill (default: 200) */
               backfill_concurrency?: number
-              /** @enum {string} */
+              /** @constant */
               type: 'stripe'
             }
             destination:
@@ -911,10 +912,7 @@ export interface operations {
                   database?: string
                   /** @description Database user (required for AWS IAM) */
                   user?: string
-                  /**
-                   * @description Target schema name
-                   * @default public
-                   */
+                  /** @description Target schema name (e.g. "stripe_sync") */
                   schema: string
                   /**
                    * @description Records to buffer before flushing
@@ -932,7 +930,7 @@ export interface operations {
                   }
                   /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
                   ssl_ca_pem?: string
-                  /** @enum {string} */
+                  /** @constant */
                   type: 'postgres'
                 }
               | {
@@ -956,7 +954,7 @@ export interface operations {
                    * @default 50
                    */
                   batch_size: number
-                  /** @enum {string} */
+                  /** @constant */
                   type: 'google-sheets'
                 }
             streams?: {
@@ -980,7 +978,7 @@ export interface operations {
         }
         content: {
           'application/json': {
-            error?: unknown
+            error: unknown
           }
         }
       }
@@ -1040,7 +1038,7 @@ export interface operations {
               rate_limit?: number
               /** @description Number of time-range segments for parallel backfill (default: 200) */
               backfill_concurrency?: number
-              /** @enum {string} */
+              /** @constant */
               type: 'stripe'
             }
             destination:
@@ -1060,10 +1058,7 @@ export interface operations {
                   database?: string
                   /** @description Database user (required for AWS IAM) */
                   user?: string
-                  /**
-                   * @description Target schema name
-                   * @default public
-                   */
+                  /** @description Target schema name (e.g. "stripe_sync") */
                   schema: string
                   /**
                    * @description Records to buffer before flushing
@@ -1081,7 +1076,7 @@ export interface operations {
                   }
                   /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
                   ssl_ca_pem?: string
-                  /** @enum {string} */
+                  /** @constant */
                   type: 'postgres'
                 }
               | {
@@ -1105,7 +1100,7 @@ export interface operations {
                    * @default 50
                    */
                   batch_size: number
-                  /** @enum {string} */
+                  /** @constant */
                   type: 'google-sheets'
                 }
             streams?: {
@@ -1129,7 +1124,7 @@ export interface operations {
         }
         content: {
           'application/json': {
-            error?: unknown
+            error: unknown
           }
         }
       }
@@ -1189,7 +1184,7 @@ export interface operations {
               rate_limit?: number
               /** @description Number of time-range segments for parallel backfill (default: 200) */
               backfill_concurrency?: number
-              /** @enum {string} */
+              /** @constant */
               type: 'stripe'
             }
             destination:
@@ -1209,10 +1204,7 @@ export interface operations {
                   database?: string
                   /** @description Database user (required for AWS IAM) */
                   user?: string
-                  /**
-                   * @description Target schema name
-                   * @default public
-                   */
+                  /** @description Target schema name (e.g. "stripe_sync") */
                   schema: string
                   /**
                    * @description Records to buffer before flushing
@@ -1230,7 +1222,7 @@ export interface operations {
                   }
                   /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
                   ssl_ca_pem?: string
-                  /** @enum {string} */
+                  /** @constant */
                   type: 'postgres'
                 }
               | {
@@ -1254,7 +1246,7 @@ export interface operations {
                    * @default 50
                    */
                   batch_size: number
-                  /** @enum {string} */
+                  /** @constant */
                   type: 'google-sheets'
                 }
             streams?: {
@@ -1278,7 +1270,7 @@ export interface operations {
         }
         content: {
           'application/json': {
-            error?: unknown
+            error: unknown
           }
         }
       }
