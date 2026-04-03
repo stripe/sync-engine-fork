@@ -15,7 +15,7 @@ import {
   ConfiguredCatalog,
   ConnectorSpecification,
   CheckResult,
-  SyncEngineParams,
+  PipelineConfig,
 } from '@stripe/sync-protocol'
 import type { Source, Destination, DestinationInput as DestInput } from '@stripe/sync-protocol'
 import { createEngine, buildCatalog } from './engine.js'
@@ -307,9 +307,9 @@ describe('protocol schemas', () => {
     })
   })
 
-  describe('SyncEngineParams', () => {
+  describe('PipelineConfig', () => {
     it('parses minimal params', () => {
-      const result = SyncEngineParams.parse({
+      const result = PipelineConfig.parse({
         source: { type: 'stripe' },
         destination: { type: 'postgres' },
       })
@@ -318,7 +318,7 @@ describe('protocol schemas', () => {
     })
 
     it('parses with all fields', () => {
-      const result = SyncEngineParams.parse({
+      const result = PipelineConfig.parse({
         source: { type: 'stripe', api_key: 'sk_test' },
         destination: { type: 'postgres', url: 'pg://...' },
         streams: [{ name: 'customers', sync_mode: 'incremental' }],
@@ -327,11 +327,11 @@ describe('protocol schemas', () => {
     })
 
     it('rejects missing source', () => {
-      expect(() => SyncEngineParams.parse({ destination: { type: 'postgres' } })).toThrow()
+      expect(() => PipelineConfig.parse({ destination: { type: 'postgres' } })).toThrow()
     })
 
     it('rejects missing destination', () => {
-      expect(() => SyncEngineParams.parse({ source: { type: 'stripe' } })).toThrow()
+      expect(() => PipelineConfig.parse({ source: { type: 'stripe' } })).toThrow()
     })
   })
 })
