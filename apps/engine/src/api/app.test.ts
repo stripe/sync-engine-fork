@@ -478,18 +478,19 @@ describe('POST /read', () => {
       expect(text).toContain('error')
     })
 
-    it('pipeline_sync: accepts valid wrapped input and produces output', async () => {
-      const record = {
-        type: 'record',
-        record: {
-          stream: 'customers',
-          data: { id: 'cus_1' },
-          emitted_at: new Date().toISOString(),
-        },
-      }
+    it('pipeline_sync: accepts raw (already-unwrapped) input and produces output', async () => {
+      // pipeline_sync passes input as-is to engine — no SourceInput unwrapping in the handler.
+      // Clients send the connector-specific payload directly (not the SourceInput envelope).
       const body = toNdjson([
-        { type: 'test', test: record },
-        { type: 'test', test: { type: 'state', state: { stream: 'customers', data: {} } } },
+        {
+          type: 'record',
+          record: {
+            stream: 'customers',
+            data: { id: 'cus_1' },
+            emitted_at: new Date().toISOString(),
+          },
+        },
+        { type: 'state', state: { stream: 'customers', data: {} } },
       ])
       const res = await inputApp.request('/pipeline_sync', {
         method: 'POST',
@@ -499,18 +500,6 @@ describe('POST /read', () => {
       expect(res.status).toBe(200)
       const events = await readNdjson<Record<string, unknown>>(res)
       expect(events.some((e) => e.type === 'state' || e.type === 'eof')).toBe(true)
-    })
-
-    it('pipeline_sync: rejects input that fails the SourceInput schema', async () => {
-      const body = toNdjson([{ type: 'test', test: { noTypeField: true } }])
-      const res = await inputApp.request('/pipeline_sync', {
-        method: 'POST',
-        headers: { 'X-Pipeline': syncParams, ...bodyHeaders(body) },
-        body,
-      })
-      expect(res.status).toBe(200)
-      const text = await res.text()
-      expect(text).toContain('error')
     })
   })
 })

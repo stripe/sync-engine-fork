@@ -433,20 +433,7 @@ export async function createApp(resolver: ConnectorResolver) {
       const pipeline = c.req.valid('header')['x-pipeline']
       const state = c.req.valid('header')['x-state'] as Record<string, unknown> | undefined
       const { state_limit: stateLimit, time_limit: timeLimit } = c.req.valid('query')
-      let input: AsyncIterable<unknown> | undefined
-      if (hasBody(c)) {
-        const sourceType = pipeline.source.type
-        if (SourceInput) {
-          input = (async function* () {
-            for await (const msg of parseNdjsonStream(c.req.raw.body!)) {
-              const parsed = SourceInput.parse(msg)
-              yield (parsed as Record<string, unknown>)[sourceType]
-            }
-          })()
-        } else {
-          input = parseNdjsonStream(c.req.raw.body!)
-        }
-      }
+      const input = hasBody(c) ? parseNdjsonStream(c.req.raw.body!) : undefined
       const output = engine.pipeline_sync(pipeline, { state, stateLimit, timeLimit }, input)
       return ndjsonResponse(output)
     }) as any
