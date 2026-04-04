@@ -94,7 +94,10 @@ function makeResolver(): ConnectorResolver {
 function makePipeline(overrides: { streams?: Array<{ name: string }> } = {}) {
   return {
     source: { type: 'stripe', stripe: { api_key: 'sk_test_fake', base_url: STRIPE_MOCK_URL } },
-    destination: { type: 'postgres', postgres: { connection_string: connectionString, schema: SCHEMA } },
+    destination: {
+      type: 'postgres',
+      postgres: { connection_string: connectionString, schema: SCHEMA },
+    },
     streams: overrides.streams,
   }
 }
