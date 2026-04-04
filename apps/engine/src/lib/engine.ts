@@ -419,8 +419,15 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
     },
 
     async *pipeline_sync(pipeline, opts?, input?) {
-      const self = engine as Engine
-      yield* self.pipeline_write(pipeline, self.pipeline_read(pipeline, opts, input))
+      // Pass state to read() but not stateLimit — stateLimit on sync controls destination output
+      const writeOutput = engine.pipeline_write(
+        pipeline,
+        engine.pipeline_read(pipeline, { state: opts?.state }, input)
+      )
+      yield* takeLimits<DestinationOutput>({
+        stateLimit: opts?.stateLimit,
+        timeLimit: opts?.timeLimit,
+      })(writeOutput)
     },
   } satisfies Engine
   return engine

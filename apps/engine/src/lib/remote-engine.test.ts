@@ -219,16 +219,16 @@ describe('createRemoteEngine', () => {
     })
   })
 
-  describe('meta_source()', () => {
+  describe('meta_sources_get()', () => {
     it('returns spec for a known source type', async () => {
       const engine = createRemoteEngine(engineUrl)
-      const result = await engine.meta_source('test')
+      const result = await engine.meta_sources_get('test')
       expect(result).toHaveProperty('config_schema')
     })
 
     it('throws for an unknown source type', async () => {
       const engine = createRemoteEngine(engineUrl)
-      await expect(engine.meta_source('nonexistent')).rejects.toThrow()
+      await expect(engine.meta_sources_get('nonexistent')).rejects.toThrow()
     })
   })
 
@@ -241,16 +241,16 @@ describe('createRemoteEngine', () => {
     })
   })
 
-  describe('meta_destination()', () => {
+  describe('meta_destinations_get()', () => {
     it('returns spec for a known destination type', async () => {
       const engine = createRemoteEngine(engineUrl)
-      const result = await engine.meta_destination('test')
+      const result = await engine.meta_destinations_get('test')
       expect(result).toHaveProperty('config_schema')
     })
 
     it('throws for an unknown destination type', async () => {
       const engine = createRemoteEngine(engineUrl)
-      await expect(engine.meta_destination('nonexistent')).rejects.toThrow()
+      await expect(engine.meta_destinations_get('nonexistent')).rejects.toThrow()
     })
   })
 
