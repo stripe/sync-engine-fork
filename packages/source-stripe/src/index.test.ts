@@ -10,7 +10,7 @@ import type {
   TraceMessage,
 } from '@stripe/sync-protocol'
 import { collectCatalog, drainStream } from '@stripe/sync-protocol'
-import source, { createStripeSource } from './index.js'
+import source, { createStripeSource, discoverCache } from './index.js'
 import { fromWebhookEvent } from './process-event.js'
 import { buildResourceRegistry } from './resourceRegistry.js'
 import type { ResourceConfig } from './types.js'
@@ -116,6 +116,7 @@ const config = { api_key: 'sk_test_fake' }
 
 beforeEach(() => {
   vi.mocked(buildResourceRegistry).mockReset()
+  discoverCache.clear()
   consoleInfo.mockClear()
   consoleError.mockClear()
 })

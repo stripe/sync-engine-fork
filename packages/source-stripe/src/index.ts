@@ -1,4 +1,5 @@
 import type {
+  CatalogPayload,
   ConfiguredCatalog,
   Message,
   Source,
@@ -34,6 +35,9 @@ import { fetchWithProxy } from './transport.js'
 
 const apiFetch: typeof globalThis.fetch = (input, init) =>
   fetchWithProxy(input as URL | string, init ?? {})
+
+/** In-memory cache of discover results keyed by api_version. */
+export const discoverCache = new Map<string, CatalogPayload>()
 
 // MARK: - Spec
 
@@ -104,32 +108,41 @@ export function createStripeSource(
       }
     },
 
+    // For the default api_version (bundled), discover is CPU-only — no HTTP.
+    // resolveOpenApiSpec serves the bundled spec from the filesystem, so the
+    // cost is SpecParser.parse + catalogFromOpenApi (pure computation). We
+    // cache the result in-memory keyed by api_version so that pipeline_sync
+    // (which calls discover twice — once in pipeline_read, once in
+    // pipeline_write) doesn't repeat the work.
+    // TODO: Custom objects (not yet supported) would require a more specific cache
+    // since they aren't discoverable from the OpenAPI spec alone.
     async *discover({ config }): AsyncGenerator<DiscoverOutput> {
-      const resolved = await resolveOpenApiSpec(
-        { apiVersion: config.api_version ?? BUNDLED_API_VERSION },
-        apiFetch
-      )
+      const apiVersion = config.api_version ?? BUNDLED_API_VERSION
+      const cached = discoverCache.get(apiVersion)
+      if (cached) {
+        yield { type: 'catalog' as const, catalog: cached }
+        return
+      }
+
+      const resolved = await resolveOpenApiSpec({ apiVersion }, apiFetch)
       const registry = buildResourceRegistry(
         resolved.spec,
         config.api_key,
         resolved.apiVersion,
         config.base_url
       )
+      let catalog: CatalogPayload
       try {
         const parser = new SpecParser()
         const parsed = parser.parse(resolved.spec, {
           resourceAliases: OPENAPI_RESOURCE_TABLE_ALIASES,
         })
-        yield {
-          type: 'catalog' as const,
-          catalog: catalogFromOpenApi(parsed.tables, registry),
-        }
+        catalog = catalogFromOpenApi(parsed.tables, registry)
       } catch {
-        yield {
-          type: 'catalog' as const,
-          catalog: catalogFromRegistry(registry),
-        }
+        catalog = catalogFromRegistry(registry)
       }
+      discoverCache.set(apiVersion, catalog)
+      yield { type: 'catalog' as const, catalog }
     },
 
     async *setup({ config, catalog }): AsyncGenerator<SetupOutput> {

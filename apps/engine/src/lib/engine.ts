@@ -170,6 +170,18 @@ async function* withLoggedStream<T>(
 /**
  * Build a {@link ConfiguredCatalog} from the streams discovered by the source.
  *
+ * We store only the user's minimal stream selection in `PipelineConfig.streams`
+ * (name, sync_mode, fields, backfill_limit) and hydrate the full
+ * `ConfiguredCatalog` at runtime by merging that selection with `discover()`
+ * output. This means the catalog always reflects the current API shape (e.g.
+ * new fields added upstream appear automatically), at the cost of re-running
+ * discover on each operation. For source-stripe with the bundled spec this is
+ * CPU-only — no HTTP calls — and the connector caches the result in-memory.
+ *
+ * Contrast with Airbyte, which persists the full `ConfiguredAirbyteCatalog`
+ * after the initial discover and passes that saved snapshot to every
+ * read()/write() without re-discovering.
+ *
  * If `configStreams` is provided, only the listed stream names are included
  * and their `sync_mode`/`fields`/`backfill_limit` overrides are applied.
  * If omitted, all discovered streams are included with `full_refresh` mode.
