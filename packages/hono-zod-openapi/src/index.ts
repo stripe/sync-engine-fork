@@ -370,7 +370,12 @@ export class OpenAPIHono<
         components: mergedComponents,
         ...rest,
       },
-      documentOptions
+      {
+        // Prevent zod-openapi from generating *Output duplicate schemas when the
+        // same schema appears in both request and response positions.
+        outputIdSuffix: '',
+        ...documentOptions,
+      }
     )
   }
 }

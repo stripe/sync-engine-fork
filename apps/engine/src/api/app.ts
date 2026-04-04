@@ -17,6 +17,16 @@ import {
   DiscoverOutput as DiscoverOutputSchema,
   DestinationOutput as DestinationOutputSchema,
 } from '@stripe/sync-protocol'
+
+// Raw $refs for NDJSON content schemas — avoids zod-openapi generating *Output
+// duplicates when the same Zod schema appears in both request and response positions.
+// The actual Zod schemas are registered once via components in getOpenAPI31Document.
+const ndjsonRef = {
+  Message: { $ref: '#/components/schemas/Message' },
+  DiscoverOutput: { $ref: '#/components/schemas/DiscoverOutput' },
+  DestinationOutput: { $ref: '#/components/schemas/DestinationOutput' },
+  SourceInput: { $ref: '#/components/schemas/SourceInput' },
+}
 import { ndjsonResponse } from '@stripe/sync-ts-cli/ndjson'
 import { logger } from '../logger.js'
 import {
@@ -279,7 +289,7 @@ export async function createApp(resolver: ConnectorResolver) {
       responses: {
         200: {
           description: 'NDJSON stream of discover messages',
-          content: { 'application/x-ndjson': { schema: DiscoverOutputSchema } },
+          content: { 'application/x-ndjson': { schema: ndjsonRef.DiscoverOutput } },
         },
         400: errorResponse,
       },
@@ -304,10 +314,18 @@ export async function createApp(resolver: ConnectorResolver) {
       description:
         'Streams NDJSON messages (records, state, catalog). Optional NDJSON body provides live events as input.',
       requestParams: { header: allSyncHeaders, query: syncQueryParams },
+      requestBody: {
+        required: false,
+        content: {
+          'application/x-ndjson': {
+            schema: SourceInput ? ndjsonRef.SourceInput : ndjsonRef.Message,
+          },
+        },
+      },
       responses: {
         200: {
           description: 'NDJSON stream of sync messages',
-          content: { 'application/x-ndjson': { schema: MessageSchema } },
+          content: { 'application/x-ndjson': { schema: ndjsonRef.Message } },
         },
         400: errorResponse,
       },
@@ -355,12 +373,12 @@ export async function createApp(resolver: ConnectorResolver) {
       requestParams: { header: pipelineHeaders },
       requestBody: {
         required: true,
-        content: { 'application/x-ndjson': { schema: MessageSchema } },
+        content: { 'application/x-ndjson': { schema: ndjsonRef.Message } },
       },
       responses: {
         200: {
           description: 'NDJSON stream of write result messages',
-          content: { 'application/x-ndjson': { schema: DestinationOutputSchema } },
+          content: { 'application/x-ndjson': { schema: ndjsonRef.DestinationOutput } },
         },
         400: errorResponse,
       },
@@ -398,10 +416,14 @@ export async function createApp(resolver: ConnectorResolver) {
         'Without a request body, reads from the source connector and writes to the destination (backfill mode). ' +
         'With an NDJSON request body, uses the provided messages as input instead of reading from the source (push mode — e.g. piped webhook events).',
       requestParams: { header: allSyncHeaders, query: syncQueryParams },
+      requestBody: {
+        required: false,
+        content: { 'application/x-ndjson': { schema: ndjsonRef.Message } },
+      },
       responses: {
         200: {
           description: 'NDJSON stream of sync messages',
-          content: { 'application/x-ndjson': { schema: DestinationOutputSchema } },
+          content: { 'application/x-ndjson': { schema: ndjsonRef.DestinationOutput } },
         },
         400: errorResponse,
       },
@@ -524,6 +546,16 @@ export async function createApp(resolver: ConnectorResolver) {
         version: '1.0.0',
         description:
           'Stripe Sync Engine — stateless, one-shot source/destination sync over HTTP.\nAll sync endpoints accept configuration via the `X-Pipeline` header (JSON-encoded PipelineConfig). Optional cursor state can be provided via `X-State`.',
+      },
+      // Register NDJSON message schemas as components (used via raw $ref in routes
+      // to avoid zod-openapi generating *Output duplicates for dual-use schemas).
+      components: {
+        schemas: {
+          Message: MessageSchema,
+          DiscoverOutput: DiscoverOutputSchema,
+          DestinationOutput: DestinationOutputSchema,
+          ...(SourceInput ? { SourceInput } : {}),
+        },
       },
     }) as any
 

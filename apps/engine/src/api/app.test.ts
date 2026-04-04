@@ -172,7 +172,7 @@ describe('GET /openapi.json', () => {
     // NDJSON responses reference schemas (zod-openapi adds Output suffix for response-only types)
     const readNdjson =
       spec.paths['/pipeline_read']?.post?.responses?.['200']?.content?.['application/x-ndjson']
-    expect(readNdjson.schema.$ref).toBe('#/components/schemas/MessageOutput')
+    expect(readNdjson.schema.$ref).toBe('#/components/schemas/Message')
 
     const writeNdjson =
       spec.paths['/pipeline_write']?.post?.responses?.['200']?.content?.['application/x-ndjson']
@@ -364,9 +364,19 @@ describe('POST /read', () => {
   })
 
   describe('SourceInput validation (source with input schema)', () => {
-    // Build a resolver where the source has rawInputJsonSchema
+    // Build a resolver where the source has rawInputJsonSchema.
+    // The input schema matches the Message record shape so sourceTest can echo it
+    // and the engine's Message.parse() succeeds downstream.
     let inputApp: Awaited<ReturnType<typeof createApp>>
-    const inputSchema = { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] }
+    const inputSchema = {
+      type: 'object',
+      properties: {
+        type: { type: 'string' },
+        record: { type: 'object' },
+        state: { type: 'object' },
+      },
+      required: ['type'],
+    }
 
     beforeAll(async () => {
       const [srcConfigSchema, destConfigSchema] = await Promise.all([
@@ -404,7 +414,15 @@ describe('POST /read', () => {
     })
 
     it('accepts valid wrapped input and passes unwrapped data to source', async () => {
-      const body = toNdjson([{ type: 'test', test: { id: 'evt_1' } }])
+      const record = {
+        type: 'record',
+        record: {
+          stream: 'customers',
+          data: { id: 'cus_1' },
+          emitted_at: new Date().toISOString(),
+        },
+      }
+      const body = toNdjson([{ type: 'test', test: record }])
       const res = await inputApp.request('/pipeline_read', {
         method: 'POST',
         headers: { 'X-Pipeline': syncParams, ...bodyHeaders(body) },
@@ -412,19 +430,19 @@ describe('POST /read', () => {
       })
       expect(res.status).toBe(200)
       const events = await readNdjson<Message>(res)
-      // sourceTest echoes input as-is — we should see the unwrapped { id: 'evt_1' } come back
-      expect(events.length).toBeGreaterThanOrEqual(1)
+      // sourceTest echoes the unwrapped record, engine parses it as Message
+      expect(events.some((e) => e.type === 'record')).toBe(true)
     })
 
     it('rejects input that fails the SourceInput schema', async () => {
-      const body = toNdjson([{ type: 'test', test: { id: 123 } }]) // id should be string
+      // Missing required 'type' field in the inner payload
+      const body = toNdjson([{ type: 'test', test: { noTypeField: true } }])
       const res = await inputApp.request('/pipeline_read', {
         method: 'POST',
         headers: { 'X-Pipeline': syncParams, ...bodyHeaders(body) },
         body,
       })
-      // The stream will error mid-flight — NDJSON response starts as 200
-      // but the error propagates through the stream
+      // SourceInput.parse() throws — error propagates through the NDJSON stream
       expect(res.status).toBe(200)
       const text = await res.text()
       expect(text).toContain('error')
