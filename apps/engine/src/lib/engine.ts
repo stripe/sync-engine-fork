@@ -222,7 +222,7 @@ async function getSpecConfig(
  * @param resolver - Resolves connector type names to connector instances.
  */
 export async function createEngine(resolver: ConnectorResolver): Promise<Engine> {
-  const engine = {
+  const engine: Engine = {
     async meta_sources_list() {
       return {
         items: [...resolver.sources()].map(([type, r]) => ({
@@ -429,6 +429,6 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
         timeLimit: opts?.timeLimit,
       })(writeOutput)
     },
-  } satisfies Engine
+  }
   return engine
 }
