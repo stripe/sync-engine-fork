@@ -435,43 +435,8 @@ export interface components {
                 reason: "complete" | "state_limit" | "time_limit" | "error";
             };
         };
+        DiscoverOutput: components["schemas"]["CatalogMessageOutput"] | components["schemas"]["LogMessageOutput"] | components["schemas"]["TraceMessageOutput"];
         DestinationOutput: components["schemas"]["StateMessageOutput"] | components["schemas"]["TraceMessageOutput"] | components["schemas"]["LogMessageOutput"] | components["schemas"]["EofMessageOutput"];
-        MessageOutput: components["schemas"]["RecordMessageOutput"] | components["schemas"]["StateMessageOutput"] | components["schemas"]["CatalogMessageOutput"] | components["schemas"]["LogMessageOutput"] | components["schemas"]["TraceMessageOutput"] | components["schemas"]["SpecMessageOutput"] | components["schemas"]["ConnectionStatusMessageOutput"] | components["schemas"]["ControlMessageOutput"] | components["schemas"]["EofMessageOutput"];
-        RecordMessageOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "record";
-            /** @description One record for one stream. */
-            record: {
-                /** @description Stream (table) name this record belongs to. */
-                stream: string;
-                /** @description The record payload as a key-value map. */
-                data: {
-                    [key: string]: unknown;
-                };
-                /**
-                 * Format: date-time
-                 * @description ISO 8601 timestamp when the record was emitted by the source.
-                 */
-                emitted_at: string;
-            };
-        };
-        StateMessageOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "state";
-            /** @description Per-stream checkpoint for resumable syncs. */
-            state: {
-                /** @description Stream being checkpointed. */
-                stream: string;
-                /** @description Opaque checkpoint data — only the source understands its contents. The orchestrator persists it keyed by stream and passes it back on resume. */
-                data: unknown;
-            };
-        };
         CatalogMessageOutput: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -563,6 +528,42 @@ export interface components {
                     /** @description Estimated total byte count for this stream. */
                     byte_count?: number;
                 };
+            };
+        };
+        MessageOutput: components["schemas"]["RecordMessageOutput"] | components["schemas"]["StateMessageOutput"] | components["schemas"]["CatalogMessageOutput"] | components["schemas"]["LogMessageOutput"] | components["schemas"]["TraceMessageOutput"] | components["schemas"]["SpecMessageOutput"] | components["schemas"]["ConnectionStatusMessageOutput"] | components["schemas"]["ControlMessageOutput"] | components["schemas"]["EofMessageOutput"];
+        RecordMessageOutput: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "record";
+            /** @description One record for one stream. */
+            record: {
+                /** @description Stream (table) name this record belongs to. */
+                stream: string;
+                /** @description The record payload as a key-value map. */
+                data: {
+                    [key: string]: unknown;
+                };
+                /**
+                 * Format: date-time
+                 * @description ISO 8601 timestamp when the record was emitted by the source.
+                 */
+                emitted_at: string;
+            };
+        };
+        StateMessageOutput: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "state";
+            /** @description Per-stream checkpoint for resumable syncs. */
+            state: {
+                /** @description Stream being checkpointed. */
+                stream: string;
+                /** @description Opaque checkpoint data — only the source understands its contents. The orchestrator persists it keyed by stream and passes it back on resume. */
+                data: unknown;
             };
         };
         SpecMessageOutput: {
@@ -957,7 +958,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/x-ndjson": components["schemas"]["MessageOutput"];
+                    "application/x-ndjson": components["schemas"]["DiscoverOutput"];
                 };
             };
             /** @description Invalid params */

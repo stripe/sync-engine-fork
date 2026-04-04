@@ -196,7 +196,9 @@
           "200": {
             "description": "NDJSON stream of discover messages",
             "content": {
-              "application/x-ndjson": { "schema": { "$ref": "#/components/schemas/MessageOutput" } }
+              "application/x-ndjson": {
+                "schema": { "$ref": "#/components/schemas/DiscoverOutput" }
+              }
             }
           },
           "400": {
@@ -902,6 +904,22 @@
         },
         "required": ["type", "eof"]
       },
+      "DiscoverOutput": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/CatalogMessageOutput" },
+          { "$ref": "#/components/schemas/LogMessageOutput" },
+          { "$ref": "#/components/schemas/TraceMessageOutput" }
+        ],
+        "type": "object",
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "catalog": "#/components/schemas/CatalogMessageOutput",
+            "log": "#/components/schemas/LogMessageOutput",
+            "trace": "#/components/schemas/TraceMessageOutput"
+          }
+        }
+      },
       "DestinationOutput": {
         "oneOf": [
           { "$ref": "#/components/schemas/StateMessageOutput" },
@@ -919,86 +937,6 @@
             "eof": "#/components/schemas/EofMessageOutput"
           }
         }
-      },
-      "MessageOutput": {
-        "oneOf": [
-          { "$ref": "#/components/schemas/RecordMessageOutput" },
-          { "$ref": "#/components/schemas/StateMessageOutput" },
-          { "$ref": "#/components/schemas/CatalogMessageOutput" },
-          { "$ref": "#/components/schemas/LogMessageOutput" },
-          { "$ref": "#/components/schemas/TraceMessageOutput" },
-          { "$ref": "#/components/schemas/SpecMessageOutput" },
-          { "$ref": "#/components/schemas/ConnectionStatusMessageOutput" },
-          { "$ref": "#/components/schemas/ControlMessageOutput" },
-          { "$ref": "#/components/schemas/EofMessageOutput" }
-        ],
-        "type": "object",
-        "discriminator": {
-          "propertyName": "type",
-          "mapping": {
-            "record": "#/components/schemas/RecordMessageOutput",
-            "state": "#/components/schemas/StateMessageOutput",
-            "catalog": "#/components/schemas/CatalogMessageOutput",
-            "log": "#/components/schemas/LogMessageOutput",
-            "trace": "#/components/schemas/TraceMessageOutput",
-            "spec": "#/components/schemas/SpecMessageOutput",
-            "connection_status": "#/components/schemas/ConnectionStatusMessageOutput",
-            "control": "#/components/schemas/ControlMessageOutput",
-            "eof": "#/components/schemas/EofMessageOutput"
-          }
-        }
-      },
-      "RecordMessageOutput": {
-        "type": "object",
-        "properties": {
-          "type": { "type": "string", "const": "record" },
-          "record": {
-            "type": "object",
-            "properties": {
-              "stream": {
-                "type": "string",
-                "description": "Stream (table) name this record belongs to."
-              },
-              "data": {
-                "type": "object",
-                "propertyNames": { "type": "string" },
-                "additionalProperties": {},
-                "description": "The record payload as a key-value map."
-              },
-              "emitted_at": {
-                "type": "string",
-                "format": "date-time",
-                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
-                "description": "ISO 8601 timestamp when the record was emitted by the source."
-              }
-            },
-            "required": ["stream", "data", "emitted_at"],
-            "additionalProperties": false,
-            "description": "One record for one stream."
-          }
-        },
-        "required": ["type", "record"],
-        "additionalProperties": false
-      },
-      "StateMessageOutput": {
-        "type": "object",
-        "properties": {
-          "type": { "type": "string", "const": "state" },
-          "state": {
-            "type": "object",
-            "properties": {
-              "stream": { "type": "string", "description": "Stream being checkpointed." },
-              "data": {
-                "description": "Opaque checkpoint data — only the source understands its contents. The orchestrator persists it keyed by stream and passes it back on resume."
-              }
-            },
-            "required": ["stream", "data"],
-            "additionalProperties": false,
-            "description": "Per-stream checkpoint for resumable syncs."
-          }
-        },
-        "required": ["type", "state"],
-        "additionalProperties": false
       },
       "CatalogMessageOutput": {
         "type": "object",
@@ -1167,6 +1105,86 @@
           }
         },
         "required": ["type", "trace"],
+        "additionalProperties": false
+      },
+      "MessageOutput": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/RecordMessageOutput" },
+          { "$ref": "#/components/schemas/StateMessageOutput" },
+          { "$ref": "#/components/schemas/CatalogMessageOutput" },
+          { "$ref": "#/components/schemas/LogMessageOutput" },
+          { "$ref": "#/components/schemas/TraceMessageOutput" },
+          { "$ref": "#/components/schemas/SpecMessageOutput" },
+          { "$ref": "#/components/schemas/ConnectionStatusMessageOutput" },
+          { "$ref": "#/components/schemas/ControlMessageOutput" },
+          { "$ref": "#/components/schemas/EofMessageOutput" }
+        ],
+        "type": "object",
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "record": "#/components/schemas/RecordMessageOutput",
+            "state": "#/components/schemas/StateMessageOutput",
+            "catalog": "#/components/schemas/CatalogMessageOutput",
+            "log": "#/components/schemas/LogMessageOutput",
+            "trace": "#/components/schemas/TraceMessageOutput",
+            "spec": "#/components/schemas/SpecMessageOutput",
+            "connection_status": "#/components/schemas/ConnectionStatusMessageOutput",
+            "control": "#/components/schemas/ControlMessageOutput",
+            "eof": "#/components/schemas/EofMessageOutput"
+          }
+        }
+      },
+      "RecordMessageOutput": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "const": "record" },
+          "record": {
+            "type": "object",
+            "properties": {
+              "stream": {
+                "type": "string",
+                "description": "Stream (table) name this record belongs to."
+              },
+              "data": {
+                "type": "object",
+                "propertyNames": { "type": "string" },
+                "additionalProperties": {},
+                "description": "The record payload as a key-value map."
+              },
+              "emitted_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                "description": "ISO 8601 timestamp when the record was emitted by the source."
+              }
+            },
+            "required": ["stream", "data", "emitted_at"],
+            "additionalProperties": false,
+            "description": "One record for one stream."
+          }
+        },
+        "required": ["type", "record"],
+        "additionalProperties": false
+      },
+      "StateMessageOutput": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "const": "state" },
+          "state": {
+            "type": "object",
+            "properties": {
+              "stream": { "type": "string", "description": "Stream being checkpointed." },
+              "data": {
+                "description": "Opaque checkpoint data — only the source understands its contents. The orchestrator persists it keyed by stream and passes it back on resume."
+              }
+            },
+            "required": ["stream", "data"],
+            "additionalProperties": false,
+            "description": "Per-stream checkpoint for resumable syncs."
+          }
+        },
+        "required": ["type", "state"],
         "additionalProperties": false
       },
       "SpecMessageOutput": {
