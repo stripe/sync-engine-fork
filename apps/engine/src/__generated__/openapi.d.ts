@@ -732,7 +732,7 @@ export interface components {
             batch_size: number;
         };
         SourceConfig: {
-            /** @enum {string} */
+            /** @constant */
             type: "stripe";
             stripe?: components["schemas"]["SourceStripeConfig"];
         };
@@ -771,16 +771,16 @@ export interface components {
             type: string;
         };
         SourceInput: {
-            /** @enum {string} */
+            /** @constant */
             type: "stripe";
             stripe?: components["schemas"]["SourceStripeInput"];
         };
         DestinationConfig: {
-            /** @enum {string} */
+            /** @constant */
             type: "postgres";
             postgres?: components["schemas"]["DestinationPostgresConfig"];
         } | {
-            /** @enum {string} */
+            /** @constant */
             type: "google-sheets";
             "google-sheets"?: components["schemas"]["DestinationGoogleSheetsConfig"];
         };

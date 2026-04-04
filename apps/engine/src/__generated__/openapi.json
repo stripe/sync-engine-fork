@@ -1428,7 +1428,7 @@
             "type": "object",
             "required": ["type"],
             "properties": {
-              "type": { "type": "string", "enum": ["stripe"] },
+              "type": { "const": "stripe" },
               "stripe": { "$ref": "#/components/schemas/SourceStripeConfig" }
             }
           }
@@ -1520,7 +1520,7 @@
             "type": "object",
             "required": ["type"],
             "properties": {
-              "type": { "type": "string", "enum": ["stripe"] },
+              "type": { "const": "stripe" },
               "stripe": { "$ref": "#/components/schemas/SourceStripeInput" }
             }
           }
@@ -1533,7 +1533,7 @@
             "type": "object",
             "required": ["type"],
             "properties": {
-              "type": { "type": "string", "enum": ["postgres"] },
+              "type": { "const": "postgres" },
               "postgres": { "$ref": "#/components/schemas/DestinationPostgresConfig" }
             }
           },
@@ -1541,7 +1541,7 @@
             "type": "object",
             "required": ["type"],
             "properties": {
-              "type": { "type": "string", "enum": ["google-sheets"] },
+              "type": { "const": "google-sheets" },
               "google-sheets": { "$ref": "#/components/schemas/DestinationGoogleSheetsConfig" }
             }
           }

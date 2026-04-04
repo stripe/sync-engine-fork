@@ -147,7 +147,7 @@ describe('GET /openapi.json', () => {
     // SourceConfig oneOf variant wraps SourceTestConfig under the "test" key
     const variant = spec.components.schemas.SourceConfig.oneOf[0]
     expect(variant.required).toContain('type')
-    expect(variant.properties.type.enum).toEqual(['test'])
+    expect(variant.properties.type.const).toBe('test')
     expect(variant.properties.test.$ref).toContain('SourceTestConfig')
   })
 

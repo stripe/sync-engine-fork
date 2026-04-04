@@ -98,7 +98,7 @@ export function injectConnectorSchemas(spec: any, resolver: ConnectorResolver): 
         type: 'object',
         required: ['type'],
         properties: {
-          type: { type: 'string', enum: [n] },
+          type: { const: n },
           [n]: { $ref: `#/components/schemas/${connectorSchemaName(n, 'Source')}` },
         },
       })),
@@ -124,7 +124,7 @@ export function injectConnectorSchemas(spec: any, resolver: ConnectorResolver): 
         type: 'object',
         required: ['type'],
         properties: {
-          type: { type: 'string', enum: [n] },
+          type: { const: n },
           [n]: { $ref: `#/components/schemas/${connectorInputSchemaName(n)}` },
         },
       })),
@@ -149,7 +149,7 @@ export function injectConnectorSchemas(spec: any, resolver: ConnectorResolver): 
         type: 'object',
         required: ['type'],
         properties: {
-          type: { type: 'string', enum: [n] },
+          type: { const: n },
           [n]: { $ref: `#/components/schemas/${connectorSchemaName(n, 'Destination')}` },
         },
       })),
