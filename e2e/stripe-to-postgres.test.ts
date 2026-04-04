@@ -97,6 +97,7 @@ describeWithEnv('stripe → postgres e2e', ['STRIPE_API_KEY'], ({ STRIPE_API_KEY
 
   it('backfills product and price data to postgres', async () => {
     const engine = await createEngine(resolver)
+    await engine.pipeline_setup(makePipeline())
     await collectStates(engine.pipeline_sync(makePipeline()))
 
     for (const stream of STREAMS) {
