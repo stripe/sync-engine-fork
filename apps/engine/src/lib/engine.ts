@@ -60,11 +60,11 @@ export interface Engine {
   /** List all registered source connector types with their config schemas. */
   meta_sources_list(): Promise<{ items: ConnectorListItem[] }>
   /** Fetch metadata (config schema) for a single source connector type. */
-  meta_source(type: string): Promise<ConnectorInfo>
+  meta_sources_get(type: string): Promise<ConnectorInfo>
   /** List all registered destination connector types with their config schemas. */
   meta_destinations_list(): Promise<{ items: ConnectorListItem[] }>
   /** Fetch metadata (config schema) for a single destination connector type. */
-  meta_destination(type: string): Promise<ConnectorInfo>
+  meta_destinations_get(type: string): Promise<ConnectorInfo>
 
   /**
    * Run connector `setup()` hooks for both source and destination.
@@ -232,7 +232,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       }
     },
 
-    async meta_source(type: string): Promise<ConnectorInfo> {
+    async meta_sources_get(type: string): Promise<ConnectorInfo> {
       const r = resolver.sources().get(type)
       if (!r) throw new Error(`Unknown source connector: ${type}`)
       return { config_schema: r.rawConfigJsonSchema }
@@ -247,7 +247,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       }
     },
 
-    async meta_destination(type: string): Promise<ConnectorInfo> {
+    async meta_destinations_get(type: string): Promise<ConnectorInfo> {
       const r = resolver.destinations().get(type)
       if (!r) throw new Error(`Unknown destination connector: ${type}`)
       return { config_schema: r.rawConfigJsonSchema }

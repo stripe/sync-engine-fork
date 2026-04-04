@@ -93,11 +93,11 @@ export function createRemoteEngine(engineUrl: string): Engine {
       headers,
       ...(body
         ? {
-            body,
-            bodySerializer: (b: unknown) => b,
-            headers: { 'content-type': 'application/x-ndjson', ...headers },
-            duplex: 'half',
-          }
+          body,
+          bodySerializer: (b: unknown) => b,
+          headers: { 'content-type': 'application/x-ndjson', ...headers },
+          duplex: 'half',
+        }
         : {}),
     })
     if (!response.ok) {
@@ -109,36 +109,41 @@ export function createRemoteEngine(engineUrl: string): Engine {
 
   return {
     async meta_sources_list(): Promise<{ items: ConnectorListItem[] }> {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (client.GET as any)('/meta/sources')
+      const { data, error } = await client.GET('/meta/sources')
       if (error) throw new Error(`Engine /meta/sources failed: ${JSON.stringify(error)}`)
-      return data as { items: ConnectorListItem[] }
+      return data
     },
 
-    async meta_source(type: string): Promise<ConnectorInfo> {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (client.GET as any)('/meta/sources/{type}', {
+    async meta_sources_get(type: string): Promise<ConnectorInfo> {
+      const { data, error } = await client.GET('/meta/sources/{type}', {
         params: { path: { type } },
       })
       if (error) throw new Error(`Engine /meta/sources/${type} failed: ${JSON.stringify(error)}`)
-      return data as ConnectorInfo
+      return data!
     },
 
     async meta_destinations_list(): Promise<{ items: ConnectorListItem[] }> {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (client.GET as any)('/meta/destinations')
+      const { data, error } = await client.GET('/meta/destinations')
       if (error) throw new Error(`Engine /meta/destinations failed: ${JSON.stringify(error)}`)
-      return data as { items: ConnectorListItem[] }
+      return data
     },
 
-    async meta_destination(type: string): Promise<ConnectorInfo> {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (client.GET as any)('/meta/destinations/{type}', {
+    async meta_destinations_get(type: string): Promise<ConnectorInfo> {
+      const { data, error } = await client.GET('/meta/destinations/{type}', {
         params: { path: { type } },
       })
       if (error)
         throw new Error(`Engine /meta/destinations/${type} failed: ${JSON.stringify(error)}`)
-      return data as ConnectorInfo
+      return data!
+    },
+
+    async *source_discover(source: PipelineConfig['source']): AsyncIterable<DiscoverOutput> {
+      // Only source config is needed for discover — pass a minimal pipeline header
+      const res = await post('/source_discover', {
+        source,
+        destination: { type: '_' },
+      } as PipelineConfig)
+      yield* parseNdjsonStream<DiscoverOutput>(res.body!)
     },
 
     async pipeline_setup(pipeline: PipelineConfig): Promise<SetupResult> {
@@ -161,15 +166,6 @@ export function createRemoteEngine(engineUrl: string): Engine {
         source: ConnectionStatusPayload
         destination: ConnectionStatusPayload
       }
-    },
-
-    async *source_discover(source: PipelineConfig['source']): AsyncIterable<DiscoverOutput> {
-      // Only source config is needed for discover — pass a minimal pipeline header
-      const res = await post('/source_discover', {
-        source,
-        destination: { type: '_' },
-      } as PipelineConfig)
-      yield* parseNdjsonStream<DiscoverOutput>(res.body!)
     },
 
     async *pipeline_read(

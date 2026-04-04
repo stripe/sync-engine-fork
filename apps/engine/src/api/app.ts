@@ -468,7 +468,7 @@ export async function createApp(resolver: ConnectorResolver) {
     async (c) => {
       const { type } = c.req.valid('param')
       try {
-        return c.json(await engine.meta_source(type), 200)
+        return c.json(await engine.meta_sources_get(type), 200)
       } catch {
         return c.json({ error: `Unknown source connector: ${type}` }, 404)
       }
@@ -517,7 +517,7 @@ export async function createApp(resolver: ConnectorResolver) {
     async (c) => {
       const { type } = c.req.valid('param')
       try {
-        return c.json(await engine.meta_destination(type), 200)
+        return c.json(await engine.meta_destinations_get(type), 200)
       } catch {
         return c.json({ error: `Unknown destination connector: ${type}` }, 404)
       }
