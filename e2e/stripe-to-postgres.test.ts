@@ -92,7 +92,9 @@ describeWithEnv('stripe → postgres e2e', ['STRIPE_API_KEY'], ({ STRIPE_API_KEY
 
   it('backfills product and price data to postgres', async () => {
     const engine = createEngine(resolver)
-    await collectStates(engine.pipeline_sync(makePipeline()))
+    const pipeline = makePipeline()
+    await engine.pipeline_setup(pipeline)
+    await collectStates(engine.pipeline_sync(pipeline))
 
     for (const stream of STREAMS) {
       const { rows } = await pool.query(`SELECT count(*)::int AS n FROM "${SCHEMA}"."${stream}"`)
@@ -104,11 +106,12 @@ describeWithEnv('stripe → postgres e2e', ['STRIPE_API_KEY'], ({ STRIPE_API_KEY
   // -- Live update via WebSocket --------------------------------------------
 
   it('receives live product update via websocket', async () => {
-    // Clean slate — drop and let engine.pipelineSetup() recreate
+    // Clean slate — drop and recreate via pipeline_setup
     await pool.query(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`)
 
     const engine = createEngine(resolver)
     const pipeline = makePipeline({ websocket: true })
+    await engine.pipeline_setup(pipeline)
     const iter = engine.pipeline_sync(pipeline)[Symbol.asyncIterator]()
 
     try {
