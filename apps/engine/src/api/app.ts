@@ -3,15 +3,15 @@ import { z } from 'zod'
 import { apiReference } from '@scalar/hono-api-reference'
 import { HTTPException } from 'hono/http-exception'
 import pg from 'pg'
-import type { Message, DestinationOutput, ConnectorResolver, SyncParams } from '../lib/index.js'
+import type { Message, DestinationOutput, ConnectorResolver } from '../lib/index.js'
 import {
   createEngine,
-  PipelineConfig,
+  createConnectorSchemas,
   parseNdjsonStream,
   ConnectorInfo,
   ConnectorListItem,
 } from '../lib/index.js'
-import { endpointTable, addDiscriminators, injectConnectorSchemas } from './openapi-utils.js'
+import { endpointTable } from './openapi-utils.js'
 import {
   Message as MessageSchema,
   DiscoverOutput as DiscoverOutputSchema,
@@ -27,12 +27,16 @@ import {
 
 // ── Helpers ─────────────────────────────────────────────────────
 
-function syncRequestContext(params: SyncParams) {
+function syncRequestContext(pipeline: {
+  source: { type: string }
+  destination: { type: string }
+  streams?: Array<{ name: string }>
+}) {
   return {
-    sourceName: params.pipeline.source.type,
-    destinationName: params.pipeline.destination.type,
-    configuredStreamCount: params.pipeline.streams?.length ?? 0,
-    configuredStreams: params.pipeline.streams?.map((stream) => stream.name) ?? [],
+    sourceName: pipeline.source.type,
+    destinationName: pipeline.destination.type,
+    configuredStreamCount: pipeline.streams?.length ?? 0,
+    configuredStreams: pipeline.streams?.map((stream) => stream.name) ?? [],
   }
 }
 
@@ -87,65 +91,40 @@ export async function createApp(resolver: ConnectorResolver) {
     return false
   }
 
-  /** Parse sync headers (X-Pipeline, X-State) and query params (state_limit, time_limit) into SyncParams. */
-  function parseSyncParams(c: {
-    req: {
-      header: (name: string) => string | undefined
-      query: (name: string) => string | undefined
-    }
-  }): SyncParams {
-    const pipelineHeader = c.req.header('X-Pipeline')
-    if (!pipelineHeader) {
-      throw new HTTPException(400, { message: 'Missing X-Pipeline header' })
-    }
-    let pipeline
+  // ── Typed header schemas (transform + pipe for runtime validation,
+  //    .meta({ param: { content } }) for OAS content encoding) ────
+
+  const { PipelineConfig: TypedPipelineConfig, SourceInput } = createConnectorSchemas(resolver)
+
+  const jsonParse = (s: string, ctx: z.RefinementCtx) => {
     try {
-      pipeline = PipelineConfig.parse(JSON.parse(pipelineHeader))
+      return JSON.parse(s)
     } catch {
-      throw new HTTPException(400, { message: 'Invalid JSON in X-Pipeline header' })
+      ctx.addIssue({ code: 'custom', message: 'Invalid JSON' })
+      return z.NEVER
     }
-
-    const stateHeader = c.req.header('X-State')
-    let state: Record<string, unknown> | undefined
-    if (stateHeader) {
-      try {
-        state = JSON.parse(stateHeader)
-      } catch {
-        throw new HTTPException(400, { message: 'Invalid JSON in X-State header' })
-      }
-    }
-
-    const stateLimitStr = c.req.query('state_limit')
-    const stateLimit = stateLimitStr ? Number(stateLimitStr) : undefined
-    const timeLimitStr = c.req.query('time_limit')
-    const timeLimit = timeLimitStr ? Number(timeLimitStr) : undefined
-
-    return { pipeline, state, stateLimit, timeLimit }
   }
 
-  // ── Shared header param schemas ─────────────────────────────────
-
-  const xPipelineHeader = z.string().meta({
-    description:
-      'JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }',
-    example: JSON.stringify({
-      source: { type: 'stripe', stripe: { api_key: 'sk_test_...' } },
-      destination: {
-        type: 'postgres',
-        postgres: { connection_string: 'postgres://localhost/db' },
-      },
-      streams: [{ name: 'products' }],
-    }),
-  })
+  const xPipelineHeader = z
+    .string()
+    .transform(jsonParse)
+    .pipe(TypedPipelineConfig)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .meta({
+      description: 'JSON-encoded PipelineConfig',
+      param: { content: 'application/json' },
+    } as any)
 
   const xStateHeader = z
     .string()
+    .transform(jsonParse)
+    .pipe(z.record(z.string(), z.unknown()))
     .optional()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .meta({
-      description:
-        'JSON-encoded per-stream cursor state. Engine uses this if present, falls back to StateStore.',
-      example: JSON.stringify({ products: { cursor: 'prod_xyz' } }),
-    })
+      description: 'JSON-encoded per-stream cursor state',
+      param: { content: 'application/json' },
+    } as any)
 
   const pipelineHeaders = z.object({ 'x-pipeline': xPipelineHeader })
   const allSyncHeaders = z.object({
@@ -209,12 +188,12 @@ export async function createApp(resolver: ConnectorResolver) {
       },
     }),
     async (c) => {
-      const params = parseSyncParams(c)
-      const context = { path: '/pipeline_setup', ...syncRequestContext(params) }
+      const pipeline = c.req.valid('header')['x-pipeline']
+      const context = { path: '/pipeline_setup', ...syncRequestContext(pipeline) }
       const startedAt = Date.now()
       logger.info(context, 'Engine API /setup started')
       try {
-        const result = await engine.pipeline_setup(params.pipeline)
+        const result = await engine.pipeline_setup(pipeline)
         logger.info(
           { ...context, durationMs: Date.now() - startedAt },
           'Engine API /setup completed'
@@ -245,8 +224,8 @@ export async function createApp(resolver: ConnectorResolver) {
       },
     }),
     async (c) => {
-      const params = parseSyncParams(c)
-      await engine.pipeline_teardown(params.pipeline)
+      const pipeline = c.req.valid('header')['x-pipeline']
+      await engine.pipeline_teardown(pipeline)
       return c.body(null, 204)
     }
   )
@@ -282,8 +261,8 @@ export async function createApp(resolver: ConnectorResolver) {
       },
     }),
     async (c) => {
-      const params = parseSyncParams(c)
-      const result = await engine.pipeline_check(params.pipeline)
+      const pipeline = c.req.valid('header')['x-pipeline']
+      const result = await engine.pipeline_check(pipeline)
       return c.json(result, 200)
     }
   )
@@ -307,8 +286,8 @@ export async function createApp(resolver: ConnectorResolver) {
     }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ((c: any) => {
-      const params = parseSyncParams(c)
-      return ndjsonResponse(engine.source_discover(params.pipeline.source))
+      const pipeline = c.req.valid('header')['x-pipeline']
+      return ndjsonResponse(engine.source_discover(pipeline.source))
     }) as any
   )
 
@@ -335,20 +314,20 @@ export async function createApp(resolver: ConnectorResolver) {
     }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (async (c: any) => {
-      const params = parseSyncParams(c)
+      const pipeline = c.req.valid('header')['x-pipeline']
+      const state = c.req.valid('header')['x-state'] as Record<string, unknown> | undefined
+      const { state_limit: stateLimit, time_limit: timeLimit } = c.req.valid('query')
       const inputPresent = hasBody(c)
-      const context = { path: '/pipeline_read', inputPresent, ...syncRequestContext(params) }
+      const context = { path: '/pipeline_read', inputPresent, ...syncRequestContext(pipeline) }
       const startedAt = Date.now()
       logger.info(context, 'Engine API /read started')
 
       let input: AsyncIterable<unknown> | undefined
       if (inputPresent) {
-        const sourceType = params.pipeline.source.type
+        const sourceType = pipeline.source.type
         const resolvedSource = resolver.sources().get(sourceType)
         const rawInputJsonSchema = resolvedSource?.rawInputJsonSchema
         if (rawInputJsonSchema) {
-          // Source has a typed input schema — each line must be wrapped under the source type
-          // key: {"stripe": {...webhookEvent...}}. Unwrap and validate before passing to read().
           const inputValidator = z.fromJSONSchema(rawInputJsonSchema)
           input = (async function* () {
             for await (const msg of parseNdjsonStream(c.req.raw.body!)) {
@@ -369,15 +348,10 @@ export async function createApp(resolver: ConnectorResolver) {
             }
           })()
         } else {
-          // No input schema — pass through as-is (backward-compatible for sources without typed input)
           input = parseNdjsonStream(c.req.raw.body!)
         }
       }
-      const output = engine.pipeline_read(
-        params.pipeline,
-        { state: params.state, stateLimit: params.stateLimit, timeLimit: params.timeLimit },
-        input
-      )
+      const output = engine.pipeline_read(pipeline, { state, stateLimit, timeLimit }, input)
       return ndjsonResponse(logApiStream('Engine API /read', output, context, startedAt))
     }) as any
   )
@@ -406,8 +380,8 @@ export async function createApp(resolver: ConnectorResolver) {
     }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (async (c: any) => {
-      const params = parseSyncParams(c)
-      const context = { path: '/pipeline_write', ...syncRequestContext(params) }
+      const pipeline = c.req.valid('header')['x-pipeline']
+      const context = { path: '/pipeline_write', ...syncRequestContext(pipeline) }
       if (!hasBody(c)) {
         logger.error(context, 'Engine API /write missing request body')
         return c.json({ error: 'Request body required for /write' }, 400)
@@ -418,7 +392,7 @@ export async function createApp(resolver: ConnectorResolver) {
       return ndjsonResponse(
         logApiStream(
           'Engine API /write',
-          engine.pipeline_write(params.pipeline, messages),
+          engine.pipeline_write(pipeline, messages),
           context,
           startedAt
         )
@@ -447,13 +421,11 @@ export async function createApp(resolver: ConnectorResolver) {
     }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (async (c: any) => {
-      const params = parseSyncParams(c)
+      const pipeline = c.req.valid('header')['x-pipeline']
+      const state = c.req.valid('header')['x-state'] as Record<string, unknown> | undefined
+      const { state_limit: stateLimit, time_limit: timeLimit } = c.req.valid('query')
       const input = hasBody(c) ? parseNdjsonStream(c.req.raw.body!) : undefined
-      const output = engine.pipeline_sync(
-        params.pipeline,
-        { state: params.state, stateLimit: params.stateLimit, timeLimit: params.timeLimit },
-        input
-      )
+      const output = engine.pipeline_sync(pipeline, { state, stateLimit, timeLimit }, input)
       return ndjsonResponse(output)
     }) as any
   )
@@ -568,8 +540,6 @@ export async function createApp(resolver: ConnectorResolver) {
       },
     }) as any
 
-    injectConnectorSchemas(spec, resolver)
-    addDiscriminators(spec)
     spec.info.description += '\n\n## Endpoints\n\n' + endpointTable(spec)
     return c.json(spec)
   })

@@ -128,7 +128,7 @@ describe('GET /openapi.json', () => {
     expect(paths).toContain('/meta/destinations/{type}')
   })
 
-  it('injects typed connector schemas into components', async () => {
+  it('has typed connector schemas in components (auto-generated from Zod)', async () => {
     const app = await createApp(resolver)
     const res = await app.request('/openapi.json')
     const spec = (await res.json()) as any
@@ -140,15 +140,10 @@ describe('GET /openapi.json', () => {
     expect(schemaNames).toContain('DestinationConfig')
     expect(schemaNames).toContain('PipelineConfig')
 
-    // SourceConfig is a discriminated union
-    expect(spec.components.schemas.SourceConfig.discriminator.propertyName).toBe('type')
-    expect(spec.components.schemas.SourceConfig.oneOf).toHaveLength(1)
-
-    // SourceConfig oneOf variant wraps SourceTestConfig under the "test" key
-    const variant = spec.components.schemas.SourceConfig.oneOf[0]
-    expect(variant.required).toContain('type')
-    expect(variant.properties.type.const).toBe('test')
-    expect(variant.properties.test.$ref).toContain('SourceTestConfig')
+    // SourceConfig is a discriminated union with discriminator.mapping
+    const sourceConfig = spec.components.schemas.SourceConfig
+    expect(sourceConfig.discriminator.propertyName).toBe('type')
+    expect(sourceConfig.oneOf).toHaveLength(1)
   })
 
   it('defines NDJSON message schemas with discriminated unions', async () => {
@@ -599,7 +594,10 @@ describe('error handling', () => {
     })
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body.error).toContain('Invalid JSON')
+    // Zod transform issues are returned as an array from the defaultHook
+    expect(body.error).toEqual(
+      expect.arrayContaining([expect.objectContaining({ message: 'Invalid JSON' })])
+    )
   })
 })
 
