@@ -15,7 +15,7 @@
 
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
-import { createDocument } from 'zod-openapi'
+import { createDocument, createSchema } from 'zod-openapi'
 import type { Hook } from '@hono/zod-validator'
 import type {
   Context,
@@ -33,6 +33,7 @@ import type {
   ZodOpenApiPathsObject,
   CreateDocumentOptions,
 } from 'zod-openapi'
+import { z } from 'zod'
 import type { ZodType, ZodError, input as ZodInput, output as ZodOutput } from 'zod'
 
 // ── Types ────────────────────────────────────────────────────────
@@ -125,6 +126,116 @@ type ConvertPath<P extends string> = P extends `${infer L}/{${infer K}}${infer R
   ? `${L}/:${K}${ConvertPath<R>}`
   : P
 
+// ── JSON content header support ──────────────────────────────────
+//
+// Header fields annotated with .meta({ param: { content: 'application/json' } })
+// on a z.string().transform(JSON.parse).pipe(schema) chain get:
+//   - Runtime: zValidator parses JSON via transform, validates via pipe (no custom middleware)
+//   - OAS spec: parameter uses `content: { 'application/json': { schema } }` with the pipe output type
+
+/**
+ * Walk a Zod schema to find the innermost pipe output.
+ * Unwraps optional/nullable/pipe wrappers to reach the destination schema.
+ */
+function getPipeOutput(schema: AnyZod): AnyZod | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const def = (schema as any)._zod?.def
+  if (!def) return undefined
+  if (def.type === 'pipe' && def.out) return def.out
+  if ((def.type === 'optional' || def.type === 'nullable') && def.innerType) {
+    return getPipeOutput(def.innerType)
+  }
+  return undefined
+}
+
+/**
+ * Check if a header field schema has the JSON content meta annotation.
+ * Returns the content media type (e.g. 'application/json') or undefined.
+ */
+function getParamContentType(schema: AnyZod): string | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const meta = z.globalRegistry.get(schema as any) as Record<string, unknown> | undefined
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (meta?.param as any)?.content as string | undefined
+}
+
+/**
+ * For spec generation, separate header fields into plain (use schema) and
+ * JSON content (use content encoding). Returns a modified op with JSON content
+ * fields stripped from requestParams.header and added as raw ParameterObjects.
+ */
+function processJsonContentHeaders(op: ZodOpenApiOperationObject): {
+  specOp: ZodOpenApiOperationObject
+  extraComponents: Record<string, unknown>
+} {
+  const headerSchema = op.requestParams?.header
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const shape = (headerSchema as any)?._zod?.def?.shape as Record<string, AnyZod> | undefined
+  if (!shape) return { specOp: op, extraComponents: {} }
+
+  const plainShape: Record<string, AnyZod> = {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const jsonParams: any[] = []
+  let extraComponents: Record<string, unknown> = {}
+  let hasJsonFields = false
+
+  for (const [key, fieldSchema] of Object.entries(shape)) {
+    const contentType = getParamContentType(fieldSchema)
+    if (!contentType) {
+      plainShape[key] = fieldSchema
+      continue
+    }
+
+    hasJsonFields = true
+    const pipeOut = getPipeOutput(fieldSchema)
+    if (!pipeOut) {
+      plainShape[key] = fieldSchema
+      continue
+    }
+
+    // Use zod-openapi to convert the pipe output schema to JSON Schema + components
+    const { schema: jsonSchema, components } = createSchema(pipeOut)
+    Object.assign(extraComponents, components)
+
+    // Check if the field is optional (unwrap to find optional wrapper)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const isOptional = (fieldSchema as any)._zod?.def?.type === 'optional'
+
+    // Read description from globalRegistry meta
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const meta = z.globalRegistry.get(fieldSchema as any) as Record<string, unknown> | undefined
+    const description = meta?.description as string | undefined
+
+    jsonParams.push({
+      in: 'header',
+      name: key,
+      required: !isOptional,
+      ...(description ? { description } : {}),
+      content: { [contentType]: { schema: jsonSchema } },
+    })
+  }
+
+  if (!hasJsonFields) return { specOp: op, extraComponents: {} }
+
+  // Rebuild the op with JSON content fields stripped from header schema
+  const newRequestParams = { ...op.requestParams }
+  if (Object.keys(plainShape).length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    newRequestParams.header = z.object(plainShape) as any
+  } else {
+    delete newRequestParams.header
+  }
+
+  return {
+    specOp: {
+      ...op,
+      requestParams: newRequestParams,
+      parameters: [...((op.parameters as unknown[]) ?? []), ...jsonParams],
+    },
+    extraComponents,
+  }
+}
+
 // ── OpenAPIHono ──────────────────────────────────────────────────
 
 export class OpenAPIHono<
@@ -133,6 +244,7 @@ export class OpenAPIHono<
   BasePath extends string = '/',
 > extends Hono<E, S, BasePath> {
   private _routes: Array<{ path: string; method: Method; op: ZodOpenApiOperationObject }> = []
+  private _extraComponents: Record<string, unknown> = {}
   private _defaultHook?: DefaultHook
 
   constructor(options?: { defaultHook?: DefaultHook }) {
@@ -153,7 +265,12 @@ export class OpenAPIHono<
     const { method, path, hide, ...op } = route
 
     if (!hide) {
-      this._routes.push({ path, method, op })
+      // For spec: separate JSON content headers from plain headers.
+      // Runtime validation uses the ORIGINAL op (transform+pipe handles JSON parsing).
+      // Spec uses the modified specOp (JSON content fields become raw ParameterObjects).
+      const { specOp, extraComponents } = processJsonContentHeaders(op)
+      this._routes.push({ path, method, op: specOp })
+      Object.assign(this._extraComponents, extraComponents)
     }
 
     const honoPath = toHonoPath(path)
@@ -231,13 +348,21 @@ export class OpenAPIHono<
       ;(paths[path] as any)[method] = op
     }
 
+    // Merge extra components discovered from JSON content header pipe output schemas
     const { info, components, ...rest } = config
+    const mergedComponents: ZodOpenApiComponentsObject = {
+      ...components,
+      schemas: {
+        ...components?.schemas,
+        ...(this._extraComponents as ZodOpenApiComponentsObject['schemas']),
+      },
+    }
     return createDocument(
       {
         openapi: '3.1.0',
         info,
         paths,
-        components,
+        components: mergedComponents,
         ...rest,
       },
       documentOptions
