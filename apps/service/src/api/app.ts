@@ -25,7 +25,10 @@ function genId(prefix: string): string {
   return `${prefix}_${(_idCounter++).toString(36)}`
 }
 
-async function queryStatus(temporal: WorkflowClient, id: string): Promise<WorkflowStatus | undefined> {
+async function queryStatus(
+  temporal: WorkflowClient,
+  id: string
+): Promise<WorkflowStatus | undefined> {
   try {
     return await temporal.getHandle(id).query<WorkflowStatus>('status')
   } catch {

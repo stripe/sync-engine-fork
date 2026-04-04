@@ -1,5 +1,10 @@
 import { enforceCatalog } from '@stripe/sync-engine'
-import type { ConfiguredCatalog, DestinationInput, Message, RecordMessage } from '@stripe/sync-engine'
+import type {
+  ConfiguredCatalog,
+  DestinationInput,
+  Message,
+  RecordMessage,
+} from '@stripe/sync-engine'
 import {
   configSchema as googleSheetsConfigSchema,
   createDestination as createGoogleSheetsDestination,
