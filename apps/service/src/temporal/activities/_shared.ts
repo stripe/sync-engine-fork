@@ -1,11 +1,13 @@
 import { heartbeat } from '@temporalio/activity'
-import type { Message } from '@stripe/sync-engine'
+import type { Message, Engine } from '@stripe/sync-engine'
+import { createRemoteEngine } from '@stripe/sync-engine'
 import { Kafka } from 'kafkajs'
 import type { Producer } from 'kafkajs'
 import type { PipelineStore } from '../../lib/stores.js'
 
 export interface ActivitiesContext {
-  engineUrl: string
+  /** Remote engine client — satisfies the {@link Engine} interface over HTTP. Drop-in replacement for a local engine. */
+  engine: Engine
   kafkaBroker?: string
   pipelines: PipelineStore
   getProducer(): Promise<Producer>
@@ -93,7 +95,7 @@ export function createActivitiesContext(opts: {
   }
 
   return {
-    engineUrl,
+    engine: createRemoteEngine(engineUrl),
     kafkaBroker,
     pipelines,
     getProducer,

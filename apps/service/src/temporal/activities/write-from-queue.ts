@@ -1,4 +1,3 @@
-import { createRemoteEngine } from '@stripe/sync-engine'
 import type { Message } from '@stripe/sync-engine'
 import { toConfig } from '../../lib/stores.js'
 import type { ActivitiesContext } from './_shared.js'
@@ -24,9 +23,11 @@ export function createWriteFromQueueActivity(context: ActivitiesContext) {
 
     const pipeline = await context.pipelines.get(pipelineId)
     const config = toConfig(pipeline)
-    const engine = createRemoteEngine(context.engineUrl)
     const { errors, state } = await drainMessages(
-      engine.pipeline_write(config, asIterable(records) as AsyncIterable<Message>) as AsyncIterable<
+      context.engine.pipeline_write(
+        config,
+        asIterable(records) as AsyncIterable<Message>
+      ) as AsyncIterable<
         Record<string, unknown>
       >
     )

@@ -1,5 +1,4 @@
 import { heartbeat } from '@temporalio/activity'
-import { createRemoteEngine } from '@stripe/sync-engine'
 import type {
   ConfiguredCatalog,
   Message,
@@ -39,7 +38,6 @@ export function createReadGoogleSheetsIntoQueueActivity(context: ActivitiesConte
 
     const pipeline = await context.pipelines.get(pipelineId)
     const config = toConfig(pipeline)
-    const engine = createRemoteEngine(context.engineUrl)
     const { input: inputArr, catalog, ...syncOpts } = opts ?? {}
     const input = inputArr?.length ? asIterable(inputArr) : undefined
 
@@ -48,7 +46,11 @@ export function createReadGoogleSheetsIntoQueueActivity(context: ActivitiesConte
     const errors: RunResult['errors'] = []
     let seen = 0
 
-    for await (const raw of engine.pipeline_read(config, syncOpts, input) as AsyncIterable<
+    for await (const raw of context.engine.pipeline_read(
+      config,
+      syncOpts,
+      input
+    ) as AsyncIterable<
       Record<string, unknown>
     >) {
       seen++
