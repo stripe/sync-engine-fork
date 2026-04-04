@@ -374,10 +374,11 @@ describe('POST /write', () => {
     expect(res.headers.get('Content-Type')).toBe('application/x-ndjson')
 
     const events = await readNdjson<StateMessage>(res)
-    // destinationTest passes through state messages only
-    expect(events).toHaveLength(1)
+    // destinationTest passes through state messages only, then write emits eof
+    expect(events).toHaveLength(2)
     expect(events[0]!.type).toBe('state')
     expect(events[0]!.stream).toBe('customers')
+    expect(events[1]).toMatchObject({ type: 'eof', reason: 'complete' })
   })
 
   it('returns 400 when body is missing', async () => {

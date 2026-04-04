@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   DestinationOutput,
+  EofMessage,
   Message,
   PipelineConfig,
   Stream,
@@ -22,12 +23,13 @@ export const SetupResult = z.object({
 })
 export type SetupResult = z.infer<typeof SetupResult>
 
-export const SyncOpts = z.object({
-  state: z.record(z.string(), z.unknown()).optional(),
-  stateLimit: z.number().int().positive().optional(),
-  timeLimit: z.number().positive().optional(),
-})
-export type SyncOpts = z.infer<typeof SyncOpts>
+export interface SourceReadOptions {
+  /** Pre-built catalog; if absent, engine discovers and builds internally. */
+  catalog?: ConfiguredCatalog
+  state?: Record<string, unknown>
+  stateLimit?: number
+  timeLimit?: number
+}
 
 export const ConnectorInfo = z.object({
   config_schema: z.record(z.string(), z.unknown()),
@@ -50,16 +52,17 @@ export interface Engine {
   source_discover(source: PipelineConfig['source']): Promise<CatalogMessage>
   pipeline_read(
     pipeline: PipelineConfig,
-    opts?: SyncOpts,
+    opts?: SourceReadOptions,
     input?: AsyncIterable<unknown>
   ): AsyncIterable<Message>
   pipeline_write(
     pipeline: PipelineConfig,
-    messages: AsyncIterable<Message>
+    messages: AsyncIterable<Message>,
+    catalog?: ConfiguredCatalog
   ): AsyncIterable<DestinationOutput>
   pipeline_sync(
     pipeline: PipelineConfig,
-    opts?: SyncOpts,
+    opts?: SourceReadOptions,
     input?: AsyncIterable<unknown>
   ): AsyncIterable<DestinationOutput>
 }
@@ -279,7 +282,7 @@ export function createEngine(resolver: ConnectorResolver): Engine {
 
     async *pipeline_read(
       pipeline: PipelineConfig,
-      opts?: SyncOpts,
+      opts?: SourceReadOptions,
       input?: AsyncIterable<unknown>
     ): AsyncIterable<Message> {
       const baseContext = engineLogContext(pipeline)
@@ -289,8 +292,9 @@ export function createEngine(resolver: ConnectorResolver): Engine {
         string,
         unknown
       >
-      const catalogMsg = await this.source_discover(pipeline.source)
-      const catalog = buildCatalog(catalogMsg.streams, pipeline.streams)
+      const catalog =
+        opts?.catalog ??
+        buildCatalog((await this.source_discover(pipeline.source)).streams, pipeline.streams)
       const state = opts?.state
 
       const raw = connector.read({ config: sourceConfig, catalog, state }, input)
@@ -316,7 +320,8 @@ export function createEngine(resolver: ConnectorResolver): Engine {
 
     async *pipeline_write(
       pipeline: PipelineConfig,
-      messages: AsyncIterable<Message>
+      messages: AsyncIterable<Message>,
+      catalog?: ConfiguredCatalog
     ): AsyncIterable<DestinationOutput> {
       const baseContext = engineLogContext(pipeline)
       const connector = await resolver.resolveDestination(pipeline.destination.type)
@@ -325,20 +330,30 @@ export function createEngine(resolver: ConnectorResolver): Engine {
         string,
         unknown
       >
-      const catalogMsg = await this.source_discover(pipeline.source)
-      const catalog = buildCatalog(catalogMsg.streams, pipeline.streams)
-      const filteredCatalog = applySelection(catalog)
+      if (!catalog) {
+        const catalogMsg = await this.source_discover(pipeline.source)
+        catalog = applySelection(buildCatalog(catalogMsg.streams, pipeline.streams))
+      }
+
+      // Intercept eof from the source stream so it can be re-emitted after write completes.
+      let capturedEof: EofMessage | undefined
+      const dataStream = (async function* () {
+        for await (const msg of messages) {
+          if (msg.type === 'eof') {
+            capturedEof = msg as EofMessage
+            return
+          }
+          yield msg
+        }
+      })()
 
       const destInput = pipe(
-        messages,
-        enforceCatalog(filteredCatalog),
+        dataStream,
+        enforceCatalog(catalog),
         log,
         filterType('record', 'state')
       )
-      const destOutput = connector.write(
-        { config: destConfig, catalog: filteredCatalog },
-        destInput
-      )
+      const destOutput = connector.write({ config: destConfig, catalog }, destInput)
       for await (const msg of withLoggedStream(
         'Engine destination write',
         baseContext,
@@ -346,23 +361,25 @@ export function createEngine(resolver: ConnectorResolver): Engine {
       )) {
         yield DestinationOutput.parse(msg)
       }
+
+      // Propagate the eof reason from the source (or 'complete' if source ended naturally).
+      yield (capturedEof ?? { type: 'eof', reason: 'complete' as const }) as DestinationOutput
     },
 
     async *pipeline_sync(
       pipeline: PipelineConfig,
-      opts?: SyncOpts,
+      opts?: SourceReadOptions,
       input?: AsyncIterable<unknown>
     ): AsyncIterable<DestinationOutput> {
-      await this.pipeline_setup(pipeline)
-      // Pass state to read() but not stateLimit — stateLimit on sync controls destination output
-      const writeOutput = this.pipeline_write(
+      // Discover once and share the catalog between read and write.
+      const catalogMsg = await this.source_discover(pipeline.source)
+      const catalog = buildCatalog(catalogMsg.streams, pipeline.streams)
+      const filteredCatalog = applySelection(catalog)
+      yield* this.pipeline_write(
         pipeline,
-        this.pipeline_read(pipeline, { state: opts?.state }, input)
+        this.pipeline_read(pipeline, { ...opts, catalog }, input),
+        filteredCatalog
       )
-      yield* takeLimits<DestinationOutput>({
-        stateLimit: opts?.stateLimit,
-        timeLimitMs: opts?.timeLimit ? opts.timeLimit * 1000 : undefined,
-      })(writeOutput)
     },
   }
 }
