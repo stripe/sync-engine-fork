@@ -22,18 +22,20 @@ if [[ "${1:-}" == "--check" ]]; then
 fi
 
 echo "Generating engine OpenAPI spec..."
-engine_port=14444
-node apps/engine/dist/cli/index.js serve --port $engine_port &
-ENGINE_PID=$!
-trap 'kill $ENGINE_PID 2>/dev/null || true' EXIT
-for i in $(seq 1 20); do
-  curl -sf "http://localhost:$engine_port/health" > /dev/null 2>&1 && break
-  sleep 0.3
-done
-curl -sf "http://localhost:$engine_port/openapi.json" | pnpm prettier --stdin-filepath openapi.json > "$engine_out"
-kill $ENGINE_PID
-wait $ENGINE_PID 2>/dev/null || true
-trap - EXIT
+node -e "
+  import { createApp, createConnectorResolver } from './apps/engine/dist/index.js';
+  import sourceStripe from './packages/source-stripe/dist/index.js';
+  import destinationPostgres from './packages/destination-postgres/dist/index.js';
+  import destinationGoogleSheets from './packages/destination-google-sheets/dist/index.js';
+  const resolver = await createConnectorResolver({
+    sources: { stripe: sourceStripe.default ?? sourceStripe },
+    destinations: { postgres: destinationPostgres.default ?? destinationPostgres, 'google-sheets': destinationGoogleSheets.default ?? destinationGoogleSheets },
+  });
+  const app = await createApp(resolver);
+  const res = await app.request('/openapi.json');
+  const spec = await res.json();
+  process.stdout.write(JSON.stringify(spec, null, 2) + '\n');
+" | pnpm prettier --stdin-filepath openapi.json > "$engine_out"
 
 echo "Generating service OpenAPI spec..."
 node -e "

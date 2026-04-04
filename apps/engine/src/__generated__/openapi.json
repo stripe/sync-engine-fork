@@ -18,7 +18,12 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "ok": { "type": "boolean", "const": true } },
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
                   "required": ["ok"],
                   "additionalProperties": false
                 }
@@ -41,7 +46,11 @@
             "required": true,
             "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineConfig"
+                }
+              }
             }
           }
         ],
@@ -52,7 +61,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "propertyNames": { "type": "string" },
+                  "propertyNames": {
+                    "type": "string"
+                  },
                   "additionalProperties": {}
                 }
               }
@@ -64,7 +75,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "error": {} },
+                  "properties": {
+                    "error": {}
+                  },
                   "required": ["error"],
                   "additionalProperties": false
                 }
@@ -87,19 +100,27 @@
             "required": true,
             "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineConfig"
+                }
+              }
             }
           }
         ],
         "responses": {
-          "204": { "description": "Teardown complete" },
+          "204": {
+            "description": "Teardown complete"
+          },
           "400": {
             "description": "Invalid params",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "error": {} },
+                  "properties": {
+                    "error": {}
+                  },
                   "required": ["error"],
                   "additionalProperties": false
                 }
@@ -122,7 +143,11 @@
             "required": true,
             "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineConfig"
+                }
+              }
             }
           }
         ],
@@ -137,8 +162,13 @@
                     "source": {
                       "type": "object",
                       "properties": {
-                        "status": { "type": "string", "enum": ["succeeded", "failed"] },
-                        "message": { "type": "string" }
+                        "status": {
+                          "type": "string",
+                          "enum": ["succeeded", "failed"]
+                        },
+                        "message": {
+                          "type": "string"
+                        }
                       },
                       "required": ["status"],
                       "additionalProperties": false
@@ -146,8 +176,13 @@
                     "destination": {
                       "type": "object",
                       "properties": {
-                        "status": { "type": "string", "enum": ["succeeded", "failed"] },
-                        "message": { "type": "string" }
+                        "status": {
+                          "type": "string",
+                          "enum": ["succeeded", "failed"]
+                        },
+                        "message": {
+                          "type": "string"
+                        }
                       },
                       "required": ["status"],
                       "additionalProperties": false
@@ -165,7 +200,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "error": {} },
+                  "properties": {
+                    "error": {}
+                  },
                   "required": ["error"],
                   "additionalProperties": false
                 }
@@ -188,7 +225,11 @@
             "required": true,
             "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineConfig"
+                }
+              }
             }
           }
         ],
@@ -197,7 +238,9 @@
             "description": "NDJSON stream of discover messages",
             "content": {
               "application/x-ndjson": {
-                "schema": { "$ref": "#/components/schemas/DiscoverOutput" }
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverOutput"
+                }
               }
             }
           },
@@ -207,7 +250,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "error": {} },
+                  "properties": {
+                    "error": {}
+                  },
                   "required": ["error"],
                   "additionalProperties": false
                 }
@@ -230,7 +275,11 @@
             "required": true,
             "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineConfig"
+                }
+              }
             }
           },
           {
@@ -275,7 +324,11 @@
           "200": {
             "description": "NDJSON stream of sync messages",
             "content": {
-              "application/x-ndjson": { "schema": { "$ref": "#/components/schemas/MessageOutput" } }
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOutput"
+                }
+              }
             }
           },
           "400": {
@@ -284,7 +337,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "error": {} },
+                  "properties": {
+                    "error": {}
+                  },
                   "required": ["error"],
                   "additionalProperties": false
                 }
@@ -295,7 +350,11 @@
         "requestBody": {
           "required": false,
           "content": {
-            "application/x-ndjson": { "schema": { "$ref": "#/components/schemas/SourceInput" } }
+            "application/x-ndjson": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceInput"
+              }
+            }
           }
         }
       }
@@ -313,14 +372,22 @@
             "required": true,
             "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineConfig"
+                }
+              }
             }
           }
         ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/x-ndjson": { "schema": { "$ref": "#/components/schemas/Message" } }
+            "application/x-ndjson": {
+              "schema": {
+                "$ref": "#/components/schemas/Message"
+              }
+            }
           }
         },
         "responses": {
@@ -328,7 +395,9 @@
             "description": "NDJSON stream of write result messages",
             "content": {
               "application/x-ndjson": {
-                "schema": { "$ref": "#/components/schemas/DestinationOutput" }
+                "schema": {
+                  "$ref": "#/components/schemas/DestinationOutput"
+                }
               }
             }
           },
@@ -338,7 +407,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "error": {} },
+                  "properties": {
+                    "error": {}
+                  },
                   "required": ["error"],
                   "additionalProperties": false
                 }
@@ -361,7 +432,11 @@
             "required": true,
             "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/PipelineConfig" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineConfig"
+                }
+              }
             }
           },
           {
@@ -407,7 +482,9 @@
             "description": "NDJSON stream of sync messages",
             "content": {
               "application/x-ndjson": {
-                "schema": { "$ref": "#/components/schemas/DestinationOutput" }
+                "schema": {
+                  "$ref": "#/components/schemas/DestinationOutput"
+                }
               }
             }
           },
@@ -417,7 +494,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "error": {} },
+                  "properties": {
+                    "error": {}
+                  },
                   "required": ["error"],
                   "additionalProperties": false
                 }
@@ -447,10 +526,14 @@
                         "properties": {
                           "config_schema": {
                             "type": "object",
-                            "propertyNames": { "type": "string" },
+                            "propertyNames": {
+                              "type": "string"
+                            },
                             "additionalProperties": {}
                           },
-                          "type": { "type": "string" }
+                          "type": {
+                            "type": "string"
+                          }
                         },
                         "required": ["config_schema", "type"],
                         "additionalProperties": false
@@ -472,7 +555,14 @@
         "tags": ["Meta"],
         "summary": "Get source connector spec",
         "parameters": [
-          { "in": "path", "name": "type", "schema": { "type": "string" }, "required": true }
+          {
+            "in": "path",
+            "name": "type",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
         ],
         "responses": {
           "200": {
@@ -484,7 +574,9 @@
                   "properties": {
                     "config_schema": {
                       "type": "object",
-                      "propertyNames": { "type": "string" },
+                      "propertyNames": {
+                        "type": "string"
+                      },
                       "additionalProperties": {}
                     }
                   },
@@ -494,7 +586,9 @@
               }
             }
           },
-          "404": { "description": "Source connector not found" }
+          "404": {
+            "description": "Source connector not found"
+          }
         }
       }
     },
@@ -518,10 +612,14 @@
                         "properties": {
                           "config_schema": {
                             "type": "object",
-                            "propertyNames": { "type": "string" },
+                            "propertyNames": {
+                              "type": "string"
+                            },
                             "additionalProperties": {}
                           },
-                          "type": { "type": "string" }
+                          "type": {
+                            "type": "string"
+                          }
                         },
                         "required": ["config_schema", "type"],
                         "additionalProperties": false
@@ -543,7 +641,14 @@
         "tags": ["Meta"],
         "summary": "Get destination connector spec",
         "parameters": [
-          { "in": "path", "name": "type", "schema": { "type": "string" }, "required": true }
+          {
+            "in": "path",
+            "name": "type",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
         ],
         "responses": {
           "200": {
@@ -555,7 +660,9 @@
                   "properties": {
                     "config_schema": {
                       "type": "object",
-                      "propertyNames": { "type": "string" },
+                      "propertyNames": {
+                        "type": "string"
+                      },
                       "additionalProperties": {}
                     }
                   },
@@ -565,7 +672,9 @@
               }
             }
           },
-          "404": { "description": "Destination connector not found" }
+          "404": {
+            "description": "Destination connector not found"
+          }
         }
       }
     }
@@ -574,15 +683,33 @@
     "schemas": {
       "Message": {
         "oneOf": [
-          { "$ref": "#/components/schemas/RecordMessage" },
-          { "$ref": "#/components/schemas/StateMessage" },
-          { "$ref": "#/components/schemas/CatalogMessage" },
-          { "$ref": "#/components/schemas/LogMessage" },
-          { "$ref": "#/components/schemas/TraceMessage" },
-          { "$ref": "#/components/schemas/SpecMessage" },
-          { "$ref": "#/components/schemas/ConnectionStatusMessage" },
-          { "$ref": "#/components/schemas/ControlMessage" },
-          { "$ref": "#/components/schemas/EofMessage" }
+          {
+            "$ref": "#/components/schemas/RecordMessage"
+          },
+          {
+            "$ref": "#/components/schemas/StateMessage"
+          },
+          {
+            "$ref": "#/components/schemas/CatalogMessage"
+          },
+          {
+            "$ref": "#/components/schemas/LogMessage"
+          },
+          {
+            "$ref": "#/components/schemas/TraceMessage"
+          },
+          {
+            "$ref": "#/components/schemas/SpecMessage"
+          },
+          {
+            "$ref": "#/components/schemas/ConnectionStatusMessage"
+          },
+          {
+            "$ref": "#/components/schemas/ControlMessage"
+          },
+          {
+            "$ref": "#/components/schemas/EofMessage"
+          }
         ],
         "type": "object",
         "discriminator": {
@@ -603,7 +730,10 @@
       "RecordMessage": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "record" },
+          "type": {
+            "type": "string",
+            "const": "record"
+          },
           "record": {
             "type": "object",
             "properties": {
@@ -613,7 +743,9 @@
               },
               "data": {
                 "type": "object",
-                "propertyNames": { "type": "string" },
+                "propertyNames": {
+                  "type": "string"
+                },
                 "additionalProperties": {},
                 "description": "The record payload as a key-value map."
               },
@@ -633,11 +765,17 @@
       "StateMessage": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "state" },
+          "type": {
+            "type": "string",
+            "const": "state"
+          },
           "state": {
             "type": "object",
             "properties": {
-              "stream": { "type": "string", "description": "Stream being checkpointed." },
+              "stream": {
+                "type": "string",
+                "description": "Stream being checkpointed."
+              },
               "data": {
                 "description": "Opaque checkpoint data — only the source understands its contents. The orchestrator persists it keyed by stream and passes it back on resume."
               }
@@ -651,7 +789,10 @@
       "CatalogMessage": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "catalog" },
+          "type": {
+            "type": "string",
+            "const": "catalog"
+          },
           "catalog": {
             "type": "object",
             "properties": {
@@ -666,19 +807,28 @@
                     },
                     "primary_key": {
                       "type": "array",
-                      "items": { "type": "array", "items": { "type": "string" } },
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
                       "description": "Paths to fields that uniquely identify a record within this stream. Supports composite keys and nested paths. e.g. [[\"id\"]] or [[\"account_id\"], [\"created\"]]"
                     },
                     "json_schema": {
                       "description": "JSON Schema describing the record shape. Discovered at runtime or provided by config.",
                       "type": "object",
-                      "propertyNames": { "type": "string" },
+                      "propertyNames": {
+                        "type": "string"
+                      },
                       "additionalProperties": {}
                     },
                     "metadata": {
                       "description": "Source-specific metadata that applies to every record in this stream. The destination can use these for schema naming, partitioning, etc. Examples: Stripe: { api_version, account_id, live_mode }.",
                       "type": "object",
-                      "propertyNames": { "type": "string" },
+                      "propertyNames": {
+                        "type": "string"
+                      },
                       "additionalProperties": {}
                     }
                   },
@@ -697,7 +847,10 @@
       "LogMessage": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "log" },
+          "type": {
+            "type": "string",
+            "const": "log"
+          },
           "log": {
             "type": "object",
             "properties": {
@@ -706,7 +859,10 @@
                 "enum": ["debug", "info", "warn", "error"],
                 "description": "Log severity level."
               },
-              "message": { "type": "string", "description": "Human-readable log message." }
+              "message": {
+                "type": "string",
+                "description": "Human-readable log message."
+              }
             },
             "required": ["level", "message"],
             "description": "Structured log output from a connector."
@@ -717,13 +873,19 @@
       "TraceMessage": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "trace" },
+          "type": {
+            "type": "string",
+            "const": "trace"
+          },
           "trace": {
             "oneOf": [
               {
                 "type": "object",
                 "properties": {
-                  "trace_type": { "type": "string", "const": "error" },
+                  "trace_type": {
+                    "type": "string",
+                    "const": "error"
+                  },
                   "error": {
                     "type": "object",
                     "properties": {
@@ -754,11 +916,17 @@
               {
                 "type": "object",
                 "properties": {
-                  "trace_type": { "type": "string", "const": "stream_status" },
+                  "trace_type": {
+                    "type": "string",
+                    "const": "stream_status"
+                  },
                   "stream_status": {
                     "type": "object",
                     "properties": {
-                      "stream": { "type": "string", "description": "Stream being reported on." },
+                      "stream": {
+                        "type": "string",
+                        "description": "Stream being reported on."
+                      },
                       "status": {
                         "type": "string",
                         "enum": ["started", "running", "complete", "incomplete"],
@@ -774,11 +942,17 @@
               {
                 "type": "object",
                 "properties": {
-                  "trace_type": { "type": "string", "const": "estimate" },
+                  "trace_type": {
+                    "type": "string",
+                    "const": "estimate"
+                  },
                   "estimate": {
                     "type": "object",
                     "properties": {
-                      "stream": { "type": "string", "description": "Stream being estimated." },
+                      "stream": {
+                        "type": "string",
+                        "description": "Stream being estimated."
+                      },
                       "row_count": {
                         "description": "Estimated total row count for this stream.",
                         "type": "integer",
@@ -808,26 +982,35 @@
       "SpecMessage": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "spec" },
+          "type": {
+            "type": "string",
+            "const": "spec"
+          },
           "spec": {
             "type": "object",
             "properties": {
               "config": {
                 "type": "object",
-                "propertyNames": { "type": "string" },
+                "propertyNames": {
+                  "type": "string"
+                },
                 "additionalProperties": {},
                 "description": "JSON Schema for the connector's configuration object."
               },
               "stream_state": {
                 "description": "JSON Schema for per-stream state (cursor/checkpoint shape).",
                 "type": "object",
-                "propertyNames": { "type": "string" },
+                "propertyNames": {
+                  "type": "string"
+                },
                 "additionalProperties": {}
               },
               "input": {
                 "description": "JSON Schema for the read() input parameter (e.g. a webhook event).",
                 "type": "object",
-                "propertyNames": { "type": "string" },
+                "propertyNames": {
+                  "type": "string"
+                },
                 "additionalProperties": {}
               }
             },
@@ -840,7 +1023,10 @@
       "ConnectionStatusMessage": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "connection_status" },
+          "type": {
+            "type": "string",
+            "const": "connection_status"
+          },
           "connection_status": {
             "type": "object",
             "properties": {
@@ -863,7 +1049,10 @@
       "ControlMessage": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "control" },
+          "type": {
+            "type": "string",
+            "const": "control"
+          },
           "control": {
             "type": "object",
             "properties": {
@@ -874,7 +1063,9 @@
               },
               "config": {
                 "type": "object",
-                "propertyNames": { "type": "string" },
+                "propertyNames": {
+                  "type": "string"
+                },
                 "additionalProperties": {},
                 "description": "Config fields to merge into the active connector configuration."
               }
@@ -888,7 +1079,10 @@
       "EofMessage": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "eof" },
+          "type": {
+            "type": "string",
+            "const": "eof"
+          },
           "eof": {
             "type": "object",
             "properties": {
@@ -906,9 +1100,15 @@
       },
       "DiscoverOutput": {
         "oneOf": [
-          { "$ref": "#/components/schemas/CatalogMessageOutput" },
-          { "$ref": "#/components/schemas/LogMessageOutput" },
-          { "$ref": "#/components/schemas/TraceMessageOutput" }
+          {
+            "$ref": "#/components/schemas/CatalogMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/LogMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/TraceMessageOutput"
+          }
         ],
         "type": "object",
         "discriminator": {
@@ -922,10 +1122,18 @@
       },
       "DestinationOutput": {
         "oneOf": [
-          { "$ref": "#/components/schemas/StateMessageOutput" },
-          { "$ref": "#/components/schemas/TraceMessageOutput" },
-          { "$ref": "#/components/schemas/LogMessageOutput" },
-          { "$ref": "#/components/schemas/EofMessageOutput" }
+          {
+            "$ref": "#/components/schemas/StateMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/TraceMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/LogMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/EofMessageOutput"
+          }
         ],
         "type": "object",
         "discriminator": {
@@ -941,7 +1149,10 @@
       "CatalogMessageOutput": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "catalog" },
+          "type": {
+            "type": "string",
+            "const": "catalog"
+          },
           "catalog": {
             "type": "object",
             "properties": {
@@ -956,19 +1167,28 @@
                     },
                     "primary_key": {
                       "type": "array",
-                      "items": { "type": "array", "items": { "type": "string" } },
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
                       "description": "Paths to fields that uniquely identify a record within this stream. Supports composite keys and nested paths. e.g. [[\"id\"]] or [[\"account_id\"], [\"created\"]]"
                     },
                     "json_schema": {
                       "description": "JSON Schema describing the record shape. Discovered at runtime or provided by config.",
                       "type": "object",
-                      "propertyNames": { "type": "string" },
+                      "propertyNames": {
+                        "type": "string"
+                      },
                       "additionalProperties": {}
                     },
                     "metadata": {
                       "description": "Source-specific metadata that applies to every record in this stream. The destination can use these for schema naming, partitioning, etc. Examples: Stripe: { api_version, account_id, live_mode }.",
                       "type": "object",
-                      "propertyNames": { "type": "string" },
+                      "propertyNames": {
+                        "type": "string"
+                      },
                       "additionalProperties": {}
                     }
                   },
@@ -990,7 +1210,10 @@
       "LogMessageOutput": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "log" },
+          "type": {
+            "type": "string",
+            "const": "log"
+          },
           "log": {
             "type": "object",
             "properties": {
@@ -999,7 +1222,10 @@
                 "enum": ["debug", "info", "warn", "error"],
                 "description": "Log severity level."
               },
-              "message": { "type": "string", "description": "Human-readable log message." }
+              "message": {
+                "type": "string",
+                "description": "Human-readable log message."
+              }
             },
             "required": ["level", "message"],
             "additionalProperties": false,
@@ -1012,13 +1238,19 @@
       "TraceMessageOutput": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "trace" },
+          "type": {
+            "type": "string",
+            "const": "trace"
+          },
           "trace": {
             "oneOf": [
               {
                 "type": "object",
                 "properties": {
-                  "trace_type": { "type": "string", "const": "error" },
+                  "trace_type": {
+                    "type": "string",
+                    "const": "error"
+                  },
                   "error": {
                     "type": "object",
                     "properties": {
@@ -1051,11 +1283,17 @@
               {
                 "type": "object",
                 "properties": {
-                  "trace_type": { "type": "string", "const": "stream_status" },
+                  "trace_type": {
+                    "type": "string",
+                    "const": "stream_status"
+                  },
                   "stream_status": {
                     "type": "object",
                     "properties": {
-                      "stream": { "type": "string", "description": "Stream being reported on." },
+                      "stream": {
+                        "type": "string",
+                        "description": "Stream being reported on."
+                      },
                       "status": {
                         "type": "string",
                         "enum": ["started", "running", "complete", "incomplete"],
@@ -1073,11 +1311,17 @@
               {
                 "type": "object",
                 "properties": {
-                  "trace_type": { "type": "string", "const": "estimate" },
+                  "trace_type": {
+                    "type": "string",
+                    "const": "estimate"
+                  },
                   "estimate": {
                     "type": "object",
                     "properties": {
-                      "stream": { "type": "string", "description": "Stream being estimated." },
+                      "stream": {
+                        "type": "string",
+                        "description": "Stream being estimated."
+                      },
                       "row_count": {
                         "description": "Estimated total row count for this stream.",
                         "type": "integer",
@@ -1109,15 +1353,33 @@
       },
       "MessageOutput": {
         "oneOf": [
-          { "$ref": "#/components/schemas/RecordMessageOutput" },
-          { "$ref": "#/components/schemas/StateMessageOutput" },
-          { "$ref": "#/components/schemas/CatalogMessageOutput" },
-          { "$ref": "#/components/schemas/LogMessageOutput" },
-          { "$ref": "#/components/schemas/TraceMessageOutput" },
-          { "$ref": "#/components/schemas/SpecMessageOutput" },
-          { "$ref": "#/components/schemas/ConnectionStatusMessageOutput" },
-          { "$ref": "#/components/schemas/ControlMessageOutput" },
-          { "$ref": "#/components/schemas/EofMessageOutput" }
+          {
+            "$ref": "#/components/schemas/RecordMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/StateMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/CatalogMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/LogMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/TraceMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/SpecMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/ConnectionStatusMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/ControlMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/EofMessageOutput"
+          }
         ],
         "type": "object",
         "discriminator": {
@@ -1138,7 +1400,10 @@
       "RecordMessageOutput": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "record" },
+          "type": {
+            "type": "string",
+            "const": "record"
+          },
           "record": {
             "type": "object",
             "properties": {
@@ -1148,7 +1413,9 @@
               },
               "data": {
                 "type": "object",
-                "propertyNames": { "type": "string" },
+                "propertyNames": {
+                  "type": "string"
+                },
                 "additionalProperties": {},
                 "description": "The record payload as a key-value map."
               },
@@ -1170,11 +1437,17 @@
       "StateMessageOutput": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "state" },
+          "type": {
+            "type": "string",
+            "const": "state"
+          },
           "state": {
             "type": "object",
             "properties": {
-              "stream": { "type": "string", "description": "Stream being checkpointed." },
+              "stream": {
+                "type": "string",
+                "description": "Stream being checkpointed."
+              },
               "data": {
                 "description": "Opaque checkpoint data — only the source understands its contents. The orchestrator persists it keyed by stream and passes it back on resume."
               }
@@ -1190,26 +1463,35 @@
       "SpecMessageOutput": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "spec" },
+          "type": {
+            "type": "string",
+            "const": "spec"
+          },
           "spec": {
             "type": "object",
             "properties": {
               "config": {
                 "type": "object",
-                "propertyNames": { "type": "string" },
+                "propertyNames": {
+                  "type": "string"
+                },
                 "additionalProperties": {},
                 "description": "JSON Schema for the connector's configuration object."
               },
               "stream_state": {
                 "description": "JSON Schema for per-stream state (cursor/checkpoint shape).",
                 "type": "object",
-                "propertyNames": { "type": "string" },
+                "propertyNames": {
+                  "type": "string"
+                },
                 "additionalProperties": {}
               },
               "input": {
                 "description": "JSON Schema for the read() input parameter (e.g. a webhook event).",
                 "type": "object",
-                "propertyNames": { "type": "string" },
+                "propertyNames": {
+                  "type": "string"
+                },
                 "additionalProperties": {}
               }
             },
@@ -1224,7 +1506,10 @@
       "ConnectionStatusMessageOutput": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "connection_status" },
+          "type": {
+            "type": "string",
+            "const": "connection_status"
+          },
           "connection_status": {
             "type": "object",
             "properties": {
@@ -1249,7 +1534,10 @@
       "ControlMessageOutput": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "control" },
+          "type": {
+            "type": "string",
+            "const": "control"
+          },
           "control": {
             "type": "object",
             "properties": {
@@ -1260,7 +1548,9 @@
               },
               "config": {
                 "type": "object",
-                "propertyNames": { "type": "string" },
+                "propertyNames": {
+                  "type": "string"
+                },
                 "additionalProperties": {},
                 "description": "Config fields to merge into the active connector configuration."
               }
@@ -1276,7 +1566,10 @@
       "EofMessageOutput": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "const": "eof" },
+          "type": {
+            "type": "string",
+            "const": "eof"
+          },
           "eof": {
             "type": "object",
             "properties": {
@@ -1305,7 +1598,10 @@
             "description": "Stripe account ID (resolved from API if omitted)",
             "type": "string"
           },
-          "livemode": { "description": "Whether this is a live mode sync", "type": "boolean" },
+          "livemode": {
+            "description": "Whether this is a live mode sync",
+            "type": "boolean"
+          },
           "api_version": {
             "description": "Stripe API version (e.g. 2025-04-30.basil)",
             "type": "string"
@@ -1341,7 +1637,9 @@
           "revalidate_objects": {
             "description": "Object types to re-fetch from Stripe API on webhook (e.g. [\"subscription\"])",
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           },
           "backfill_limit": {
             "description": "Max objects to backfill per stream (useful for testing)",
@@ -1372,11 +1670,27 @@
             "description": "Postgres connection string (alias for connection_string)",
             "type": "string"
           },
-          "connection_string": { "description": "Postgres connection string", "type": "string" },
-          "host": { "description": "Postgres host (required for AWS IAM)", "type": "string" },
-          "port": { "default": 5432, "description": "Postgres port", "type": "number" },
-          "database": { "description": "Database name (required for AWS IAM)", "type": "string" },
-          "user": { "description": "Database user (required for AWS IAM)", "type": "string" },
+          "connection_string": {
+            "description": "Postgres connection string",
+            "type": "string"
+          },
+          "host": {
+            "description": "Postgres host (required for AWS IAM)",
+            "type": "string"
+          },
+          "port": {
+            "default": 5432,
+            "description": "Postgres port",
+            "type": "number"
+          },
+          "database": {
+            "description": "Database name (required for AWS IAM)",
+            "type": "string"
+          },
+          "user": {
+            "description": "Database user (required for AWS IAM)",
+            "type": "string"
+          },
           "schema": {
             "type": "string",
             "description": "Target schema name (e.g. \"stripe_sync\")"
@@ -1390,12 +1704,18 @@
             "description": "AWS RDS IAM authentication config",
             "type": "object",
             "properties": {
-              "region": { "type": "string", "description": "AWS region for RDS instance" },
+              "region": {
+                "type": "string",
+                "description": "AWS region for RDS instance"
+              },
               "role_arn": {
                 "description": "IAM role ARN to assume (cross-account)",
                 "type": "string"
               },
-              "external_id": { "description": "External ID for STS AssumeRole", "type": "string" }
+              "external_id": {
+                "description": "External ID for STS AssumeRole",
+                "type": "string"
+              }
             },
             "required": ["region"],
             "additionalProperties": false
@@ -1419,8 +1739,14 @@
             "description": "Google OAuth2 client secret (env: GOOGLE_CLIENT_SECRET)",
             "type": "string"
           },
-          "access_token": { "type": "string", "description": "OAuth2 access token" },
-          "refresh_token": { "type": "string", "description": "OAuth2 refresh token" },
+          "access_token": {
+            "type": "string",
+            "description": "OAuth2 access token"
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "OAuth2 refresh token"
+          },
           "spreadsheet_id": {
             "description": "Target spreadsheet ID (created if omitted)",
             "type": "string"
@@ -1440,14 +1766,20 @@
         "additionalProperties": false
       },
       "SourceConfig": {
-        "discriminator": { "propertyName": "type" },
+        "discriminator": {
+          "propertyName": "type"
+        },
         "oneOf": [
           {
             "type": "object",
             "required": ["type"],
             "properties": {
-              "type": { "const": "stripe" },
-              "stripe": { "$ref": "#/components/schemas/SourceStripeConfig" }
+              "type": {
+                "const": "stripe"
+              },
+              "stripe": {
+                "$ref": "#/components/schemas/SourceStripeConfig"
+              }
             }
           }
         ]
@@ -1455,7 +1787,10 @@
       "SourceStripeInput": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "description": "Unique identifier for the object." },
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the object."
+          },
           "object": {
             "type": "string",
             "const": "event",
@@ -1466,7 +1801,14 @@
             "type": "string"
           },
           "api_version": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "The Stripe API version used to render `data`. This property is populated only for events on or after October 31, 2014."
           },
           "created": {
@@ -1478,12 +1820,16 @@
             "properties": {
               "object": {
                 "type": "object",
-                "propertyNames": { "type": "string" },
+                "propertyNames": {
+                  "type": "string"
+                },
                 "additionalProperties": {}
               },
               "previous_attributes": {
                 "type": "object",
-                "propertyNames": { "type": "string" },
+                "propertyNames": {
+                  "type": "string"
+                },
                 "additionalProperties": {}
               }
             },
@@ -1503,13 +1849,33 @@
               {
                 "type": "object",
                 "properties": {
-                  "id": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
-                  "idempotency_key": { "anyOf": [{ "type": "string" }, { "type": "null" }] }
+                  "id": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "idempotency_key": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
                 },
                 "required": ["id", "idempotency_key"],
                 "additionalProperties": false
               },
-              { "type": "null" }
+              {
+                "type": "null"
+              }
             ],
             "description": "Information on the API request that triggers the event."
           },
@@ -1532,35 +1898,51 @@
         "additionalProperties": false
       },
       "SourceInput": {
-        "discriminator": { "propertyName": "type" },
+        "discriminator": {
+          "propertyName": "type"
+        },
         "oneOf": [
           {
             "type": "object",
             "required": ["type"],
             "properties": {
-              "type": { "const": "stripe" },
-              "stripe": { "$ref": "#/components/schemas/SourceStripeInput" }
+              "type": {
+                "const": "stripe"
+              },
+              "stripe": {
+                "$ref": "#/components/schemas/SourceStripeInput"
+              }
             }
           }
         ]
       },
       "DestinationConfig": {
-        "discriminator": { "propertyName": "type" },
+        "discriminator": {
+          "propertyName": "type"
+        },
         "oneOf": [
           {
             "type": "object",
             "required": ["type"],
             "properties": {
-              "type": { "const": "postgres" },
-              "postgres": { "$ref": "#/components/schemas/DestinationPostgresConfig" }
+              "type": {
+                "const": "postgres"
+              },
+              "postgres": {
+                "$ref": "#/components/schemas/DestinationPostgresConfig"
+              }
             }
           },
           {
             "type": "object",
             "required": ["type"],
             "properties": {
-              "type": { "const": "google-sheets" },
-              "google-sheets": { "$ref": "#/components/schemas/DestinationGoogleSheetsConfig" }
+              "type": {
+                "const": "google-sheets"
+              },
+              "google-sheets": {
+                "$ref": "#/components/schemas/DestinationGoogleSheetsConfig"
+              }
             }
           }
         ]
@@ -1569,17 +1951,31 @@
         "type": "object",
         "required": ["source", "destination"],
         "properties": {
-          "source": { "$ref": "#/components/schemas/SourceConfig" },
-          "destination": { "$ref": "#/components/schemas/DestinationConfig" },
+          "source": {
+            "$ref": "#/components/schemas/SourceConfig"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/DestinationConfig"
+          },
           "streams": {
             "type": "array",
             "items": {
               "type": "object",
               "required": ["name"],
               "properties": {
-                "name": { "type": "string" },
-                "sync_mode": { "type": "string", "enum": ["incremental", "full_refresh"] },
-                "fields": { "type": "array", "items": { "type": "string" } }
+                "name": {
+                  "type": "string"
+                },
+                "sync_mode": {
+                  "type": "string",
+                  "enum": ["incremental", "full_refresh"]
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
               }
             }
           }
