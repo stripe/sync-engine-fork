@@ -93,11 +93,11 @@ export function createRemoteEngine(engineUrl: string): Engine {
       headers,
       ...(body
         ? {
-          body,
-          bodySerializer: (b: unknown) => b,
-          headers: { 'content-type': 'application/x-ndjson', ...headers },
-          duplex: 'half',
-        }
+            body,
+            bodySerializer: (b: unknown) => b,
+            headers: { 'content-type': 'application/x-ndjson', ...headers },
+            duplex: 'half',
+          }
         : {}),
     })
     if (!response.ok) {

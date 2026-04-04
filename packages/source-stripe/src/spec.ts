@@ -81,13 +81,17 @@ export const streamStateSpec = z.object({
 
 export const webhookEventSchema = z.object({
   id: z.string().describe('Unique identifier for the object.'),
-  object: z.literal('event').describe("String representing the object's type. Objects of the same type share the same value."),
+  object: z
+    .literal('event')
+    .describe(
+      "String representing the object's type. Objects of the same type share the same value."
+    ),
   account: z.string().optional().describe('The connected account that originates the event.'),
   api_version: z
     .string()
     .nullable()
     .describe(
-      'The Stripe API version used to render `data`. This property is populated only for events on or after October 31, 2014.',
+      'The Stripe API version used to render `data`. This property is populated only for events on or after October 31, 2014.'
     ),
   created: z
     .number()
@@ -99,12 +103,12 @@ export const webhookEventSchema = z.object({
   livemode: z
     .boolean()
     .describe(
-      'Has the value `true` if the object exists in live mode or the value `false` if the object exists in test mode.',
+      'Has the value `true` if the object exists in live mode or the value `false` if the object exists in test mode.'
     ),
   pending_webhooks: z
     .number()
     .describe(
-      "Number of webhooks that haven't been successfully delivered (for example, to return a 20x response) to the URLs you specify.",
+      "Number of webhooks that haven't been successfully delivered (for example, to return a 20x response) to the URLs you specify."
     ),
   request: z
     .object({
@@ -113,7 +117,9 @@ export const webhookEventSchema = z.object({
     })
     .nullable()
     .describe('Information on the API request that triggers the event.'),
-  type: z.string().describe('Description of the event (for example, `invoice.created` or `charge.refunded`).'),
+  type: z
+    .string()
+    .describe('Description of the event (for example, `invoice.created` or `charge.refunded`).'),
 })
 
 export type WebhookEvent = z.infer<typeof webhookEventSchema>

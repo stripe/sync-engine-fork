@@ -62,13 +62,20 @@ export function expandState(state: BackfillState): SegmentState[] {
   }
   const occupied: Interval[] = [
     ...state.completed.map((r) => ({ ...r, status: 'complete' as const, page_cursor: null })),
-    ...state.in_flight.map((r) => ({ ...r, status: 'pending' as const, page_cursor: r.page_cursor })),
+    ...state.in_flight.map((r) => ({
+      ...r,
+      status: 'pending' as const,
+      page_cursor: r.page_cursor,
+    })),
   ].sort((a, b) => a.gte - b.gte)
 
   const segments: SegmentState[] = []
   let idx = 0
   let cursor = state.range.gte
-  const segmentSize = Math.max(1, Math.ceil((state.range.lt - state.range.gte) / state.num_segments))
+  const segmentSize = Math.max(
+    1,
+    Math.ceil((state.range.lt - state.range.gte) / state.num_segments)
+  )
 
   for (const interval of occupied) {
     // Fill gap before this interval with pending segments
