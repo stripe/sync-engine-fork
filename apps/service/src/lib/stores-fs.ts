@@ -51,6 +51,13 @@ export function filePipelineStore(dir: string): PipelineStore {
     async set(id, pipeline) {
       writeItem(dir, id, pipeline)
     },
+    async update(id, patch) {
+      const existing = readItem<Pipeline>(dir, id)
+      if (!existing) throw new Error(`Pipeline not found: ${id}`)
+      const updated = { ...existing, ...patch, id }
+      writeItem(dir, id, updated)
+      return updated
+    },
     async delete(id) {
       removeItem(dir, id)
     },
