@@ -19,19 +19,9 @@ export function connectorSchemaName(name: string, role: 'Source' | 'Destination'
   return `${role}${toPascal(name)}Config`
 }
 
-/** Envelope variant name (type + nested key), e.g. SourceStripe, DestinationPostgres */
-export function connectorVariantName(name: string, role: 'Source' | 'Destination'): string {
-  return `${role}${toPascal(name)}`
-}
-
 /** Input payload schema name, e.g. SourceStripeInput */
 export function connectorInputSchemaName(name: string): string {
   return `Source${toPascal(name)}Input`
-}
-
-/** Input envelope variant name, e.g. SourceStripeInputEnvelope */
-export function connectorInputVariantName(name: string): string {
-  return `Source${toPascal(name)}InputEnvelope`
 }
 
 // ── Schema factory ───────────────────────────────────────────────
@@ -67,9 +57,7 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
     const obj = (base instanceof z.ZodObject ? base : z.object({})).meta({
       id: connectorSchemaName(name, 'Source'),
     })
-    return z.object({ type: z.literal(name), [name]: obj }).meta({
-      id: connectorVariantName(name, 'Source'),
-    })
+    return z.object({ type: z.literal(name), [name]: obj })
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,9 +74,7 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
     const obj = (base instanceof z.ZodObject ? base : z.object({})).meta({
       id: connectorSchemaName(name, 'Destination'),
     })
-    return z.object({ type: z.literal(name), [name]: obj }).meta({
-      id: connectorVariantName(name, 'Destination'),
-    })
+    return z.object({ type: z.literal(name), [name]: obj })
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -107,9 +93,7 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
       const obj = (base instanceof z.ZodObject ? base : z.object({})).meta({
         id: connectorInputSchemaName(name),
       })
-      return z.object({ type: z.literal(name), [name]: obj }).meta({
-        id: connectorInputVariantName(name),
-      })
+      return z.object({ type: z.literal(name), [name]: obj })
     })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

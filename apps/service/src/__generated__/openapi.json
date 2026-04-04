@@ -951,32 +951,23 @@
       "SourceConfig": {
         "oneOf": [
           {
-            "$ref": "#/components/schemas/SourceStripe"
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "stripe"
+              },
+              "stripe": {
+                "$ref": "#/components/schemas/SourceStripeConfig"
+              }
+            },
+            "required": [
+              "type",
+              "stripe"
+            ]
           }
         ],
-        "type": "object",
-        "discriminator": {
-          "propertyName": "type",
-          "mapping": {
-            "stripe": "#/components/schemas/SourceStripe"
-          }
-        }
-      },
-      "SourceStripe": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "stripe"
-          },
-          "stripe": {
-            "$ref": "#/components/schemas/SourceStripeConfig"
-          }
-        },
-        "required": [
-          "type",
-          "stripe"
-        ]
+        "type": "object"
       },
       "SourceStripeConfig": {
         "type": "object",
@@ -1059,36 +1050,39 @@
       "DestinationConfig": {
         "oneOf": [
           {
-            "$ref": "#/components/schemas/DestinationPostgres"
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "postgres"
+              },
+              "postgres": {
+                "$ref": "#/components/schemas/DestinationPostgresConfig"
+              }
+            },
+            "required": [
+              "type",
+              "postgres"
+            ]
           },
           {
-            "$ref": "#/components/schemas/DestinationGoogleSheets"
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "google-sheets"
+              },
+              "google-sheets": {
+                "$ref": "#/components/schemas/DestinationGoogleSheetsConfig"
+              }
+            },
+            "required": [
+              "type",
+              "google-sheets"
+            ]
           }
         ],
-        "type": "object",
-        "discriminator": {
-          "propertyName": "type",
-          "mapping": {
-            "postgres": "#/components/schemas/DestinationPostgres",
-            "google-sheets": "#/components/schemas/DestinationGoogleSheets"
-          }
-        }
-      },
-      "DestinationPostgres": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "postgres"
-          },
-          "postgres": {
-            "$ref": "#/components/schemas/DestinationPostgresConfig"
-          }
-        },
-        "required": [
-          "type",
-          "postgres"
-        ]
+        "type": "object"
       },
       "DestinationPostgresConfig": {
         "type": "object",
@@ -1158,22 +1152,6 @@
           "schema"
         ],
         "additionalProperties": false
-      },
-      "DestinationGoogleSheets": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "google-sheets"
-          },
-          "google-sheets": {
-            "$ref": "#/components/schemas/DestinationGoogleSheetsConfig"
-          }
-        },
-        "required": [
-          "type",
-          "google-sheets"
-        ]
       },
       "DestinationGoogleSheetsConfig": {
         "type": "object",

@@ -434,14 +434,6 @@ export interface components {
                 reason: "complete" | "state_limit" | "time_limit" | "error";
             };
         };
-        SourceStripeInputEnvelope: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "stripe";
-            stripe: components["schemas"]["SourceStripeInput"];
-        };
         SourceStripeInput: {
             /** @description Unique identifier for the object. */
             id: string;
@@ -471,12 +463,8 @@ export interface components {
             /** @description Description of the event (for example, `invoice.created` or `charge.refunded`). */
             type: string;
         };
-        SourceConfig: components["schemas"]["SourceStripe"];
-        SourceStripe: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+        SourceConfig: {
+            /** @constant */
             type: "stripe";
             stripe: components["schemas"]["SourceStripeConfig"];
         };
@@ -516,14 +504,14 @@ export interface components {
             /** @description Number of time-range segments for parallel backfill (default: 200) */
             backfill_concurrency?: number;
         };
-        DestinationConfig: components["schemas"]["DestinationPostgres"] | components["schemas"]["DestinationGoogleSheets"];
-        DestinationPostgres: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+        DestinationConfig: {
+            /** @constant */
             type: "postgres";
             postgres: components["schemas"]["DestinationPostgresConfig"];
+        } | {
+            /** @constant */
+            type: "google-sheets";
+            "google-sheets": components["schemas"]["DestinationGoogleSheetsConfig"];
         };
         DestinationPostgresConfig: {
             /** @description Postgres connection string (alias for connection_string) */
@@ -560,14 +548,6 @@ export interface components {
             /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
             ssl_ca_pem?: string;
         };
-        DestinationGoogleSheets: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "google-sheets";
-            "google-sheets": components["schemas"]["DestinationGoogleSheetsConfig"];
-        };
         DestinationGoogleSheetsConfig: {
             /** @description Google OAuth2 client ID (env: GOOGLE_CLIENT_ID) */
             client_id?: string;
@@ -593,7 +573,11 @@ export interface components {
         Message: components["schemas"]["RecordMessage"] | components["schemas"]["StateMessage"] | components["schemas"]["CatalogMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["SpecMessage"] | components["schemas"]["ConnectionStatusMessage"] | components["schemas"]["ControlMessage"] | components["schemas"]["EofMessage"];
         DiscoverOutput: components["schemas"]["CatalogMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"];
         DestinationOutput: components["schemas"]["StateMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["EofMessage"];
-        SourceInput: components["schemas"]["SourceStripeInputEnvelope"];
+        SourceInput: {
+            /** @constant */
+            type: "stripe";
+            stripe: components["schemas"]["SourceStripeInput"];
+        };
         PipelineConfig: {
             source: components["schemas"]["SourceConfig"];
             destination: components["schemas"]["DestinationConfig"];
@@ -892,7 +876,7 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/x-ndjson": components["schemas"]["Message"];
+                "application/x-ndjson": components["schemas"]["SourceInput"];
             };
         };
         responses: {

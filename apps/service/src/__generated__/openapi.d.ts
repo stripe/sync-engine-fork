@@ -116,12 +116,8 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        SourceConfig: components["schemas"]["SourceStripe"];
-        SourceStripe: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+        SourceConfig: {
+            /** @constant */
             type: "stripe";
             stripe: components["schemas"]["SourceStripeConfig"];
         };
@@ -161,14 +157,14 @@ export interface components {
             /** @description Number of time-range segments for parallel backfill (default: 200) */
             backfill_concurrency?: number;
         };
-        DestinationConfig: components["schemas"]["DestinationPostgres"] | components["schemas"]["DestinationGoogleSheets"];
-        DestinationPostgres: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+        DestinationConfig: {
+            /** @constant */
             type: "postgres";
             postgres: components["schemas"]["DestinationPostgresConfig"];
+        } | {
+            /** @constant */
+            type: "google-sheets";
+            "google-sheets": components["schemas"]["DestinationGoogleSheetsConfig"];
         };
         DestinationPostgresConfig: {
             /** @description Postgres connection string (alias for connection_string) */
@@ -204,14 +200,6 @@ export interface components {
             };
             /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
             ssl_ca_pem?: string;
-        };
-        DestinationGoogleSheets: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "google-sheets";
-            "google-sheets": components["schemas"]["DestinationGoogleSheetsConfig"];
         };
         DestinationGoogleSheetsConfig: {
             /** @description Google OAuth2 client ID (env: GOOGLE_CLIENT_ID) */

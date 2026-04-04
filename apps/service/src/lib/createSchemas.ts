@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { ConnectorResolver } from '@stripe/sync-engine'
-import { connectorSchemaName, connectorVariantName } from '@stripe/sync-engine'
+import { connectorSchemaName } from '@stripe/sync-engine'
 
 // MARK: - Static schemas (independent of connector set)
 
@@ -44,9 +44,7 @@ export function createSchemas(resolver: ConnectorResolver) {
     const obj = (base instanceof z.ZodObject ? base : z.object({})).meta({
       id: connectorSchemaName(name, 'Source'),
     })
-    return z.object({ type: z.literal(name), [name]: obj }).meta({
-      id: connectorVariantName(name, 'Source'),
-    })
+    return z.object({ type: z.literal(name), [name]: obj })
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,9 +61,7 @@ export function createSchemas(resolver: ConnectorResolver) {
     const obj = (base instanceof z.ZodObject ? base : z.object({})).meta({
       id: connectorSchemaName(name, 'Destination'),
     })
-    return z.object({ type: z.literal(name), [name]: obj }).meta({
-      id: connectorVariantName(name, 'Destination'),
-    })
+    return z.object({ type: z.literal(name), [name]: obj })
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

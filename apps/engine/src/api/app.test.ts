@@ -140,10 +140,11 @@ describe('GET /openapi.json', () => {
     expect(schemaNames).toContain('DestinationConfig')
     expect(schemaNames).toContain('PipelineConfig')
 
-    // SourceConfig is a discriminated union with discriminator.mapping
+    // SourceConfig is a discriminated union with inline variants
     const sourceConfig = spec.components.schemas.SourceConfig
-    expect(sourceConfig.discriminator.propertyName).toBe('type')
     expect(sourceConfig.oneOf).toHaveLength(1)
+    expect(sourceConfig.oneOf[0].properties.type.const).toBe('test')
+    expect(sourceConfig.oneOf[0].properties.test.$ref).toContain('SourceTestConfig')
   })
 
   it('defines NDJSON message schemas with discriminated unions', async () => {
@@ -472,6 +473,41 @@ describe('POST /read', () => {
         body,
       })
       // SourceInput.parse() throws — error propagates through the NDJSON stream
+      expect(res.status).toBe(200)
+      const text = await res.text()
+      expect(text).toContain('error')
+    })
+
+    it('pipeline_sync: accepts valid wrapped input and produces output', async () => {
+      const record = {
+        type: 'record',
+        record: {
+          stream: 'customers',
+          data: { id: 'cus_1' },
+          emitted_at: new Date().toISOString(),
+        },
+      }
+      const body = toNdjson([
+        { type: 'test', test: record },
+        { type: 'test', test: { type: 'state', state: { stream: 'customers', data: {} } } },
+      ])
+      const res = await inputApp.request('/pipeline_sync', {
+        method: 'POST',
+        headers: { 'X-Pipeline': syncParams, ...bodyHeaders(body) },
+        body,
+      })
+      expect(res.status).toBe(200)
+      const events = await readNdjson<Record<string, unknown>>(res)
+      expect(events.some((e) => e.type === 'state' || e.type === 'eof')).toBe(true)
+    })
+
+    it('pipeline_sync: rejects input that fails the SourceInput schema', async () => {
+      const body = toNdjson([{ type: 'test', test: { noTypeField: true } }])
+      const res = await inputApp.request('/pipeline_sync', {
+        method: 'POST',
+        headers: { 'X-Pipeline': syncParams, ...bodyHeaders(body) },
+        body,
+      })
       expect(res.status).toBe(200)
       const text = await res.text()
       expect(text).toContain('error')
