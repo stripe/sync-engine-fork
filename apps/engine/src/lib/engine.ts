@@ -26,12 +26,6 @@ import { logger } from '../logger.js'
 
 // MARK: - Engine interface
 
-/** Config updates returned by a connector's `setup()` call that should be merged back into the pipeline config. */
-export const SetupResult = z.object({
-  source: z.record(z.string(), z.unknown()).optional(),
-  destination: z.record(z.string(), z.unknown()).optional(),
-})
-export type SetupResult = z.infer<typeof SetupResult>
 
 export const SourceReadOptions = z.object({
   /** Per-stream state cursors carried in from the previous sync run. */
