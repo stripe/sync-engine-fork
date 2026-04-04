@@ -234,6 +234,13 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         RecordMessage: {
+            /** @description Who emitted this message: "source/{type}", "destination/{type}", or "engine". Set by the engine. */
+            _emitted_by?: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 timestamp when the engine observed this message.
+             */
+            _ts?: string;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -255,6 +262,13 @@ export interface components {
             };
         };
         StateMessage: {
+            /** @description Who emitted this message: "source/{type}", "destination/{type}", or "engine". Set by the engine. */
+            _emitted_by?: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 timestamp when the engine observed this message.
+             */
+            _ts?: string;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -269,6 +283,13 @@ export interface components {
             };
         };
         CatalogMessage: {
+            /** @description Who emitted this message: "source/{type}", "destination/{type}", or "engine". Set by the engine. */
+            _emitted_by?: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 timestamp when the engine observed this message.
+             */
+            _ts?: string;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -294,6 +315,13 @@ export interface components {
             };
         };
         LogMessage: {
+            /** @description Who emitted this message: "source/{type}", "destination/{type}", or "engine". Set by the engine. */
+            _emitted_by?: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 timestamp when the engine observed this message.
+             */
+            _ts?: string;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -311,6 +339,13 @@ export interface components {
             };
         };
         TraceMessage: {
+            /** @description Who emitted this message: "source/{type}", "destination/{type}", or "engine". Set by the engine. */
+            _emitted_by?: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 timestamp when the engine observed this message.
+             */
+            _ts?: string;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -362,6 +397,13 @@ export interface components {
             };
         };
         SpecMessage: {
+            /** @description Who emitted this message: "source/{type}", "destination/{type}", or "engine". Set by the engine. */
+            _emitted_by?: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 timestamp when the engine observed this message.
+             */
+            _ts?: string;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -384,6 +426,13 @@ export interface components {
             };
         };
         ConnectionStatusMessage: {
+            /** @description Who emitted this message: "source/{type}", "destination/{type}", or "engine". Set by the engine. */
+            _emitted_by?: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 timestamp when the engine observed this message.
+             */
+            _ts?: string;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -401,6 +450,13 @@ export interface components {
             };
         };
         ControlMessage: {
+            /** @description Who emitted this message: "source/{type}", "destination/{type}", or "engine". Set by the engine. */
+            _emitted_by?: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 timestamp when the engine observed this message.
+             */
+            _ts?: string;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -412,7 +468,7 @@ export interface components {
                  * @description What kind of control action the connector is requesting.
                  * @enum {string}
                  */
-                control_type: "config_update";
+                control_type: "connector_config";
                 /** @description Config fields to merge into the active connector configuration. */
                 config: {
                     [key: string]: unknown;
@@ -420,6 +476,13 @@ export interface components {
             };
         };
         EofMessage: {
+            /** @description Who emitted this message: "source/{type}", "destination/{type}", or "engine". Set by the engine. */
+            _emitted_by?: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 timestamp when the engine observed this message.
+             */
+            _ts?: string;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -573,6 +636,7 @@ export interface components {
         Message: components["schemas"]["RecordMessage"] | components["schemas"]["StateMessage"] | components["schemas"]["CatalogMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["SpecMessage"] | components["schemas"]["ConnectionStatusMessage"] | components["schemas"]["ControlMessage"] | components["schemas"]["EofMessage"];
         DiscoverOutput: components["schemas"]["CatalogMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"];
         DestinationOutput: components["schemas"]["StateMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["EofMessage"];
+        SyncOutput: components["schemas"]["StateMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["EofMessage"] | components["schemas"]["ControlMessage"];
         SourceInput: {
             /** @constant */
             type: "stripe";
@@ -886,7 +950,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/x-ndjson": components["schemas"]["DestinationOutput"];
+                    "application/x-ndjson": components["schemas"]["SyncOutput"];
                 };
             };
             /** @description Invalid params */

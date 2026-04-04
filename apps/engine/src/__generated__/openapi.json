@@ -542,7 +542,7 @@
             "content": {
               "application/x-ndjson": {
                 "schema": {
-                  "$ref": "#/components/schemas/DestinationOutput"
+                  "$ref": "#/components/schemas/SyncOutput"
                 }
               }
             }
@@ -767,6 +767,16 @@
       "RecordMessage": {
         "type": "object",
         "properties": {
+          "_emitted_by": {
+            "description": "Who emitted this message: \"source/{type}\", \"destination/{type}\", or \"engine\". Set by the engine.",
+            "type": "string"
+          },
+          "_ts": {
+            "description": "ISO 8601 timestamp when the engine observed this message.",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
           "type": {
             "type": "string",
             "const": "record"
@@ -809,6 +819,16 @@
       "StateMessage": {
         "type": "object",
         "properties": {
+          "_emitted_by": {
+            "description": "Who emitted this message: \"source/{type}\", \"destination/{type}\", or \"engine\". Set by the engine.",
+            "type": "string"
+          },
+          "_ts": {
+            "description": "ISO 8601 timestamp when the engine observed this message.",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
           "type": {
             "type": "string",
             "const": "state"
@@ -839,6 +859,16 @@
       "CatalogMessage": {
         "type": "object",
         "properties": {
+          "_emitted_by": {
+            "description": "Who emitted this message: \"source/{type}\", \"destination/{type}\", or \"engine\". Set by the engine.",
+            "type": "string"
+          },
+          "_ts": {
+            "description": "ISO 8601 timestamp when the engine observed this message.",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
           "type": {
             "type": "string",
             "const": "catalog"
@@ -905,6 +935,16 @@
       "LogMessage": {
         "type": "object",
         "properties": {
+          "_emitted_by": {
+            "description": "Who emitted this message: \"source/{type}\", \"destination/{type}\", or \"engine\". Set by the engine.",
+            "type": "string"
+          },
+          "_ts": {
+            "description": "ISO 8601 timestamp when the engine observed this message.",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
           "type": {
             "type": "string",
             "const": "log"
@@ -942,6 +982,16 @@
       "TraceMessage": {
         "type": "object",
         "properties": {
+          "_emitted_by": {
+            "description": "Who emitted this message: \"source/{type}\", \"destination/{type}\", or \"engine\". Set by the engine.",
+            "type": "string"
+          },
+          "_ts": {
+            "description": "ISO 8601 timestamp when the engine observed this message.",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
           "type": {
             "type": "string",
             "const": "trace"
@@ -1084,6 +1134,16 @@
       "SpecMessage": {
         "type": "object",
         "properties": {
+          "_emitted_by": {
+            "description": "Who emitted this message: \"source/{type}\", \"destination/{type}\", or \"engine\". Set by the engine.",
+            "type": "string"
+          },
+          "_ts": {
+            "description": "ISO 8601 timestamp when the engine observed this message.",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
           "type": {
             "type": "string",
             "const": "spec"
@@ -1130,6 +1190,16 @@
       "ConnectionStatusMessage": {
         "type": "object",
         "properties": {
+          "_emitted_by": {
+            "description": "Who emitted this message: \"source/{type}\", \"destination/{type}\", or \"engine\". Set by the engine.",
+            "type": "string"
+          },
+          "_ts": {
+            "description": "ISO 8601 timestamp when the engine observed this message.",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
           "type": {
             "type": "string",
             "const": "connection_status"
@@ -1164,6 +1234,16 @@
       "ControlMessage": {
         "type": "object",
         "properties": {
+          "_emitted_by": {
+            "description": "Who emitted this message: \"source/{type}\", \"destination/{type}\", or \"engine\". Set by the engine.",
+            "type": "string"
+          },
+          "_ts": {
+            "description": "ISO 8601 timestamp when the engine observed this message.",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
           "type": {
             "type": "string",
             "const": "control"
@@ -1174,7 +1254,7 @@
               "control_type": {
                 "type": "string",
                 "enum": [
-                  "config_update"
+                  "connector_config"
                 ],
                 "description": "What kind of control action the connector is requesting."
               },
@@ -1202,6 +1282,16 @@
       "EofMessage": {
         "type": "object",
         "properties": {
+          "_emitted_by": {
+            "description": "Who emitted this message: \"source/{type}\", \"destination/{type}\", or \"engine\". Set by the engine.",
+            "type": "string"
+          },
+          "_ts": {
+            "description": "ISO 8601 timestamp when the engine observed this message.",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
           "type": {
             "type": "string",
             "const": "eof"
@@ -1688,6 +1778,36 @@
             "trace": "#/components/schemas/TraceMessage",
             "log": "#/components/schemas/LogMessage",
             "eof": "#/components/schemas/EofMessage"
+          }
+        }
+      },
+      "SyncOutput": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/StateMessage"
+          },
+          {
+            "$ref": "#/components/schemas/TraceMessage"
+          },
+          {
+            "$ref": "#/components/schemas/LogMessage"
+          },
+          {
+            "$ref": "#/components/schemas/EofMessage"
+          },
+          {
+            "$ref": "#/components/schemas/ControlMessage"
+          }
+        ],
+        "type": "object",
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "state": "#/components/schemas/StateMessage",
+            "trace": "#/components/schemas/TraceMessage",
+            "log": "#/components/schemas/LogMessage",
+            "eof": "#/components/schemas/EofMessage",
+            "control": "#/components/schemas/ControlMessage"
           }
         }
       },
