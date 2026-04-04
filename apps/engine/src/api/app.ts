@@ -358,7 +358,7 @@ export async function createApp(resolver: ConnectorResolver) {
               const unwrapped = wrapped[sourceType]
               if (unwrapped === undefined) {
                 throw new Error(
-                  `pipeline_read: expected each input line wrapped under "${sourceType}" key, e.g. {"${sourceType}": {...}}`
+                  `pipeline_read: expected each input line wrapped under "${sourceType}" key, e.g. {"type":"${sourceType}","${sourceType}":{...}}`
                 )
               }
               const result = inputValidator.safeParse(unwrapped)

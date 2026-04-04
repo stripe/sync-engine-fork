@@ -77,17 +77,25 @@ export function injectConnectorSchemas(spec: any, resolver: ConnectorResolver): 
   if (!spec.components.schemas) spec.components.schemas = {}
 
   for (const [name, r] of resolver.sources()) {
-    const schema = JSON.parse(JSON.stringify(r.rawConfigJsonSchema))
-    schema.properties = { type: { type: 'string', enum: [name] }, ...(schema.properties ?? {}) }
-    schema.required = ['type', ...(schema.required ?? [])]
-    spec.components.schemas[connectorSchemaName(name, 'Source')] = schema
+    spec.components.schemas[connectorSchemaName(name, 'Source')] = {
+      type: 'object',
+      required: ['type'],
+      properties: {
+        type: { type: 'string', enum: [name] },
+        [name]: JSON.parse(JSON.stringify(r.rawConfigJsonSchema)),
+      },
+    }
   }
 
   for (const [name, r] of resolver.destinations()) {
-    const schema = JSON.parse(JSON.stringify(r.rawConfigJsonSchema))
-    schema.properties = { type: { type: 'string', enum: [name] }, ...(schema.properties ?? {}) }
-    schema.required = ['type', ...(schema.required ?? [])]
-    spec.components.schemas[connectorSchemaName(name, 'Destination')] = schema
+    spec.components.schemas[connectorSchemaName(name, 'Destination')] = {
+      type: 'object',
+      required: ['type'],
+      properties: {
+        type: { type: 'string', enum: [name] },
+        [name]: JSON.parse(JSON.stringify(r.rawConfigJsonSchema)),
+      },
+    }
   }
 
   const sourceNames = [...resolver.sources().keys()]
@@ -113,10 +121,12 @@ export function injectConnectorSchemas(spec: any, resolver: ConnectorResolver): 
     .map(([name]) => name)
   if (sourceInputNames.length > 0) {
     spec.components.schemas['SourceInput'] = {
+      discriminator: { propertyName: 'type' },
       oneOf: sourceInputNames.map((n) => ({
         type: 'object',
-        required: [n],
+        required: ['type'],
         properties: {
+          type: { type: 'string', enum: [n] },
           [n]: { $ref: `#/components/schemas/${connectorInputSchemaName(n)}` },
         },
       })),
