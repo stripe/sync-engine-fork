@@ -11,8 +11,6 @@ import type { WorkflowStatus } from '../temporal/workflows/_shared.js'
 
 const DEFAULT_PIPELINE_WORKFLOW = 'pipelineWorkflow'
 const GOOGLE_SHEETS_PIPELINE_WORKFLOW = 'googleSheetPipelineWorkflow'
-const ACTIVE_PIPELINE_STATUSES =
-  "ExecutionStatus IN ('Running', 'Failed', 'Terminated', 'TimedOut', 'Canceled')"
 
 function workflowTypeForPipeline(pipeline: Pipeline): string {
   return pipeline.destination.type === 'google-sheets'
@@ -25,6 +23,14 @@ function workflowTypeForPipeline(pipeline: Pipeline): string {
 let _idCounter = Date.now()
 function genId(prefix: string): string {
   return `${prefix}_${(_idCounter++).toString(36)}`
+}
+
+async function queryStatus(temporal: WorkflowClient, id: string): Promise<WorkflowStatus | undefined> {
+  try {
+    return await temporal.getHandle(id).query<WorkflowStatus>('status')
+  } catch {
+    return undefined
+  }
 }
 
 // MARK: - Response schemas (static — don't depend on connector set)
@@ -48,12 +54,12 @@ function ListResponse<T extends z.ZodType>(itemSchema: T) {
 export interface AppOptions {
   temporal: { client: WorkflowClient; taskQueue: string }
   resolver: ConnectorResolver
-  /** When set, pipelines are persisted here and Temporal is used only for execution. */
-  pipelines?: PipelineStore
+  pipelines: PipelineStore
 }
 
 export function createApp(options: AppOptions) {
   const { client: temporal, taskQueue } = options.temporal
+  const { pipelines } = options
   const {
     Pipeline: PipelineSchema,
     CreatePipeline: CreatePipelineSchema,
@@ -125,54 +131,14 @@ export function createApp(options: AppOptions) {
       },
     }),
     async (c) => {
-      if (options.pipelines) {
-        // FS store is authoritative — read from disk, enrich with Temporal status
-        const stored = await options.pipelines.list()
-        const pipelines = await Promise.all(
-          stored.map(async (pipeline) => {
-            try {
-              const status = await temporal.getHandle(pipeline.id).query<WorkflowStatus>('status')
-              return { ...pipeline, status }
-            } catch {
-              return pipeline
-            }
-          })
-        )
-        return c.json({ data: pipelines, has_more: false } as any, 200)
-      }
-
-      // Temporal-only fallback: iterate visibility API
-      // Completed = soft-deleted (via delete signal). Show everything else
-      // including failed/terminated so operators can see broken pipelines.
-      const pipelines: Array<Pipeline & { status?: WorkflowStatus }> = []
-      for (const workflowType of [DEFAULT_PIPELINE_WORKFLOW, GOOGLE_SHEETS_PIPELINE_WORKFLOW]) {
-        for await (const wf of temporal.list({
-          query: `WorkflowType = '${workflowType}' AND ${ACTIVE_PIPELINE_STATUSES}`,
-        })) {
-          try {
-            const handle = temporal.getHandle(wf.workflowId)
-            const [pipeline, status] = await Promise.all([
-              handle.query<Pipeline>('config'),
-              handle.query<WorkflowStatus>('status'),
-            ])
-            pipelines.push({ ...pipeline, status })
-          } catch {
-            // Non-queryable (failed/terminated) — fall back to memo with derived status
-            const memo = wf.memo as { pipeline?: Pipeline } | undefined
-            if (memo?.pipeline) {
-              pipelines.push({
-                ...memo.pipeline,
-                status: {
-                  phase: wf.status.name.toLowerCase(),
-                  paused: false,
-                  iteration: 0,
-                },
-              })
-            }
-          }
-        }
-      }
-      return c.json({ data: pipelines, has_more: false } as any, 200)
+      const stored = await pipelines.list()
+      const result = await Promise.all(
+        stored.map(async (pipeline) => {
+          const status = await queryStatus(temporal, pipeline.id)
+          return status ? { ...pipeline, status } : pipeline
+        })
+      )
+      return c.json({ data: result, has_more: false } as any, 200)
     }
   )
 
@@ -201,14 +167,11 @@ export function createApp(options: AppOptions) {
       const body = c.req.valid('json')
       const id = genId('pipe')
       const pipeline = { id, ...(body as Record<string, unknown>) } as Pipeline
-      if (options.pipelines) {
-        await options.pipelines.set(id, pipeline)
-      }
+      await pipelines.set(id, pipeline)
       await temporal.start(workflowTypeForPipeline(pipeline), {
         workflowId: id,
         taskQueue,
-        args: [pipeline],
-        memo: { pipeline },
+        args: [id],
       })
       return c.json(pipeline as any, 201)
     }
@@ -235,57 +198,14 @@ export function createApp(options: AppOptions) {
     }),
     async (c) => {
       const { id } = c.req.valid('param')
-
-      if (options.pipelines) {
-        let pipeline: Pipeline
-        try {
-          pipeline = await options.pipelines.get(id)
-        } catch {
-          return c.json({ error: `Pipeline ${id} not found` }, 404)
-        }
-        try {
-          const status = await temporal.getHandle(id).query<WorkflowStatus>('status')
-          return c.json({ ...pipeline, status } as any, 200)
-        } catch {
-          return c.json(pipeline as any, 200)
-        }
-      }
-
-      // Temporal-only fallback
+      let pipeline: Pipeline
       try {
-        const handle = temporal.getHandle(id)
-        const desc = await handle.describe()
-        // Completed = soft-deleted via delete signal — treat as 404
-        if (desc.status.name === 'COMPLETED') {
-          return c.json({ error: `Pipeline ${id} not found` }, 404)
-        }
-        try {
-          const [pipeline, status] = await Promise.all([
-            handle.query<Pipeline>('config'),
-            handle.query<WorkflowStatus>('status'),
-          ])
-          return c.json({ ...pipeline, status } as any, 200)
-        } catch {
-          // Non-queryable (failed/terminated) — fall back to memo with derived status
-          const memo = desc.memo as { pipeline?: Pipeline } | undefined
-          if (!memo?.pipeline) {
-            return c.json({ error: `Pipeline ${id} not found` }, 404)
-          }
-          return c.json(
-            {
-              ...memo.pipeline,
-              status: {
-                phase: desc.status.name.toLowerCase(),
-                paused: false,
-                iteration: 0,
-              },
-            } as any,
-            200
-          )
-        }
+        pipeline = await pipelines.get(id)
       } catch {
         return c.json({ error: `Pipeline ${id} not found` }, 404)
       }
+      const status = await queryStatus(temporal, id)
+      return c.json(status ? { ...pipeline, status } : (pipeline as any), 200)
     }
   )
 
@@ -305,6 +225,10 @@ export function createApp(options: AppOptions) {
           content: { 'application/json': { schema: PipelineWithStatusSchema } },
           description: 'Updated pipeline',
         },
+        400: {
+          content: { 'application/json': { schema: ErrorSchema } },
+          description: 'Bad request',
+        },
         404: {
           content: { 'application/json': { schema: ErrorSchema } },
           description: 'Not found',
@@ -315,75 +239,58 @@ export function createApp(options: AppOptions) {
       const { id } = c.req.valid('param')
       const patch = c.req.valid('json') as Partial<Pipeline>
 
-      if (options.pipelines) {
-        let pipeline: Pipeline
-        try {
-          pipeline = await options.pipelines.get(id)
-        } catch {
-          return c.json({ error: `Pipeline ${id} not found` }, 404)
-        }
-        // Merge patch into stored pipeline (top-level fields only)
-        const updated: Pipeline = { ...pipeline }
-        if (patch.source) updated.source = patch.source
-        if (patch.destination) updated.destination = patch.destination
-        if (patch.streams !== undefined) updated.streams = patch.streams
-        await options.pipelines.set(id, updated)
-        // Best-effort: signal the in-flight workflow if it's running
-        try {
-          await temporal.getHandle(id).signal('update', patch)
-        } catch {
-          // Workflow may not be running — config is persisted, that's fine
-        }
-        try {
-          const status = await temporal.getHandle(id).query<WorkflowStatus>('status')
-          return c.json({ ...updated, status } as any, 200)
-        } catch {
-          return c.json(updated as any, 200)
-        }
-      }
-
-      // Temporal-only fallback
+      let current: Pipeline
       try {
-        const handle = temporal.getHandle(id)
-        const current = await handle.query<Pipeline>('config')
-        const next = {
-          ...current,
-          source: patch.source ? patch.source : current.source,
-          destination: patch.destination ? patch.destination : current.destination,
-          streams: patch.streams !== undefined ? patch.streams : current.streams,
-        } as Pipeline
-        if (workflowTypeForPipeline(current) !== workflowTypeForPipeline(next)) {
-          return c.json(
-            {
-              error:
-                'Changing destination.type between google-sheets and non-google-sheets requires recreating the pipeline',
-            },
-            400
-          )
-        }
-        if (
-          current.destination.type === 'google-sheets' &&
-          current.destination.spreadsheet_id !== next.destination.spreadsheet_id
-        ) {
-          return c.json(
-            {
-              error:
-                'Changing the target spreadsheet for a google-sheets pipeline requires recreating the pipeline',
-            },
-            400
-          )
-        }
-        await handle.signal('update', patch)
-        // Brief wait for signal to be processed before querying
-        await new Promise((r) => setTimeout(r, 200))
-        const [pipeline, status] = await Promise.all([
-          handle.query<Pipeline>('config'),
-          handle.query<WorkflowStatus>('status'),
-        ])
-        return c.json({ ...pipeline, status } as any, 200)
+        current = await pipelines.get(id)
       } catch {
         return c.json({ error: `Pipeline ${id} not found` }, 404)
       }
+
+      // Validate google-sheets constraints
+      const next = {
+        ...current,
+        ...(patch.source ? { source: patch.source } : {}),
+        ...(patch.destination ? { destination: patch.destination } : {}),
+        ...(patch.streams !== undefined ? { streams: patch.streams } : {}),
+      } as Pipeline
+      if (workflowTypeForPipeline(current) !== workflowTypeForPipeline(next)) {
+        return c.json(
+          {
+            error:
+              'Changing destination.type between google-sheets and non-google-sheets requires recreating the pipeline',
+          },
+          400
+        )
+      }
+      if (
+        current.destination.type === 'google-sheets' &&
+        current.destination.spreadsheet_id !== next.destination.spreadsheet_id
+      ) {
+        return c.json(
+          {
+            error:
+              'Changing the target spreadsheet for a google-sheets pipeline requires recreating the pipeline',
+          },
+          400
+        )
+      }
+
+      // Write to store
+      const updated = await pipelines.update(id, {
+        ...(patch.source ? { source: patch.source } : {}),
+        ...(patch.destination ? { destination: patch.destination } : {}),
+        ...(patch.streams !== undefined ? { streams: patch.streams } : {}),
+      })
+
+      // Best-effort: notify the workflow that config changed
+      try {
+        await temporal.getHandle(id).signal('update', {})
+      } catch {
+        // Workflow may not be running — config is persisted, that's fine
+      }
+
+      const status = await queryStatus(temporal, id)
+      return c.json(status ? { ...updated, status } : (updated as any), 200)
     }
   )
 
@@ -408,18 +315,20 @@ export function createApp(options: AppOptions) {
     }),
     async (c) => {
       const { id } = c.req.valid('param')
+      let pipeline: Pipeline
       try {
-        const handle = temporal.getHandle(id)
-        await handle.signal('update', { paused: true })
-        await new Promise((r) => setTimeout(r, 200))
-        const [pipeline, status] = await Promise.all([
-          handle.query<Pipeline>('config'),
-          handle.query<WorkflowStatus>('status'),
-        ])
-        return c.json({ ...pipeline, status } as any, 200)
+        pipeline = await pipelines.get(id)
       } catch {
         return c.json({ error: `Pipeline ${id} not found` }, 404)
       }
+      try {
+        await temporal.getHandle(id).signal('update', { paused: true })
+        await new Promise((r) => setTimeout(r, 200))
+      } catch {
+        return c.json({ error: `Pipeline ${id} workflow not found` }, 404)
+      }
+      const status = await queryStatus(temporal, id)
+      return c.json(status ? { ...pipeline, status } : (pipeline as any), 200)
     }
   )
 
@@ -444,18 +353,20 @@ export function createApp(options: AppOptions) {
     }),
     async (c) => {
       const { id } = c.req.valid('param')
+      let pipeline: Pipeline
       try {
-        const handle = temporal.getHandle(id)
-        await handle.signal('update', { paused: false })
-        await new Promise((r) => setTimeout(r, 200))
-        const [pipeline, status] = await Promise.all([
-          handle.query<Pipeline>('config'),
-          handle.query<WorkflowStatus>('status'),
-        ])
-        return c.json({ ...pipeline, status } as any, 200)
+        pipeline = await pipelines.get(id)
       } catch {
         return c.json({ error: `Pipeline ${id} not found` }, 404)
       }
+      try {
+        await temporal.getHandle(id).signal('update', { paused: false })
+        await new Promise((r) => setTimeout(r, 200))
+      } catch {
+        return c.json({ error: `Pipeline ${id} workflow not found` }, 404)
+      }
+      const status = await queryStatus(temporal, id)
+      return c.json(status ? { ...pipeline, status } : (pipeline as any), 200)
     }
   )
 
@@ -485,47 +396,26 @@ export function createApp(options: AppOptions) {
     async (c) => {
       const { id } = c.req.valid('param')
 
-      if (options.pipelines) {
-        // Check store existence first — this is the authoritative 404 check
-        try {
-          await options.pipelines.get(id)
-        } catch {
-          return c.json({ error: `Pipeline ${id} not found` }, 404)
-        }
-        // Signal the workflow to run teardown, if it's running
-        try {
-          const handle = temporal.getHandle(id)
-          const desc = await handle.describe()
-          if (desc.status.name === 'RUNNING') {
-            await handle.signal('delete')
-            await handle.result()
-          }
-        } catch {
-          // Workflow not found or already finished — proceed to delete from store
-        }
-        await options.pipelines.delete(id)
-        return c.json({ id, deleted: true as const }, 200)
+      try {
+        await pipelines.get(id)
+      } catch {
+        return c.json({ error: `Pipeline ${id} not found` }, 404)
       }
 
-      // Temporal-only fallback
+      // Signal the workflow to run teardown, if it's running
       try {
         const handle = temporal.getHandle(id)
-        // Verify the workflow exists and is running before signaling
         const desc = await handle.describe()
-        if (desc.status.name === 'COMPLETED') {
-          return c.json({ error: `Pipeline ${id} not found` }, 404)
+        if (desc.status.name === 'RUNNING') {
+          await handle.signal('delete')
+          await handle.result()
         }
-        await handle.signal('delete')
-        await handle.result()
-        return c.json({ id, deleted: true as const }, 200)
-      } catch (err) {
-        // WorkflowNotFoundError → 404; teardown/other failures → 500
-        const message = err instanceof Error ? err.message : String(err)
-        if (message.includes('not found') || message.includes('NOT_FOUND')) {
-          return c.json({ error: `Pipeline ${id} not found` }, 404)
-        }
-        return c.json({ error: `Failed to delete pipeline ${id}: ${message}` }, 500)
+      } catch {
+        // Workflow not found or already finished — proceed to delete from store
       }
+
+      await pipelines.delete(id)
+      return c.json({ id, deleted: true as const }, 200)
     }
   )
 
