@@ -584,7 +584,9 @@ describe('takeLimits()', () => {
       { type: 'state', state: { stream: 'customers', data: { cursor: '3' } } },
     ]
     // State limit of 1 fires before any time limit
-    const result = await drain(takeLimits<Message>({ state_limit: 1, time_limit: 60 })(toAsync(msgs)))
+    const result = await drain(
+      takeLimits<Message>({ state_limit: 1, time_limit: 60 })(toAsync(msgs))
+    )
     expect(result.at(-1)).toMatchObject({ type: 'eof', eof: { reason: 'state_limit' } })
   })
 

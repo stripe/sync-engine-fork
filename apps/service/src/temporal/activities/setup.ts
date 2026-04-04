@@ -8,7 +8,7 @@ export function createSetupActivity(context: ActivitiesContext) {
     const pipeline = await context.pipelines.get(pipelineId)
     const { id: _, ...config } = pipeline
     const { messages: controlMsgs } = await collectMessages(
-      context.engine.pipeline_setup(config) as AsyncIterable<Message>,
+      context.engine.pipeline_setup(config),
       'control'
     )
     const sourceConfigs = controlMsgs
@@ -18,8 +18,10 @@ export function createSetupActivity(context: ActivitiesContext) {
       .filter((m) => m._emitted_by?.startsWith('destination/'))
       .map((m) => m.control.config)
     const patch: Record<string, unknown> = {}
-    if (sourceConfigs.length > 0) patch.source = { ...pipeline.source, ...Object.assign({}, ...sourceConfigs) }
-    if (destConfigs.length > 0) patch.destination = { ...pipeline.destination, ...Object.assign({}, ...destConfigs) }
+    if (sourceConfigs.length > 0)
+      patch.source = { ...pipeline.source, ...Object.assign({}, ...sourceConfigs) }
+    if (destConfigs.length > 0)
+      patch.destination = { ...pipeline.destination, ...Object.assign({}, ...destConfigs) }
     if (Object.keys(patch).length > 0) {
       await context.pipelines.update(pipelineId, patch)
     }

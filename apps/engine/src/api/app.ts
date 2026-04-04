@@ -1,4 +1,4 @@
-import { OpenAPIHono, createRoute, type RouteHandler } from '@stripe/sync-hono-zod-openapi'
+import { OpenAPIHono, createRoute } from '@stripe/sync-hono-zod-openapi'
 import { z } from 'zod'
 import { apiReference } from '@scalar/hono-api-reference'
 import { HTTPException } from 'hono/http-exception'
@@ -202,14 +202,13 @@ export async function createApp(resolver: ConnectorResolver) {
       400: errorResponse,
     },
   })
-  app.openapi(
-    pipelineCheckRoute,
-    ((c) => {
-      const pipeline = c.req.valid('header')['x-pipeline']
-      const context = { path: '/pipeline_check', ...syncRequestContext(pipeline) }
-      return ndjsonResponse(logApiStream('Engine API /check', engine.pipeline_check(pipeline), context))
-    }) as RouteHandler<typeof pipelineCheckRoute>
-  )
+  app.openapi(pipelineCheckRoute, (c) => {
+    const pipeline = c.req.valid('header')['x-pipeline']
+    const context = { path: '/pipeline_check', ...syncRequestContext(pipeline) }
+    return ndjsonResponse(
+      logApiStream('Engine API /check', engine.pipeline_check(pipeline), context)
+    )
+  })
 
   const pipelineSetupRoute = createRoute({
     operationId: 'pipeline_setup',
@@ -228,14 +227,13 @@ export async function createApp(resolver: ConnectorResolver) {
       400: errorResponse,
     },
   })
-  app.openapi(
-    pipelineSetupRoute,
-    ((c) => {
-      const pipeline = c.req.valid('header')['x-pipeline']
-      const context = { path: '/pipeline_setup', ...syncRequestContext(pipeline) }
-      return ndjsonResponse(logApiStream('Engine API /setup', engine.pipeline_setup(pipeline), context))
-    }) as RouteHandler<typeof pipelineSetupRoute>
-  )
+  app.openapi(pipelineSetupRoute, (c) => {
+    const pipeline = c.req.valid('header')['x-pipeline']
+    const context = { path: '/pipeline_setup', ...syncRequestContext(pipeline) }
+    return ndjsonResponse(
+      logApiStream('Engine API /setup', engine.pipeline_setup(pipeline), context)
+    )
+  })
 
   const pipelineTeardownRoute = createRoute({
     operationId: 'pipeline_teardown',
@@ -254,14 +252,13 @@ export async function createApp(resolver: ConnectorResolver) {
       400: errorResponse,
     },
   })
-  app.openapi(
-    pipelineTeardownRoute,
-    ((c) => {
-      const pipeline = c.req.valid('header')['x-pipeline']
-      const context = { path: '/pipeline_teardown', ...syncRequestContext(pipeline) }
-      return ndjsonResponse(logApiStream('Engine API /teardown', engine.pipeline_teardown(pipeline), context))
-    }) as RouteHandler<typeof pipelineTeardownRoute>
-  )
+  app.openapi(pipelineTeardownRoute, (c) => {
+    const pipeline = c.req.valid('header')['x-pipeline']
+    const context = { path: '/pipeline_teardown', ...syncRequestContext(pipeline) }
+    return ndjsonResponse(
+      logApiStream('Engine API /teardown', engine.pipeline_teardown(pipeline), context)
+    )
+  })
 
   const sourceDiscoverRoute = createRoute({
     operationId: 'source_discover',
@@ -279,27 +276,20 @@ export async function createApp(resolver: ConnectorResolver) {
       400: errorResponse,
     },
   })
-  app.openapi(
-    sourceDiscoverRoute,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ((c: any) => {
-      const pipeline = c.req.valid('header')['x-pipeline']
-      return ndjsonResponse(engine.source_discover(pipeline.source))
-    }) as RouteHandler<typeof sourceDiscoverRoute>
-  )
-
-  // For streaming NDJSON routes the handler returns a raw Response (not c.json).
-  // RouteHandler<R> provides a typed cast that satisfies app.openapi()'s handler constraint.
+  app.openapi(sourceDiscoverRoute, (c) => {
+    const pipeline = c.req.valid('header')['x-pipeline']
+    return ndjsonResponse(engine.source_discover(pipeline.source))
+  })
 
   const pipelineReadRoute = createRoute({
     operationId: 'pipeline_read',
     method: 'post',
     path: '/pipeline_read',
-      tags: ['Stateless Sync API'],
-      summary: 'Read records from source',
-      description:
-        'Streams NDJSON messages (records, state, catalog). Optional NDJSON body provides live events as input.',
-      requestParams: { header: allSyncHeaders, query: syncQueryParams },
+    tags: ['Stateless Sync API'],
+    summary: 'Read records from source',
+    description:
+      'Streams NDJSON messages (records, state, catalog). Optional NDJSON body provides live events as input.',
+    requestParams: { header: allSyncHeaders, query: syncQueryParams },
     requestBody: {
       required: false,
       content: {
@@ -316,46 +306,43 @@ export async function createApp(resolver: ConnectorResolver) {
       400: errorResponse,
     },
   })
-  app.openapi(
-    pipelineReadRoute,
-    (async (c) => {
-      const pipeline = c.req.valid('header')['x-pipeline']
-      const state = c.req.valid('header')['x-state'] as Record<string, unknown> | undefined
-      const { state_limit, time_limit } = c.req.valid('query')
-      const inputPresent = hasBody(c)
-      const context = { path: '/pipeline_read', inputPresent, ...syncRequestContext(pipeline) }
-      const startedAt = Date.now()
-      logger.info(context, 'Engine API /read started')
+  app.openapi(pipelineReadRoute, async (c) => {
+    const pipeline = c.req.valid('header')['x-pipeline']
+    const state = c.req.valid('header')['x-state'] as Record<string, unknown> | undefined
+    const { state_limit, time_limit } = c.req.valid('query')
+    const inputPresent = hasBody(c)
+    const context = { path: '/pipeline_read', inputPresent, ...syncRequestContext(pipeline) }
+    const startedAt = Date.now()
+    logger.info(context, 'Engine API /read started')
 
-      let input: AsyncIterable<unknown> | undefined
-      if (inputPresent) {
-        const sourceType = pipeline.source.type
-        if (SourceInput) {
-          // Validate each NDJSON line against the SourceInput discriminated union,
-          // then unwrap the connector-specific payload for source.read().
-          input = (async function* () {
-            for await (const msg of parseNdjsonStream(c.req.raw.body!)) {
-              const parsed = SourceInput.parse(msg)
-              yield (parsed as Record<string, unknown>)[sourceType]
-            }
-          })()
-        } else {
-          input = parseNdjsonStream(c.req.raw.body!)
-        }
+    let input: AsyncIterable<unknown> | undefined
+    if (inputPresent) {
+      const sourceType = pipeline.source.type
+      if (SourceInput) {
+        // Validate each NDJSON line against the SourceInput discriminated union,
+        // then unwrap the connector-specific payload for source.read().
+        input = (async function* () {
+          for await (const msg of parseNdjsonStream(c.req.raw.body!)) {
+            const parsed = SourceInput.parse(msg)
+            yield (parsed as Record<string, unknown>)[sourceType]
+          }
+        })()
+      } else {
+        input = parseNdjsonStream(c.req.raw.body!)
       }
-      const output = engine.pipeline_read(pipeline, { state, state_limit, time_limit }, input)
-      return ndjsonResponse(logApiStream('Engine API /read', output, context, startedAt))
-    }) as RouteHandler<typeof pipelineReadRoute>
-  )
+    }
+    const output = engine.pipeline_read(pipeline, { state, state_limit, time_limit }, input)
+    return ndjsonResponse(logApiStream('Engine API /read', output, context, startedAt))
+  })
 
   const pipelineWriteRoute = createRoute({
     operationId: 'pipeline_write',
-      method: 'post',
-      path: '/pipeline_write',
-      tags: ['Stateless Sync API'],
-      summary: 'Write records to destination',
-      description:
-        'Reads NDJSON messages from the request body and writes them to the destination. Pipe /read output as input.',
+    method: 'post',
+    path: '/pipeline_write',
+    tags: ['Stateless Sync API'],
+    summary: 'Write records to destination',
+    description:
+      'Reads NDJSON messages from the request body and writes them to the destination. Pipe /read output as input.',
     requestParams: { header: pipelineHeaders },
     requestBody: {
       required: true,
@@ -369,39 +356,35 @@ export async function createApp(resolver: ConnectorResolver) {
       400: errorResponse,
     },
   })
-  app.openapi(
-    pipelineWriteRoute,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (async (c: any) => {
-      const pipeline = c.req.valid('header')['x-pipeline']
-      const context = { path: '/pipeline_write', ...syncRequestContext(pipeline) }
-      if (!hasBody(c)) {
-        logger.error(context, 'Engine API /write missing request body')
-        return c.json({ error: 'Request body required for /write' }, 400)
-      }
-      const startedAt = Date.now()
-      logger.info(context, 'Engine API /write started')
-      const messages = parseNdjsonStream<Message>(c.req.raw.body!)
-      return ndjsonResponse(
-        logApiStream(
-          'Engine API /write',
-          engine.pipeline_write(pipeline, messages),
-          context,
-          startedAt
-        )
+  app.openapi(pipelineWriteRoute, async (c) => {
+    const pipeline = c.req.valid('header')['x-pipeline']
+    const context = { path: '/pipeline_write', ...syncRequestContext(pipeline) }
+    if (!hasBody(c)) {
+      logger.error(context, 'Engine API /write missing request body')
+      return c.json({ error: 'Request body required for /write' }, 400)
+    }
+    const startedAt = Date.now()
+    logger.info(context, 'Engine API /write started')
+    const messages = parseNdjsonStream<Message>(c.req.raw.body!)
+    return ndjsonResponse(
+      logApiStream(
+        'Engine API /write',
+        engine.pipeline_write(pipeline, messages),
+        context,
+        startedAt
       )
-    }) as RouteHandler<typeof pipelineWriteRoute>
-  )
+    )
+  })
 
   const pipelineSyncRoute = createRoute({
     operationId: 'pipeline_sync',
-      method: 'post',
-      path: '/pipeline_sync',
-      tags: ['Stateless Sync API'],
-      summary: 'Run sync pipeline (read → write)',
-      description:
-        'Without a request body, reads from the source connector and writes to the destination (backfill mode). ' +
-        'With an NDJSON request body, uses the provided messages as input instead of reading from the source (push mode — e.g. piped webhook events).',
+    method: 'post',
+    path: '/pipeline_sync',
+    tags: ['Stateless Sync API'],
+    summary: 'Run sync pipeline (read → write)',
+    description:
+      'Without a request body, reads from the source connector and writes to the destination (backfill mode). ' +
+      'With an NDJSON request body, uses the provided messages as input instead of reading from the source (push mode — e.g. piped webhook events).',
     requestParams: { header: allSyncHeaders, query: syncQueryParams },
     requestBody: {
       required: false,
@@ -419,17 +402,14 @@ export async function createApp(resolver: ConnectorResolver) {
       400: errorResponse,
     },
   })
-  app.openapi(
-    pipelineSyncRoute,
-    (async (c) => {
-      const pipeline = c.req.valid('header')['x-pipeline']
-      const state = c.req.valid('header')['x-state'] as Record<string, unknown> | undefined
-      const { state_limit, time_limit } = c.req.valid('query')
-      const input = hasBody(c) ? parseNdjsonStream(c.req.raw.body!) : undefined
-      const output = engine.pipeline_sync(pipeline, { state, state_limit, time_limit }, input)
-      return ndjsonResponse(output)
-    }) as RouteHandler<typeof pipelineSyncRoute>
-  )
+  app.openapi(pipelineSyncRoute, async (c) => {
+    const pipeline = c.req.valid('header')['x-pipeline']
+    const state = c.req.valid('header')['x-state'] as Record<string, unknown> | undefined
+    const { state_limit, time_limit } = c.req.valid('query')
+    const input = hasBody(c) ? parseNdjsonStream(c.req.raw.body!) : undefined
+    const output = engine.pipeline_sync(pipeline, { state, state_limit, time_limit }, input)
+    return ndjsonResponse(output)
+  })
 
   app.openapi(
     createRoute({

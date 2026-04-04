@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
 import type { Source, Destination, ConnectorSpecification } from '@stripe/sync-protocol'
-import { collectSpec } from '@stripe/sync-protocol'
+import { collectFirst } from '@stripe/sync-protocol'
 import { createSourceFromExec } from './source-exec.js'
 import { createDestinationFromExec } from './destination-exec.js'
 
@@ -199,9 +199,11 @@ async function configSchemaFromSpec(connector: {
   rawConfigJsonSchema: Record<string, unknown>
   rawInputJsonSchema?: Record<string, unknown>
 }> {
-  const { spec: specPayload } = await collectSpec(
-    connector.spec() as AsyncIterable<import('@stripe/sync-protocol').Message>
+  const specMsg = await collectFirst(
+    connector.spec() as AsyncIterable<import('@stripe/sync-protocol').Message>,
+    'spec'
   )
+  const specPayload = specMsg.spec
   // Connectors may emit `$schema` (e.g. via z.toJSONSchema defaults). Strip it here so
   // rawConfigJsonSchema is clean for injection into OpenAPI 3.1 component schemas.
   const { $schema: _unused, ...rawConfigJsonSchema } = specPayload.config

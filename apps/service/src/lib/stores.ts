@@ -10,4 +10,3 @@ export interface PipelineStore {
   delete(id: string): Promise<void>
   list(): Promise<Pipeline[]>
 }
-

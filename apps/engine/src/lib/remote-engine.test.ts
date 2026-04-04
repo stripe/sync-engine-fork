@@ -2,7 +2,7 @@ import { beforeAll, afterAll, describe, it, expect, vi } from 'vitest'
 import type { AddressInfo } from 'node:net'
 import { serve } from '@hono/node-server'
 import type { ConnectorResolver, Message } from './index.js'
-import { sourceTest, destinationTest, collectSpec } from './index.js'
+import { sourceTest, destinationTest, collectFirst } from './index.js'
 import { createApp } from '../api/app.js'
 import { createRemoteEngine } from './remote-engine.js'
 import type { PipelineConfig, StateMessage } from '@stripe/sync-protocol'
@@ -15,10 +15,11 @@ import type { PipelineConfig, StateMessage } from '@stripe/sync-protocol'
 async function getRawConfigJsonSchema(
   connector: typeof sourceTest | typeof destinationTest
 ): Promise<Record<string, unknown>> {
-  const { spec } = await collectSpec(
-    connector.spec() as AsyncIterable<import('@stripe/sync-protocol').Message>
+  const specMsg = await collectFirst(
+    connector.spec() as AsyncIterable<import('@stripe/sync-protocol').Message>,
+    'spec'
   )
-  return spec.config
+  return specMsg.spec.config
 }
 
 vi.spyOn(console, 'info').mockImplementation(() => undefined)
@@ -107,27 +108,29 @@ async function* asIterable<T>(items: T[]): AsyncIterable<T> {
 
 describe('createRemoteEngine', () => {
   describe('pipeline_setup()', () => {
-    it('resolves without error', async () => {
+    it('streams without error (empty for test connectors)', async () => {
       const engine = createRemoteEngine(engineUrl)
-      await expect(engine.pipeline_setup(pipeline)).resolves.toEqual({})
+      const msgs = await collect(engine.pipeline_setup(pipeline))
+      // sourceTest and destinationTest have no setup(), so stream is empty
+      expect(msgs).toHaveLength(0)
     })
   })
 
   describe('pipeline_teardown()', () => {
-    it('resolves without error', async () => {
+    it('streams without error (empty for test connectors)', async () => {
       const engine = createRemoteEngine(engineUrl)
-      await expect(engine.pipeline_teardown(pipeline)).resolves.toBeUndefined()
+      const msgs = await collect(engine.pipeline_teardown(pipeline))
+      expect(msgs).toHaveLength(0)
     })
   })
 
   describe('pipeline_check()', () => {
-    it('returns source and destination check results', async () => {
+    it('streams connection_status messages for source and destination', async () => {
       const engine = createRemoteEngine(engineUrl)
-      const result = await engine.pipeline_check(pipeline)
-      expect(result).toEqual({
-        source: { status: 'succeeded' },
-        destination: { status: 'succeeded' },
-      })
+      const msgs = await collect(engine.pipeline_check(pipeline))
+      const statuses = msgs.filter((m) => m.type === 'connection_status')
+      expect(statuses).toHaveLength(2)
+      expect(statuses.every((s) => s.connection_status.status === 'succeeded')).toBe(true)
     })
   })
 
@@ -264,7 +267,7 @@ describe('createRemoteEngine', () => {
         destination: { type: 'nonexistent' },
       }
       const engine = createRemoteEngine(engineUrl)
-      await expect(engine.pipeline_setup(badPipeline)).rejects.toThrow(/failed/)
+      await expect(collect(engine.pipeline_setup(badPipeline))).rejects.toThrow(/failed/)
     })
   })
 })

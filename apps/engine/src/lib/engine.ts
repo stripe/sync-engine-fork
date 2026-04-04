@@ -13,7 +13,7 @@ import {
   SyncOutput,
   RecordMessage,
   StateMessage,
-  collectMessages,
+  collectFirst,
   split,
   merge,
   map,
@@ -25,7 +25,6 @@ import type { ConnectorResolver } from './resolver.js'
 import { logger } from '../logger.js'
 
 // MARK: - Engine interface
-
 
 export const SourceReadOptions = z.object({
   /** Per-stream state cursors carried in from the previous sync run. */
@@ -219,10 +218,8 @@ async function getSpecConfig(
   connector: { spec(): AsyncIterable<Message> },
   rawConfig: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
-  const {
-    messages: [specMsg],
-  } = await collectMessages(connector.spec(), 'spec')
-  if (!specMsg) throw new Error('spec stream ended without emitting a spec message')
+  const specMsg = await collectFirst(connector.spec(), 'spec')
+
   return z.fromJSONSchema(specMsg.spec.config).parse(rawConfig) as Record<string, unknown>
 }
 
@@ -231,13 +228,10 @@ async function discoverCatalog(
   engine: Engine,
   pipeline: PipelineConfig
 ): Promise<{ catalog: ConfiguredCatalog; filteredCatalog: ConfiguredCatalog }> {
-  const {
-    messages: [catalogMsg],
-  } = await collectMessages(
-    engine.source_discover(pipeline.source) as AsyncIterable<Message>,
+  const catalogMsg = await collectFirst(
+    engine.source_discover(pipeline.source),
     'catalog'
   )
-  if (!catalogMsg) throw new Error('discover stream ended without emitting a catalog message')
   const catalog = buildCatalog(catalogMsg.catalog.streams, pipeline.streams)
   const filteredCatalog = applySelection(catalog)
   return { catalog, filteredCatalog }
@@ -315,14 +309,20 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
         withLoggedStream(
           'Engine source check',
           baseContext,
-          map(srcConnector.check({ config: sourceConfig }) as AsyncIterable<CheckOutput>, tag(sourceTag))
+          map(
+            srcConnector.check({ config: sourceConfig }),
+            tag(sourceTag)
+          )
         )
       )
       streams.push(
         withLoggedStream(
           'Engine destination check',
           baseContext,
-          map(destConnector.check({ config: destConfig }) as AsyncIterable<CheckOutput>, tag(destTag))
+          map(
+            destConnector.check({ config: destConfig }),
+            tag(destTag)
+          )
         )
       )
       yield* merge(...streams)
@@ -352,7 +352,10 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
           withLoggedStream(
             'Engine source setup',
             baseContext,
-            map(srcConnector.setup({ config: sourceConfig, catalog }) as AsyncIterable<SetupOutput>, tag(sourceTag))
+            map(
+              srcConnector.setup({ config: sourceConfig, catalog }),
+              tag(sourceTag)
+            )
           )
         )
       }
@@ -362,7 +365,10 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
             'Engine destination setup',
             baseContext,
             map(
-              destConnector.setup({ config: destConfig, catalog: filteredCatalog }) as AsyncIterable<SetupOutput>,
+              destConnector.setup({
+                config: destConfig,
+                catalog: filteredCatalog,
+              }),
               tag(destTag)
             )
           )
@@ -393,7 +399,10 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
           withLoggedStream(
             'Engine source teardown',
             baseContext,
-            map(srcConnector.teardown({ config: sourceConfig }) as AsyncIterable<TeardownOutput>, tag(sourceTag))
+            map(
+              srcConnector.teardown({ config: sourceConfig }),
+              tag(sourceTag)
+            )
           )
         )
       }
@@ -402,7 +411,10 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
           withLoggedStream(
             'Engine destination teardown',
             baseContext,
-            map(destConnector.teardown({ config: destConfig }) as AsyncIterable<TeardownOutput>, tag(destTag))
+            map(
+              destConnector.teardown({ config: destConfig }),
+              tag(destTag)
+            )
           )
         )
       }
@@ -486,7 +498,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       const { filteredCatalog } = await discoverCatalog(engine, pipeline)
 
       const destInput = pipe(
-        dataStream as AsyncIterable<Message>,
+        dataStream,
         enforceCatalog(filteredCatalog),
         log,
         filterType('record', 'state')

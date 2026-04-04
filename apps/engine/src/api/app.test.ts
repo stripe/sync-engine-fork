@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ConnectorResolver, Message, StateMessage } from '../lib/index.js'
-import { sourceTest, destinationTest, collectSpec } from '../lib/index.js'
+import { sourceTest, destinationTest, collectFirst } from '../lib/index.js'
 import { createApp } from './app.js'
 import pg from 'pg'
 
@@ -12,10 +12,11 @@ import pg from 'pg'
 async function getRawConfigJsonSchema(
   connector: typeof sourceTest | typeof destinationTest
 ): Promise<Record<string, unknown>> {
-  const { spec } = await collectSpec(
-    connector.spec() as AsyncIterable<import('@stripe/sync-protocol').Message>
+  const specMsg = await collectFirst(
+    connector.spec() as AsyncIterable<import('@stripe/sync-protocol').Message>,
+    'spec'
   )
-  return spec.config
+  return specMsg.spec.config
 }
 
 let resolver: ConnectorResolver
@@ -228,8 +229,8 @@ describe('GET /openapi.json', () => {
     const res = await app.request('/openapi.json')
     const spec = (await res.json()) as any
 
-    // /check is a GET with X-Pipeline header
-    const checkOp = spec.paths['/pipeline_check']?.get
+    // /check is a POST with X-Pipeline header
+    const checkOp = spec.paths['/pipeline_check']?.post
     expect(checkOp).toBeDefined()
     const headerParam = checkOp.parameters?.find(
       (p: any) => p.in === 'header' && p.name === 'x-pipeline'
@@ -307,7 +308,7 @@ describe('GET /docs', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /setup', () => {
-  it('returns 200 with setup result', async () => {
+  it('streams NDJSON setup messages', async () => {
     const app = await createApp(resolver)
 
     const res = await app.request('/pipeline_setup', {
@@ -315,36 +316,43 @@ describe('POST /setup', () => {
       headers: { 'X-Pipeline': syncParams },
     })
     expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body).toEqual({})
+    expect(res.headers.get('Content-Type')).toBe('application/x-ndjson')
+    // sourceTest and destinationTest have no setup(), so stream is empty
+    const events = await readNdjson(res)
+    expect(events).toHaveLength(0)
   })
 })
 
 describe('POST /teardown', () => {
-  it('returns 204', async () => {
+  it('streams NDJSON teardown messages', async () => {
     const app = await createApp(resolver)
 
     const res = await app.request('/pipeline_teardown', {
       method: 'POST',
       headers: { 'X-Pipeline': syncParams },
     })
-    expect(res.status).toBe(204)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toBe('application/x-ndjson')
+    // sourceTest and destinationTest have no teardown(), so stream is empty
+    const events = await readNdjson(res)
+    expect(events).toHaveLength(0)
   })
 })
 
-describe('GET /check', () => {
-  it('returns source and destination check results', async () => {
+describe('POST /check', () => {
+  it('streams connection_status messages for source and destination', async () => {
     const app = await createApp(resolver)
 
     const res = await app.request('/pipeline_check', {
+      method: 'POST',
       headers: { 'X-Pipeline': syncParams },
     })
     expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body).toEqual({
-      source: { status: 'succeeded' },
-      destination: { status: 'succeeded' },
-    })
+    expect(res.headers.get('Content-Type')).toBe('application/x-ndjson')
+    const events = await readNdjson<Record<string, unknown>>(res)
+    const statuses = events.filter((e) => e.type === 'connection_status')
+    expect(statuses).toHaveLength(2)
+    expect(statuses.every((s: any) => s.connection_status.status === 'succeeded')).toBe(true)
   })
 })
 
@@ -724,7 +732,7 @@ describe('error handling', () => {
   it('returns 400 when X-Pipeline header is missing', async () => {
     const app = await createApp(resolver)
 
-    const res = await app.request('/pipeline_check')
+    const res = await app.request('/pipeline_check', { method: 'POST' })
     expect(res.status).toBe(400)
   })
 
@@ -732,6 +740,7 @@ describe('error handling', () => {
     const app = await createApp(resolver)
 
     const res = await app.request('/pipeline_check', {
+      method: 'POST',
       headers: { 'X-Pipeline': 'not-json' },
     })
     expect(res.status).toBe(400)
