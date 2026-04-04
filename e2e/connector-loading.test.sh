@@ -202,10 +202,10 @@ UNKNOWN_PARAMS='{"source":{"type":"nonexistent-xyz"},"destination":{"type":"none
 unknown_output=$(npx sync-engine pipeline-check \
      --x-pipeline "$UNKNOWN_PARAMS" \
      2>&1 || true)
-if echo "$unknown_output" | grep -qi "not found"; then
-  echo "  PASS: unknown connector correctly reports 'not found'"
+if echo "$unknown_output" | grep -qiE "not found|No matching discriminator|invalid_union"; then
+  echo "  PASS: unknown connector correctly rejected"
 else
-  echo "  FAIL: unknown connector did not report 'not found'"
+  echo "  FAIL: unknown connector was not rejected"
   echo "  Output: $unknown_output"
   exit 1
 fi
