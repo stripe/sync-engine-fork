@@ -178,7 +178,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/meta/sources/:type": {
+    "/meta/sources/{type}": {
         parameters: {
             query?: never;
             header?: never;
@@ -212,7 +212,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/meta/destinations/:type": {
+    "/meta/destinations/{type}": {
         parameters: {
             query?: never;
             header?: never;

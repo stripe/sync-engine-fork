@@ -459,7 +459,7 @@ export function createApp(resolver: ConnectorResolver) {
     createRoute({
       operationId: 'meta_source',
       method: 'get',
-      path: '/meta/sources/:type',
+      path: '/meta/sources/{type}',
       tags: ['Meta'],
       summary: 'Get source connector spec',
       requestParams: { path: z.object({ type: z.string() }) },
@@ -508,7 +508,7 @@ export function createApp(resolver: ConnectorResolver) {
     createRoute({
       operationId: 'meta_destination',
       method: 'get',
-      path: '/meta/destinations/:type',
+      path: '/meta/destinations/{type}',
       tags: ['Meta'],
       summary: 'Get destination connector spec',
       requestParams: { path: z.object({ type: z.string() }) },
