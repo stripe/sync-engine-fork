@@ -102,9 +102,9 @@ describe('GET /openapi.json', () => {
     expect(paths).toContain('/write')
     expect(paths).toContain('/sync')
     expect(paths).toContain('/meta/sources')
-    expect(paths).toContain('/meta/sources/:type')
+    expect(paths).toContain('/meta/sources/{type}')
     expect(paths).toContain('/meta/destinations')
-    expect(paths).toContain('/meta/destinations/:type')
+    expect(paths).toContain('/meta/destinations/{type}')
   })
 
   it('injects typed connector schemas into components', async () => {
