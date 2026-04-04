@@ -14,6 +14,7 @@ import {
 import { endpointTable, addDiscriminators, injectConnectorSchemas } from './openapi-utils.js'
 import {
   Message as MessageSchema,
+  DiscoverOutput as DiscoverOutputSchema,
   DestinationOutput as DestinationOutputSchema,
 } from '@stripe/sync-protocol'
 import { ndjsonResponse } from '@stripe/sync-ts-cli/ndjson'
@@ -299,7 +300,7 @@ export async function createApp(resolver: ConnectorResolver) {
       responses: {
         200: {
           description: 'NDJSON stream of discover messages',
-          content: { 'application/x-ndjson': { schema: MessageSchema } },
+          content: { 'application/x-ndjson': { schema: DiscoverOutputSchema } },
         },
         400: errorResponse,
       },

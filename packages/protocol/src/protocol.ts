@@ -351,19 +351,34 @@ export type Message = z.infer<typeof Message>
 // MARK: - Per-command output types
 
 /** Output of spec(): the connector's specification, plus optional logs/traces. */
-export type SpecOutput = SpecMessage | LogMessage | TraceMessage
+export const SpecOutput = z
+  .discriminatedUnion('type', [SpecMessage, LogMessage, TraceMessage])
+  .meta({ id: 'SpecOutput' })
+export type SpecOutput = z.infer<typeof SpecOutput>
 
 /** Output of check(): connection status, plus optional logs/traces. */
-export type CheckOutput = ConnectionStatusMessage | LogMessage | TraceMessage
+export const CheckOutput = z
+  .discriminatedUnion('type', [ConnectionStatusMessage, LogMessage, TraceMessage])
+  .meta({ id: 'CheckOutput' })
+export type CheckOutput = z.infer<typeof CheckOutput>
 
 /** Output of discover(): catalog of streams, plus optional logs/traces. */
-export type DiscoverOutput = CatalogMessage | LogMessage | TraceMessage
+export const DiscoverOutput = z
+  .discriminatedUnion('type', [CatalogMessage, LogMessage, TraceMessage])
+  .meta({ id: 'DiscoverOutput' })
+export type DiscoverOutput = z.infer<typeof DiscoverOutput>
 
 /** Output of setup(): config update controls, plus optional logs/traces. */
-export type SetupOutput = ControlMessage | LogMessage | TraceMessage
+export const SetupOutput = z
+  .discriminatedUnion('type', [ControlMessage, LogMessage, TraceMessage])
+  .meta({ id: 'SetupOutput' })
+export type SetupOutput = z.infer<typeof SetupOutput>
 
 /** Output of teardown(): optional logs/traces. */
-export type TeardownOutput = LogMessage | TraceMessage
+export const TeardownOutput = z
+  .discriminatedUnion('type', [LogMessage, TraceMessage])
+  .meta({ id: 'TeardownOutput' })
+export type TeardownOutput = z.infer<typeof TeardownOutput>
 
 // MARK: - Source
 //
