@@ -19,7 +19,6 @@ import { CONTINUE_AS_NEW_THRESHOLD, EVENT_BATCH_SIZE } from '../../lib/utils.js'
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
 export interface PipelineWorkflowOpts {
-  phase?: string
   state?: Record<string, unknown>
   timeLimit?: number
   inputQueue?: unknown[]
@@ -51,22 +50,13 @@ export async function pipelineWorkflow(
     deleted = true
   })
 
-  const phase = opts?.phase ?? 'setup'
-  setHandler(
-    statusQuery,
-    (): WorkflowStatus => ({
-      phase: phase === 'setup' && iteration > 0 ? 'running' : phase,
-      paused,
-      iteration,
-    })
-  )
+  setHandler(statusQuery, (): WorkflowStatus => ({ phase: 'running', paused, iteration }))
   setHandler(configQuery, (): Pipeline => pipeline)
   setHandler(stateQuery, (): Record<string, unknown> => syncState)
 
   async function maybeContinueAsNew() {
     if (++iteration >= CONTINUE_AS_NEW_THRESHOLD) {
       await continueAsNew<typeof pipelineWorkflow>(pipeline, {
-        phase: 'running',
         state: syncState,
         timeLimit: opts?.timeLimit,
         inputQueue: inputQueue.length > 0 ? [...inputQueue] : undefined,
@@ -74,21 +64,19 @@ export async function pipelineWorkflow(
     }
   }
 
-  if (phase !== 'running') {
-    const setupResult = await setup(toConfig(pipeline))
-    if (setupResult.source) {
-      pipeline = { ...pipeline, source: { ...pipeline.source, ...setupResult.source } }
+  const setupResult = await setup(toConfig(pipeline))
+  if (setupResult.source) {
+    pipeline = { ...pipeline, source: { ...pipeline.source, ...setupResult.source } }
+  }
+  if (setupResult.destination) {
+    pipeline = {
+      ...pipeline,
+      destination: { ...pipeline.destination, ...setupResult.destination },
     }
-    if (setupResult.destination) {
-      pipeline = {
-        ...pipeline,
-        destination: { ...pipeline.destination, ...setupResult.destination },
-      }
-    }
-    if (deleted) {
-      await teardown(toConfig(pipeline))
-      return
-    }
+  }
+  if (deleted) {
+    await teardown(toConfig(pipeline))
+    return
   }
 
   while (!deleted) {
