@@ -15,13 +15,13 @@ import { CONTINUE_AS_NEW_THRESHOLD } from '../../lib/utils.js'
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
-export interface SimplestPipelineWorkflowOpts {
+export interface BackfillPipelineWorkflowOpts {
   state?: Record<string, unknown>
 }
 
-export async function simplestPipelineWorkflow(
+export async function backfillPipelineWorkflow(
   pipeline: Pipeline,
-  opts?: SimplestPipelineWorkflowOpts
+  opts?: BackfillPipelineWorkflowOpts
 ): Promise<void> {
   let paused = false
   let deleted = false
@@ -47,7 +47,7 @@ export async function simplestPipelineWorkflow(
 
   async function maybeContinueAsNew() {
     if (++iteration >= CONTINUE_AS_NEW_THRESHOLD) {
-      await continueAsNew<typeof simplestPipelineWorkflow>(pipeline, { state: syncState })
+      await continueAsNew<typeof backfillPipelineWorkflow>(pipeline, { state: syncState })
     }
   }
 

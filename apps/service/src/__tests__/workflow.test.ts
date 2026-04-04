@@ -293,7 +293,7 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
   })
 })
 
-describe('pipelineGoogleSheetsWorkflow (unit — stubbed activities)', () => {
+describe('googleSheetPipelineWorkflow (unit — stubbed activities)', () => {
   it('uses the Sheets-specific read path and catalog discovery', async () => {
     let discoverCalls = 0
     let readCalls = 0
