@@ -63,13 +63,8 @@ export async function pipelineWorkflow(
   setHandler(configQuery, (): Pipeline => pipeline)
   setHandler(stateQuery, (): Record<string, unknown> => syncState)
 
-  async function waitWhilePaused() {
-    await condition(() => !paused || deleted)
-  }
-
-  async function tickIteration() {
-    iteration++
-    if (iteration >= CONTINUE_AS_NEW_THRESHOLD) {
+  async function maybeContinueAsNew() {
+    if (++iteration >= CONTINUE_AS_NEW_THRESHOLD) {
       await continueAsNew<typeof pipelineWorkflow>(pipeline, {
         phase: 'running',
         state: syncState,
@@ -96,20 +91,25 @@ export async function pipelineWorkflow(
     }
   }
 
-  while (true) {
-    await waitWhilePaused()
-    if (deleted) break
+  while (!deleted) {
+    if (paused) {
+      await condition(() => !paused || deleted)
+      continue
+    }
+
+    if (readComplete && inputQueue.length === 0) {
+      // Idle — wait up to one week; timeout means recon is due.
+      const timedOut = !(await condition(() => paused || deleted || inputQueue.length > 0, ONE_WEEK_MS))
+      if (timedOut) readComplete = false
+      continue
+    }
 
     const config = toConfig(pipeline)
 
     if (inputQueue.length > 0) {
       const batch = inputQueue.splice(0, EVENT_BATCH_SIZE)
       await syncImmediate(config, { input: batch })
-      await tickIteration()
-      continue
-    }
-
-    if (!readComplete) {
+    } else {
       const result = await syncImmediate(config, {
         state: syncState,
         stateLimit: 1,
@@ -117,17 +117,9 @@ export async function pipelineWorkflow(
       })
       syncState = { ...syncState, ...result.state }
       readComplete = result.eof?.reason === 'complete'
-      await tickIteration()
-      continue
     }
 
-    // Wait for the next webhook event. If the recon interval elapses with no
-    // event, trigger a full reconciliation by resetting readComplete.
-    const gotEvent = await condition(
-      () => inputQueue.length > 0 || deleted,
-      ONE_WEEK_MS
-    )
-    if (!gotEvent && !deleted) readComplete = false
+    await maybeContinueAsNew()
   }
 
   await teardown(toConfig(pipeline))

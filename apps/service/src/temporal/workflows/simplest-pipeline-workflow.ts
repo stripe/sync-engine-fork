@@ -45,32 +45,28 @@ export async function simplestPipelineWorkflow(
   setHandler(configQuery, (): Pipeline => pipeline)
   setHandler(stateQuery, (): Record<string, unknown> => syncState)
 
-  async function tickIteration() {
-    iteration++
-    if (iteration >= CONTINUE_AS_NEW_THRESHOLD) {
-      await continueAsNew<typeof simplestPipelineWorkflow>(pipeline, {
-        state: syncState,
-      })
+  async function maybeContinueAsNew() {
+    if (++iteration >= CONTINUE_AS_NEW_THRESHOLD) {
+      await continueAsNew<typeof simplestPipelineWorkflow>(pipeline, { state: syncState })
     }
   }
 
   while (!deleted) {
-    await condition(() => !paused || deleted)
-    if (deleted) break
-
-    if (!backfillComplete) {
-      const result = await syncImmediate(toConfig(pipeline), {
-        state: syncState,
-        stateLimit: 1,
-      })
-      syncState = { ...syncState, ...result.state }
-      backfillComplete = result.eof?.reason === 'complete'
-      await tickIteration()
+    if (paused) {
+      await condition(() => !paused || deleted)
       continue
     }
 
-    // Backfill complete — wait for recon interval then re-sync from latest state.
-    const gotSignal = await condition(() => !paused || deleted, ONE_WEEK_MS)
-    if (!gotSignal && !deleted) backfillComplete = false
+    if (backfillComplete) {
+      // Idle — wait up to one week; timeout means recon is due.
+      const timedOut = !(await condition(() => paused || deleted, ONE_WEEK_MS))
+      if (timedOut) backfillComplete = false
+      continue
+    }
+
+    const result = await syncImmediate(toConfig(pipeline), { state: syncState, stateLimit: 1 })
+    syncState = { ...syncState, ...result.state }
+    backfillComplete = result.eof?.reason === 'complete'
+    await maybeContinueAsNew()
   }
 }
