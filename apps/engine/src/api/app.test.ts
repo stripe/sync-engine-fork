@@ -95,12 +95,13 @@ describe('GET /openapi.json', () => {
     const paths = Object.keys(spec.paths)
 
     expect(paths).toContain('/health')
-    expect(paths).toContain('/setup')
-    expect(paths).toContain('/teardown')
-    expect(paths).toContain('/check')
-    expect(paths).toContain('/read')
-    expect(paths).toContain('/write')
-    expect(paths).toContain('/sync')
+    expect(paths).toContain('/pipeline_setup')
+    expect(paths).toContain('/pipeline_teardown')
+    expect(paths).toContain('/pipeline_check')
+    expect(paths).toContain('/pipeline_read')
+    expect(paths).toContain('/pipeline_write')
+    expect(paths).toContain('/pipeline_sync')
+    expect(paths).toContain('/source_discover')
     expect(paths).toContain('/meta/sources')
     expect(paths).toContain('/meta/sources/{type}')
     expect(paths).toContain('/meta/destinations')
@@ -153,15 +154,15 @@ describe('GET /openapi.json', () => {
 
     // NDJSON responses reference schemas (zod-openapi adds Output suffix for response-only types)
     const readNdjson =
-      spec.paths['/read']?.post?.responses?.['200']?.content?.['application/x-ndjson']
+      spec.paths['/pipeline_read']?.post?.responses?.['200']?.content?.['application/x-ndjson']
     expect(readNdjson.schema.$ref).toBe('#/components/schemas/MessageOutput')
 
     const writeNdjson =
-      spec.paths['/write']?.post?.responses?.['200']?.content?.['application/x-ndjson']
+      spec.paths['/pipeline_write']?.post?.responses?.['200']?.content?.['application/x-ndjson']
     expect(writeNdjson.schema.$ref).toBe('#/components/schemas/DestinationOutput')
 
     const syncNdjson =
-      spec.paths['/sync']?.post?.responses?.['200']?.content?.['application/x-ndjson']
+      spec.paths['/pipeline_sync']?.post?.responses?.['200']?.content?.['application/x-ndjson']
     expect(syncNdjson.schema.$ref).toBe('#/components/schemas/DestinationOutput')
   })
 
@@ -169,7 +170,7 @@ describe('GET /openapi.json', () => {
     const app = createApp(resolver)
     const res = await app.request('/openapi.json')
     const spec = (await res.json()) as any
-    const setupOp = spec.paths['/setup']?.post
+    const setupOp = spec.paths['/pipeline_setup']?.post
     expect(setupOp).toBeDefined()
     expect(setupOp.responses['200']).toBeDefined()
     expect(setupOp.responses['204']).toBeUndefined()
@@ -179,7 +180,7 @@ describe('GET /openapi.json', () => {
     const app = createApp(resolver)
     const res = await app.request('/openapi.json')
     const spec = (await res.json()) as any
-    const writeOp = spec.paths['/write']?.post
+    const writeOp = spec.paths['/pipeline_write']?.post
     expect(writeOp).toBeDefined()
     const body = writeOp.requestBody
     expect(body).toBeDefined()
@@ -195,7 +196,7 @@ describe('GET /openapi.json', () => {
     const spec = (await res.json()) as any
 
     // /check is a GET with X-Pipeline header
-    const checkOp = spec.paths['/check']?.get
+    const checkOp = spec.paths['/pipeline_check']?.get
     expect(checkOp).toBeDefined()
     const headerParam = checkOp.parameters?.find(
       (p: any) => p.in === 'header' && p.name === 'x-pipeline'
@@ -276,7 +277,7 @@ describe('POST /setup', () => {
   it('returns 200 with setup result', async () => {
     const app = createApp(resolver)
 
-    const res = await app.request('/setup', {
+    const res = await app.request('/pipeline_setup', {
       method: 'POST',
       headers: { 'X-Pipeline': syncParams },
     })
@@ -290,7 +291,7 @@ describe('POST /teardown', () => {
   it('returns 204', async () => {
     const app = createApp(resolver)
 
-    const res = await app.request('/teardown', {
+    const res = await app.request('/pipeline_teardown', {
       method: 'POST',
       headers: { 'X-Pipeline': syncParams },
     })
@@ -302,7 +303,7 @@ describe('GET /check', () => {
   it('returns source and destination check results', async () => {
     const app = createApp(resolver)
 
-    const res = await app.request('/check', {
+    const res = await app.request('/pipeline_check', {
       headers: { 'X-Pipeline': syncParams },
     })
     expect(res.status).toBe(200)
@@ -327,7 +328,7 @@ describe('POST /read', () => {
       },
       { type: 'state', stream: 'customers', data: { status: 'complete' } },
     ])
-    const res = await app.request('/read', {
+    const res = await app.request('/pipeline_read', {
       method: 'POST',
       headers: { 'X-Pipeline': syncParams, ...bodyHeaders(body) },
       body,
@@ -363,7 +364,7 @@ describe('POST /write', () => {
     ]
 
     const writeBody = toNdjson(records)
-    const res = await app.request('/write', {
+    const res = await app.request('/pipeline_write', {
       method: 'POST',
       headers: { 'X-Pipeline': syncParams, ...bodyHeaders(writeBody) },
       body: writeBody,
@@ -382,7 +383,7 @@ describe('POST /write', () => {
   it('returns 400 when body is missing', async () => {
     const app = createApp(resolver)
 
-    const res = await app.request('/write', {
+    const res = await app.request('/pipeline_write', {
       method: 'POST',
       headers: { 'X-Pipeline': syncParams },
     })
@@ -405,7 +406,7 @@ describe('POST /sync', () => {
       },
       { type: 'state', stream: 'customers', data: { status: 'complete' } },
     ])
-    const res = await app.request('/sync', {
+    const res = await app.request('/pipeline_sync', {
       method: 'POST',
       headers: { 'X-Pipeline': syncParams, ...bodyHeaders(runBody) },
       body: runBody,
@@ -524,7 +525,7 @@ describe('state_limit and time_limit', () => {
       },
       { type: 'state', stream: 'customers', data: { cursor: '2' } },
     ])
-    const res = await app.request('/read', {
+    const res = await app.request('/pipeline_read', {
       method: 'POST',
       headers: { 'X-Pipeline': syncParams, ...bodyHeaders(body) },
       body,
@@ -542,7 +543,7 @@ describe('error handling', () => {
   it('returns 400 when X-Pipeline header is missing', async () => {
     const app = createApp(resolver)
 
-    const res = await app.request('/check')
+    const res = await app.request('/pipeline_check')
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toContain('Missing X-Pipeline')
@@ -551,7 +552,7 @@ describe('error handling', () => {
   it('returns 400 when X-Pipeline header is invalid JSON', async () => {
     const app = createApp(resolver)
 
-    const res = await app.request('/check', {
+    const res = await app.request('/pipeline_check', {
       headers: { 'X-Pipeline': 'not-json' },
     })
     expect(res.status).toBe(400)

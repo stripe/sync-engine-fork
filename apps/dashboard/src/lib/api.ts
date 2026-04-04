@@ -31,7 +31,7 @@ export interface CatalogResponse {
 }
 
 export async function discover(source: Record<string, unknown>): Promise<CatalogResponse> {
-  const { data, error, response } = await engine.POST('/discover', {
+  const { data, error, response } = await (engine.POST as any)('/source_discover', {
     headers: { 'x-pipeline': JSON.stringify({ source, destination: { type: '_' } }) },
   })
   if (error) {

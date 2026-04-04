@@ -68,7 +68,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
   }
 
   async function post(
-    path: '/read' | '/write' | '/sync' | '/setup' | '/teardown',
+    path: '/pipeline_read' | '/pipeline_write' | '/pipeline_sync' | '/pipeline_setup' | '/pipeline_teardown',
     pipeline: PipelineConfig,
     opts?: SyncOpts,
     body?: ReadableStream<Uint8Array>
@@ -130,20 +130,21 @@ export function createRemoteEngine(engineUrl: string): Engine {
     },
 
     async pipeline_setup(pipeline: PipelineConfig): Promise<SetupResult> {
-      const res = await post('/setup', pipeline)
+      const res = await post('/pipeline_setup', pipeline)
       const text = await res.text()
       return text ? JSON.parse(text) : {}
     },
 
     async pipeline_teardown(pipeline: PipelineConfig) {
-      await post('/teardown', pipeline)
+      await post('/pipeline_teardown', pipeline)
     },
 
     async pipeline_check(pipeline: PipelineConfig) {
-      const { data, error } = await client.GET('/check', {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (client.GET as any)('/pipeline_check', {
         params: { header: { 'x-pipeline': JSON.stringify(pipeline) } },
       })
-      if (error) throw new Error(`Engine /check failed: ${JSON.stringify(error)}`)
+      if (error) throw new Error(`Engine /pipeline_check failed: ${JSON.stringify(error)}`)
       return data as { source: CheckResult; destination: CheckResult }
     },
 
@@ -151,10 +152,10 @@ export function createRemoteEngine(engineUrl: string): Engine {
       // Only source config is needed for discover — pass a minimal pipeline header
       const ph = JSON.stringify({ source, destination: { type: '_' } })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (client.POST as any)('/discover', {
+      const { data, error } = await (client.POST as any)('/source_discover', {
         params: { header: { 'x-pipeline': ph } },
       })
-      if (error) throw new Error(`Engine /discover failed: ${JSON.stringify(error)}`)
+      if (error) throw new Error(`Engine /source_discover failed: ${JSON.stringify(error)}`)
       return data as CatalogMessage
     },
 
@@ -164,7 +165,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
       input?: AsyncIterable<unknown>
     ): AsyncIterable<Message> {
       const body = input ? toNdjsonStream(input) : undefined
-      const res = await post('/read', pipeline, opts, body)
+      const res = await post('/pipeline_read', pipeline, opts, body)
       yield* parseNdjsonStream<Message>(res.body!)
     },
 
@@ -172,7 +173,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
       pipeline: PipelineConfig,
       messages: AsyncIterable<Message>
     ): AsyncIterable<DestinationOutput> {
-      const res = await post('/write', pipeline, undefined, toNdjsonStream(messages))
+      const res = await post('/pipeline_write', pipeline, undefined, toNdjsonStream(messages))
       yield* parseNdjsonStream<DestinationOutput>(res.body!)
     },
 
@@ -182,7 +183,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
       input?: AsyncIterable<unknown>
     ): AsyncIterable<DestinationOutput> {
       const body = input ? toNdjsonStream(input) : undefined
-      const res = await post('/sync', pipeline, opts, body)
+      const res = await post('/pipeline_sync', pipeline, opts, body)
       yield* parseNdjsonStream<DestinationOutput>(res.body!)
     },
   }
