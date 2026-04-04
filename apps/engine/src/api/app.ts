@@ -418,7 +418,7 @@ export async function createApp(resolver: ConnectorResolver) {
       requestParams: { header: allSyncHeaders, query: syncQueryParams },
       requestBody: {
         required: false,
-        content: { 'application/x-ndjson': { schema: ndjsonRef.Message } },
+        content: { 'application/x-ndjson': { schema: SourceInput ? ndjsonRef.SourceInput : ndjsonRef.Message } },
       },
       responses: {
         200: {

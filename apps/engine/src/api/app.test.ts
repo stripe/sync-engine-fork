@@ -207,6 +207,21 @@ describe('GET /openapi.json', () => {
     expect(ndjsonContent.schema.$ref).toBe('#/components/schemas/Message')
   })
 
+  it('/read and /sync spec documents an optional NDJSON request body', async () => {
+    const app = await createApp(resolver)
+    const res = await app.request('/openapi.json')
+    const spec = (await res.json()) as any
+
+    for (const path of ['/pipeline_read', '/pipeline_sync'] as const) {
+      const op = spec.paths[path]?.post
+      expect(op).toBeDefined()
+      const body = op.requestBody
+      expect(body).toBeDefined()
+      expect(body.required).toBe(false)
+      expect(body.content?.['application/x-ndjson']).toBeDefined()
+    }
+  })
+
   it('documents the X-Pipeline header on sync routes', async () => {
     const app = await createApp(resolver)
     const res = await app.request('/openapi.json')
@@ -411,6 +426,20 @@ describe('POST /read', () => {
           ]),
       }
       inputApp = await createApp(inputResolver)
+    })
+
+    it('spec uses SourceInput schema for /read and /sync request body when source has input schema', async () => {
+      const res = await inputApp.request('/openapi.json')
+      const spec = (await res.json()) as any
+
+      for (const path of ['/pipeline_read', '/pipeline_sync'] as const) {
+        const body = spec.paths[path]?.post?.requestBody
+        expect(body).toBeDefined()
+        expect(body.required).toBe(false)
+        expect(body.content?.['application/x-ndjson']?.schema?.$ref).toBe(
+          '#/components/schemas/SourceInput'
+        )
+      }
     })
 
     it('accepts valid wrapped input and passes unwrapped data to source', async () => {

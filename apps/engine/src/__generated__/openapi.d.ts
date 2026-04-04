@@ -233,7 +233,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        Message: components["schemas"]["RecordMessage"] | components["schemas"]["StateMessage"] | components["schemas"]["CatalogMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["SpecMessage"] | components["schemas"]["ConnectionStatusMessage"] | components["schemas"]["ControlMessage"] | components["schemas"]["EofMessage"];
         RecordMessage: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -435,6 +434,43 @@ export interface components {
                 reason: "complete" | "state_limit" | "time_limit" | "error";
             };
         };
+        SourceStripeInputEnvelope: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "stripe";
+            stripe: components["schemas"]["SourceStripeInput"];
+        };
+        SourceStripeInput: {
+            /** @description Unique identifier for the object. */
+            id: string;
+            /** @constant */
+            object: "event";
+            /** @description The connected account that originates the event. */
+            account?: string;
+            api_version: string | null;
+            /** @description Time at which the object was created. Measured in seconds since the Unix epoch. */
+            created: number;
+            data: {
+                object: {
+                    [key: string]: unknown;
+                };
+                previous_attributes?: {
+                    [key: string]: unknown;
+                };
+            };
+            /** @description Has the value `true` if the object exists in live mode or the value `false` if the object exists in test mode. */
+            livemode: boolean;
+            /** @description Number of webhooks that haven't been successfully delivered (for example, to return a 20x response) to the URLs you specify. */
+            pending_webhooks: number;
+            request: {
+                id: string | null;
+                idempotency_key: string | null;
+            } | null;
+            /** @description Description of the event (for example, `invoice.created` or `charge.refunded`). */
+            type: string;
+        };
         SourceConfig: components["schemas"]["SourceStripe"];
         SourceStripe: {
             /**
@@ -554,296 +590,13 @@ export interface components {
              */
             batch_size: number;
         };
-        DiscoverOutput: components["schemas"]["CatalogMessageOutput"] | components["schemas"]["LogMessageOutput"] | components["schemas"]["TraceMessageOutput"];
-        DestinationOutput: components["schemas"]["StateMessageOutput"] | components["schemas"]["TraceMessageOutput"] | components["schemas"]["LogMessageOutput"] | components["schemas"]["EofMessageOutput"];
-        CatalogMessageOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "catalog";
-            /** @description Catalog of available streams. */
-            catalog: {
-                /** @description All streams available from this source. */
-                streams: {
-                    /** @description Collection name (e.g. "customers", "invoices", "pg_public.users"). */
-                    name: string;
-                    /** @description Paths to fields that uniquely identify a record within this stream. Supports composite keys and nested paths. e.g. [["id"]] or [["account_id"], ["created"]] */
-                    primary_key: string[][];
-                    /** @description JSON Schema describing the record shape. Discovered at runtime or provided by config. */
-                    json_schema?: {
-                        [key: string]: unknown;
-                    };
-                    /** @description Source-specific metadata that applies to every record in this stream. The destination can use these for schema naming, partitioning, etc. Examples: Stripe: { api_version, account_id, live_mode }. */
-                    metadata?: {
-                        [key: string]: unknown;
-                    };
-                }[];
-            };
-        };
-        LogMessageOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "log";
-            /** @description Structured log output from a connector. */
-            log: {
-                /**
-                 * @description Log severity level.
-                 * @enum {string}
-                 */
-                level: "debug" | "info" | "warn" | "error";
-                /** @description Human-readable log message. */
-                message: string;
-            };
-        };
-        TraceMessageOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "trace";
-            /** @description Diagnostic/status payload with subtypes for error, stream status, and estimates. */
-            trace: {
-                /** @constant */
-                trace_type: "error";
-                /** @description Structured error from a connector. */
-                error: {
-                    /**
-                     * @description Error category — lets the orchestrator decide whether to retry, alert, or abort.
-                     * @enum {string}
-                     */
-                    failure_type: "config_error" | "system_error" | "transient_error" | "auth_error";
-                    /** @description Human-readable error description. */
-                    message: string;
-                    /** @description Stream that triggered the error, if applicable. */
-                    stream?: string;
-                    /** @description Full stack trace for debugging. */
-                    stack_trace?: string;
-                };
-            } | {
-                /** @constant */
-                trace_type: "stream_status";
-                /** @description Per-stream status update. */
-                stream_status: {
-                    /** @description Stream being reported on. */
-                    stream: string;
-                    /**
-                     * @description Current phase of the stream within this sync run.
-                     * @enum {string}
-                     */
-                    status: "started" | "running" | "complete" | "incomplete";
-                };
-            } | {
-                /** @constant */
-                trace_type: "estimate";
-                /** @description Sync progress estimate for a stream. */
-                estimate: {
-                    /** @description Stream being estimated. */
-                    stream: string;
-                    /** @description Estimated total row count for this stream. */
-                    row_count?: number;
-                    /** @description Estimated total byte count for this stream. */
-                    byte_count?: number;
-                };
-            };
-        };
-        MessageOutput: components["schemas"]["RecordMessageOutput"] | components["schemas"]["StateMessageOutput"] | components["schemas"]["CatalogMessageOutput"] | components["schemas"]["LogMessageOutput"] | components["schemas"]["TraceMessageOutput"] | components["schemas"]["SpecMessageOutput"] | components["schemas"]["ConnectionStatusMessageOutput"] | components["schemas"]["ControlMessageOutput"] | components["schemas"]["EofMessageOutput"];
-        RecordMessageOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "record";
-            /** @description One record for one stream. */
-            record: {
-                /** @description Stream (table) name this record belongs to. */
-                stream: string;
-                /** @description The record payload as a key-value map. */
-                data: {
-                    [key: string]: unknown;
-                };
-                /**
-                 * Format: date-time
-                 * @description ISO 8601 timestamp when the record was emitted by the source.
-                 */
-                emitted_at: string;
-            };
-        };
-        StateMessageOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "state";
-            /** @description Per-stream checkpoint for resumable syncs. */
-            state: {
-                /** @description Stream being checkpointed. */
-                stream: string;
-                /** @description Opaque checkpoint data — only the source understands its contents. The orchestrator persists it keyed by stream and passes it back on resume. */
-                data: unknown;
-            };
-        };
-        SpecMessageOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "spec";
-            /** @description JSON Schema describing the configuration a connector requires. */
-            spec: {
-                /** @description JSON Schema for the connector's configuration object. */
-                config: {
-                    [key: string]: unknown;
-                };
-                /** @description JSON Schema for per-stream state (cursor/checkpoint shape). */
-                stream_state?: {
-                    [key: string]: unknown;
-                };
-                /** @description JSON Schema for the read() input parameter (e.g. a webhook event). */
-                input?: {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        ConnectionStatusMessageOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "connection_status";
-            /** @description Result of a connection check. */
-            connection_status: {
-                /**
-                 * @description Whether the connection check passed.
-                 * @enum {string}
-                 */
-                status: "succeeded" | "failed";
-                /** @description Human-readable explanation of the check result. */
-                message?: string;
-            };
-        };
-        ControlMessageOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "control";
-            /** @description Control signal from a connector to the orchestrator. */
-            control: {
-                /**
-                 * @description What kind of control action the connector is requesting.
-                 * @enum {string}
-                 */
-                control_type: "config_update";
-                /** @description Config fields to merge into the active connector configuration. */
-                config: {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        EofMessageOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "eof";
-            /** @description Terminal payload — tells the client why the stream ended. */
-            eof: {
-                /**
-                 * @description Why the stream ended.
-                 * @enum {string}
-                 */
-                reason: "complete" | "state_limit" | "time_limit" | "error";
-            };
-        };
-        SourceConfigOutput: components["schemas"]["SourceStripeOutput"];
-        SourceStripeOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "stripe";
-            stripe: components["schemas"]["SourceStripeConfig"];
-        };
-        DestinationConfigOutput: components["schemas"]["DestinationPostgresOutput"] | components["schemas"]["DestinationGoogleSheetsOutput"];
-        DestinationPostgresOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "postgres";
-            postgres: components["schemas"]["DestinationPostgresConfigOutput"];
-        };
-        DestinationPostgresConfigOutput: {
-            /** @description Postgres connection string (alias for connection_string) */
-            url?: string;
-            /** @description Postgres connection string */
-            connection_string?: string;
-            /** @description Postgres host (required for AWS IAM) */
-            host?: string;
-            /**
-             * @description Postgres port
-             * @default 5432
-             */
-            port: number;
-            /** @description Database name (required for AWS IAM) */
-            database?: string;
-            /** @description Database user (required for AWS IAM) */
-            user?: string;
-            /** @description Target schema name (e.g. "stripe_sync") */
-            schema: string;
-            /**
-             * @description Records to buffer before flushing
-             * @default 100
-             */
-            batch_size: number;
-            /** @description AWS RDS IAM authentication config */
-            aws?: {
-                /** @description AWS region for RDS instance */
-                region: string;
-                /** @description IAM role ARN to assume (cross-account) */
-                role_arn?: string;
-                /** @description External ID for STS AssumeRole */
-                external_id?: string;
-            };
-            /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
-            ssl_ca_pem?: string;
-        };
-        DestinationGoogleSheetsOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "google-sheets";
-            "google-sheets": components["schemas"]["DestinationGoogleSheetsConfigOutput"];
-        };
-        DestinationGoogleSheetsConfigOutput: {
-            /** @description Google OAuth2 client ID (env: GOOGLE_CLIENT_ID) */
-            client_id?: string;
-            /** @description Google OAuth2 client secret (env: GOOGLE_CLIENT_SECRET) */
-            client_secret?: string;
-            /** @description OAuth2 access token */
-            access_token: string;
-            /** @description OAuth2 refresh token */
-            refresh_token: string;
-            /** @description Target spreadsheet ID (created if omitted) */
-            spreadsheet_id?: string;
-            /**
-             * @description Title when creating a new spreadsheet
-             * @default Stripe Sync
-             */
-            spreadsheet_title: string;
-            /**
-             * @description Rows per Sheets API append call
-             * @default 50
-             */
-            batch_size: number;
-        };
+        Message: components["schemas"]["RecordMessage"] | components["schemas"]["StateMessage"] | components["schemas"]["CatalogMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["SpecMessage"] | components["schemas"]["ConnectionStatusMessage"] | components["schemas"]["ControlMessage"] | components["schemas"]["EofMessage"];
+        DiscoverOutput: components["schemas"]["CatalogMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"];
+        DestinationOutput: components["schemas"]["StateMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["EofMessage"];
+        SourceInput: components["schemas"]["SourceStripeInputEnvelope"];
         PipelineConfig: {
-            source: components["schemas"]["SourceConfigOutput"];
-            destination: components["schemas"]["DestinationConfigOutput"];
+            source: components["schemas"]["SourceConfig"];
+            destination: components["schemas"]["DestinationConfig"];
             streams?: {
                 /** @description Stream (table) name to sync. */
                 name: string;
@@ -1054,7 +807,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/x-ndjson": components["schemas"]["SourceInput"];
+            };
+        };
         responses: {
             /** @description NDJSON stream of sync messages */
             200: {
@@ -1062,7 +819,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/x-ndjson": components["schemas"]["MessageOutput"];
+                    "application/x-ndjson": components["schemas"]["Message"];
                 };
             };
             /** @description Invalid params */
@@ -1133,7 +890,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/x-ndjson": components["schemas"]["Message"];
+            };
+        };
         responses: {
             /** @description NDJSON stream of sync messages */
             200: {
