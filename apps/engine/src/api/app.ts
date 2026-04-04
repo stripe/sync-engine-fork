@@ -340,7 +340,38 @@ export async function createApp(resolver: ConnectorResolver) {
       const startedAt = Date.now()
       logger.info(context, 'Engine API /read started')
 
-      const input = inputPresent ? parseNdjsonStream(c.req.raw.body!) : undefined
+      let input: AsyncIterable<unknown> | undefined
+      if (inputPresent) {
+        const sourceType = params.pipeline.source.type
+        const resolvedSource = resolver.sources().get(sourceType)
+        const rawInputJsonSchema = resolvedSource?.rawInputJsonSchema
+        if (rawInputJsonSchema) {
+          // Source has a typed input schema — each line must be wrapped under the source type
+          // key: {"stripe": {...webhookEvent...}}. Unwrap and validate before passing to read().
+          const inputValidator = z.fromJSONSchema(rawInputJsonSchema)
+          input = (async function* () {
+            for await (const msg of parseNdjsonStream(c.req.raw.body!)) {
+              const wrapped = msg as Record<string, unknown>
+              const unwrapped = wrapped[sourceType]
+              if (unwrapped === undefined) {
+                throw new Error(
+                  `pipeline_read: expected each input line wrapped under "${sourceType}" key, e.g. {"${sourceType}": {...}}`
+                )
+              }
+              const result = inputValidator.safeParse(unwrapped)
+              if (!result.success) {
+                throw new Error(
+                  `pipeline_read: invalid input for source "${sourceType}": ${result.error.message}`
+                )
+              }
+              yield result.data
+            }
+          })()
+        } else {
+          // No input schema — pass through as-is (backward-compatible for sources without typed input)
+          input = parseNdjsonStream(c.req.raw.body!)
+        }
+      }
       const output = engine.pipeline_read(
         params.pipeline,
         { state: params.state, stateLimit: params.stateLimit, timeLimit: params.timeLimit },

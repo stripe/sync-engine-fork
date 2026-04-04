@@ -55,6 +55,14 @@ export function connectorSchemaName(name: string, role: 'Source' | 'Destination'
   return `${pascal}${role}Config`
 }
 
+export function connectorInputSchemaName(name: string): string {
+  const pascal = name
+    .split(/[-_]/)
+    .map((w) => capitalize(w))
+    .join('')
+  return `${pascal}WebhookInput`
+}
+
 /**
  * Inject typed connector config schemas into an OpenAPI spec's components,
  * building SourceConfig / DestinationConfig discriminated unions and a
@@ -89,6 +97,39 @@ export function injectConnectorSchemas(spec: any, resolver: ConnectorResolver): 
       oneOf: sourceNames.map((n) => ({
         $ref: `#/components/schemas/${connectorSchemaName(n, 'Source')}`,
       })),
+    }
+  }
+
+  // Inject source input schemas and build SourceInput oneOf wrapper
+  for (const [name, r] of resolver.sources()) {
+    if (r.rawInputJsonSchema) {
+      spec.components.schemas[connectorInputSchemaName(name)] = JSON.parse(
+        JSON.stringify(r.rawInputJsonSchema)
+      )
+    }
+  }
+  const sourceInputNames = [...resolver.sources().entries()]
+    .filter(([, r]) => r.rawInputJsonSchema != null)
+    .map(([name]) => name)
+  if (sourceInputNames.length > 0) {
+    spec.components.schemas['SourceInput'] = {
+      oneOf: sourceInputNames.map((n) => ({
+        type: 'object',
+        required: [n],
+        properties: {
+          [n]: { $ref: `#/components/schemas/${connectorInputSchemaName(n)}` },
+        },
+      })),
+    }
+    if (spec.paths?.['/pipeline_read']?.post) {
+      spec.paths['/pipeline_read'].post.requestBody = {
+        required: false,
+        content: {
+          'application/x-ndjson': {
+            schema: { $ref: '#/components/schemas/SourceInput' },
+          },
+        },
+      }
     }
   }
 

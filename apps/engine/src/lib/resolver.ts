@@ -179,6 +179,7 @@ export type ResolvedConnector<T> = {
   connector: T
   configSchema: z.ZodType
   rawConfigJsonSchema: Record<string, unknown>
+  rawInputJsonSchema?: Record<string, unknown>
 }
 
 export interface ConnectorResolver {
@@ -196,6 +197,7 @@ async function configSchemaFromSpec(connector: {
 }): Promise<{
   configSchema: z.ZodType
   rawConfigJsonSchema: Record<string, unknown>
+  rawInputJsonSchema?: Record<string, unknown>
 }> {
   const { spec: specPayload } = await collectSpec(
     connector.spec() as AsyncIterable<import('@stripe/sync-protocol').Message>
@@ -206,7 +208,12 @@ async function configSchemaFromSpec(connector: {
   const schema = z.fromJSONSchema(rawConfigJsonSchema)
   // fromJSONSchema({}) returns ZodAny — fall back to empty object for composability
   const configSchema = schema instanceof z.ZodObject ? schema : z.object({})
-  return { configSchema, rawConfigJsonSchema }
+  let rawInputJsonSchema: Record<string, unknown> | undefined
+  if (specPayload.input) {
+    const { $schema: _unused2, ...inputSchema } = specPayload.input
+    rawInputJsonSchema = inputSchema
+  }
+  return { configSchema, rawConfigJsonSchema, rawInputJsonSchema }
 }
 
 /**
