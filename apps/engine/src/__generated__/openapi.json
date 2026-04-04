@@ -1276,7 +1276,7 @@
         "required": ["type", "eof"],
         "additionalProperties": false
       },
-      "StripeSourceConfig": {
+      "SourceStripe": {
         "type": "object",
         "required": ["type"],
         "properties": {
@@ -1354,7 +1354,7 @@
           }
         }
       },
-      "PostgresDestinationConfig": {
+      "DestinationPostgres": {
         "type": "object",
         "required": ["type"],
         "properties": {
@@ -1413,7 +1413,7 @@
           }
         }
       },
-      "GoogleSheetsDestinationConfig": {
+      "DestinationGoogleSheets": {
         "type": "object",
         "required": ["type"],
         "properties": {
@@ -1453,9 +1453,9 @@
       },
       "SourceConfig": {
         "discriminator": { "propertyName": "type" },
-        "oneOf": [{ "$ref": "#/components/schemas/StripeSourceConfig" }]
+        "oneOf": [{ "$ref": "#/components/schemas/SourceStripe" }]
       },
-      "StripeEventInput": {
+      "SourceStripeInput": {
         "type": "object",
         "properties": {
           "id": { "type": "string", "description": "Unique identifier for the object." },
@@ -1542,7 +1542,7 @@
             "required": ["type"],
             "properties": {
               "type": { "type": "string", "enum": ["stripe"] },
-              "stripe": { "$ref": "#/components/schemas/StripeEventInput" }
+              "stripe": { "$ref": "#/components/schemas/SourceStripeInput" }
             }
           }
         ]
@@ -1550,8 +1550,8 @@
       "DestinationConfig": {
         "discriminator": { "propertyName": "type" },
         "oneOf": [
-          { "$ref": "#/components/schemas/PostgresDestinationConfig" },
-          { "$ref": "#/components/schemas/GoogleSheetsDestinationConfig" }
+          { "$ref": "#/components/schemas/DestinationPostgres" },
+          { "$ref": "#/components/schemas/DestinationGoogleSheets" }
         ]
       },
       "PipelineConfig": {

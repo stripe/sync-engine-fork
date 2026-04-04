@@ -52,7 +52,7 @@ export function connectorSchemaName(name: string, role: 'Source' | 'Destination'
     .split(/[-_]/)
     .map((w) => capitalize(w))
     .join('')
-  return `${pascal}${role}Config`
+  return `${role}${pascal}`
 }
 
 export function connectorInputSchemaName(name: string): string {
@@ -60,7 +60,7 @@ export function connectorInputSchemaName(name: string): string {
     .split(/[-_]/)
     .map((w) => capitalize(w))
     .join('')
-  return `${pascal}EventInput`
+  return `Source${pascal}Input`
 }
 
 /**

@@ -638,12 +638,12 @@ export interface components {
                 reason: "complete" | "state_limit" | "time_limit" | "error";
             };
         };
-        StripeSourceConfig: {
+        SourceStripe: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "StripeSourceConfig";
+            type: "SourceStripe";
             stripe?: {
                 /** @description Stripe API key (sk_test_... or sk_live_...) */
                 api_key: string;
@@ -681,12 +681,12 @@ export interface components {
                 backfill_concurrency?: number;
             };
         };
-        PostgresDestinationConfig: {
+        DestinationPostgres: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "PostgresDestinationConfig";
+            type: "DestinationPostgres";
             postgres?: {
                 /** @description Postgres connection string (alias for connection_string) */
                 url?: string;
@@ -723,12 +723,12 @@ export interface components {
                 ssl_ca_pem?: string;
             };
         };
-        GoogleSheetsDestinationConfig: {
+        DestinationGoogleSheets: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "GoogleSheetsDestinationConfig";
+            type: "DestinationGoogleSheets";
             "google-sheets"?: {
                 /** @description Google OAuth2 client ID (env: GOOGLE_CLIENT_ID) */
                 client_id?: string;
@@ -752,8 +752,8 @@ export interface components {
                 batch_size: number;
             };
         };
-        SourceConfig: components["schemas"]["StripeSourceConfig"];
-        StripeEventInput: {
+        SourceConfig: components["schemas"]["SourceStripe"];
+        SourceStripeInput: {
             /** @description Unique identifier for the object. */
             id: string;
             /**
@@ -790,9 +790,9 @@ export interface components {
         SourceInput: {
             /** @enum {string} */
             type: "stripe";
-            stripe?: components["schemas"]["StripeEventInput"];
+            stripe?: components["schemas"]["SourceStripeInput"];
         };
-        DestinationConfig: components["schemas"]["PostgresDestinationConfig"] | components["schemas"]["GoogleSheetsDestinationConfig"];
+        DestinationConfig: components["schemas"]["DestinationPostgres"] | components["schemas"]["DestinationGoogleSheets"];
         PipelineConfig: {
             source: components["schemas"]["SourceConfig"];
             destination: components["schemas"]["DestinationConfig"];

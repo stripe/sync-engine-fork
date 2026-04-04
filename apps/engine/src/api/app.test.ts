@@ -134,8 +134,8 @@ describe('GET /openapi.json', () => {
     const spec = (await res.json()) as any
     const schemaNames = Object.keys(spec.components?.schemas ?? {})
 
-    expect(schemaNames).toContain('TestSourceConfig')
-    expect(schemaNames).toContain('TestDestinationConfig')
+    expect(schemaNames).toContain('SourceTest')
+    expect(schemaNames).toContain('DestinationTest')
     expect(schemaNames).toContain('SourceConfig')
     expect(schemaNames).toContain('DestinationConfig')
     expect(schemaNames).toContain('PipelineConfig')
@@ -145,7 +145,7 @@ describe('GET /openapi.json', () => {
     expect(spec.components.schemas.SourceConfig.oneOf).toHaveLength(1)
 
     // Each variant has type as required field
-    const testSource = spec.components.schemas.TestSourceConfig
+    const testSource = spec.components.schemas.SourceTest
     expect(testSource.required).toContain('type')
     expect(testSource.properties.type.enum).toEqual(['test'])
   })
