@@ -1070,7 +1070,10 @@
               }
             ],
             "description": "Diagnostic/status payload with subtypes for error, stream status, and estimates.",
-            "type": "object"
+            "type": "object",
+            "discriminator": {
+              "propertyName": "trace_type"
+            }
           }
         },
         "required": [

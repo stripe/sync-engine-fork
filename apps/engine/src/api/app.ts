@@ -11,7 +11,7 @@ import {
   ConnectorInfo,
   ConnectorListItem,
 } from '../lib/index.js'
-import { endpointTable, addDiscriminators } from './openapi-utils.js'
+import { endpointTable } from './openapi-utils.js'
 import {
   Message as MessageSchema,
   DiscoverOutput as DiscoverOutputSchema,
@@ -418,7 +418,11 @@ export async function createApp(resolver: ConnectorResolver) {
       requestParams: { header: allSyncHeaders, query: syncQueryParams },
       requestBody: {
         required: false,
-        content: { 'application/x-ndjson': { schema: SourceInput ? ndjsonRef.SourceInput : ndjsonRef.Message } },
+        content: {
+          'application/x-ndjson': {
+            schema: SourceInput ? ndjsonRef.SourceInput : ndjsonRef.Message,
+          },
+        },
       },
       responses: {
         200: {
@@ -559,7 +563,6 @@ export async function createApp(resolver: ConnectorResolver) {
       },
     }) as any
 
-    addDiscriminators(spec)
     spec.info.description += '\n\n## Endpoints\n\n' + endpointTable(spec)
     return c.json(spec)
   })

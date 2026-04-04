@@ -375,6 +375,17 @@ export class OpenAPIHono<
         // same schema appears in both request and response positions.
         outputIdSuffix: '',
         ...documentOptions,
+        // zod-openapi only emits discriminator.mapping (needs named $ref variants)
+        // but omits discriminator.propertyName for inline variants. OAS 3.1 only
+        // requires propertyName — inject it for any z.discriminatedUnion schema.
+        override: ({ jsonSchema, zodSchema, ...ctx }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const def = (zodSchema as any)?._zod?.def
+          if (def?.discriminator && !jsonSchema.discriminator) {
+            jsonSchema.discriminator = { propertyName: def.discriminator }
+          }
+          return documentOptions?.override?.({ jsonSchema, zodSchema, ...ctx }) ?? jsonSchema
+        },
       }
     )
   }
