@@ -9,7 +9,9 @@
     "/health": {
       "get": {
         "operationId": "health",
-        "tags": ["Status"],
+        "tags": [
+          "Status"
+        ],
         "summary": "Health check",
         "responses": {
           "200": {
@@ -24,7 +26,9 @@
                       "const": true
                     }
                   },
-                  "required": ["ok"],
+                  "required": [
+                    "ok"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -36,7 +40,9 @@
     "/pipeline_setup": {
       "post": {
         "operationId": "pipeline_setup",
-        "tags": ["Stateless Sync API"],
+        "tags": [
+          "Stateless Sync API"
+        ],
         "summary": "Set up destination schema",
         "description": "Creates destination tables and applies migrations. Safe to call multiple times.",
         "parameters": [
@@ -44,7 +50,7 @@
             "in": "header",
             "name": "x-pipeline",
             "required": true,
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
+            "description": "JSON-encoded PipelineConfig",
             "content": {
               "application/json": {
                 "schema": {
@@ -78,7 +84,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -90,7 +98,9 @@
     "/pipeline_teardown": {
       "post": {
         "operationId": "pipeline_teardown",
-        "tags": ["Stateless Sync API"],
+        "tags": [
+          "Stateless Sync API"
+        ],
         "summary": "Tear down destination schema",
         "description": "Drops destination tables. Irreversible.",
         "parameters": [
@@ -98,7 +108,7 @@
             "in": "header",
             "name": "x-pipeline",
             "required": true,
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
+            "description": "JSON-encoded PipelineConfig",
             "content": {
               "application/json": {
                 "schema": {
@@ -121,7 +131,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -133,7 +145,9 @@
     "/pipeline_check": {
       "get": {
         "operationId": "pipeline_check",
-        "tags": ["Stateless Sync API"],
+        "tags": [
+          "Stateless Sync API"
+        ],
         "summary": "Check connector connection",
         "description": "Validates the source/destination config and tests connectivity.",
         "parameters": [
@@ -141,7 +155,7 @@
             "in": "header",
             "name": "x-pipeline",
             "required": true,
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
+            "description": "JSON-encoded PipelineConfig",
             "content": {
               "application/json": {
                 "schema": {
@@ -164,13 +178,18 @@
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": ["succeeded", "failed"]
+                          "enum": [
+                            "succeeded",
+                            "failed"
+                          ]
                         },
                         "message": {
                           "type": "string"
                         }
                       },
-                      "required": ["status"],
+                      "required": [
+                        "status"
+                      ],
                       "additionalProperties": false
                     },
                     "destination": {
@@ -178,17 +197,25 @@
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": ["succeeded", "failed"]
+                          "enum": [
+                            "succeeded",
+                            "failed"
+                          ]
                         },
                         "message": {
                           "type": "string"
                         }
                       },
-                      "required": ["status"],
+                      "required": [
+                        "status"
+                      ],
                       "additionalProperties": false
                     }
                   },
-                  "required": ["source", "destination"],
+                  "required": [
+                    "source",
+                    "destination"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -203,7 +230,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -215,7 +244,9 @@
     "/source_discover": {
       "post": {
         "operationId": "source_discover",
-        "tags": ["Stateless Sync API"],
+        "tags": [
+          "Stateless Sync API"
+        ],
         "summary": "Discover available streams",
         "description": "Streams NDJSON messages (catalog, logs, traces) for the configured source.",
         "parameters": [
@@ -223,7 +254,7 @@
             "in": "header",
             "name": "x-pipeline",
             "required": true,
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
+            "description": "JSON-encoded PipelineConfig",
             "content": {
               "application/json": {
                 "schema": {
@@ -253,7 +284,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -265,37 +298,12 @@
     "/pipeline_read": {
       "post": {
         "operationId": "pipeline_read",
-        "tags": ["Stateless Sync API"],
+        "tags": [
+          "Stateless Sync API"
+        ],
         "summary": "Read records from source",
         "description": "Streams NDJSON messages (records, state, catalog). Optional NDJSON body provides live events as input.",
         "parameters": [
-          {
-            "in": "header",
-            "name": "x-pipeline",
-            "required": true,
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineConfig"
-                }
-              }
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-state",
-            "description": "JSON-encoded per-stream cursor state. Engine uses this if present, falls back to StateStore.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "description": "Per-stream cursor state keyed by stream name"
-                }
-              }
-            }
-          },
           {
             "in": "query",
             "name": "state_limit",
@@ -318,6 +326,36 @@
               "exclusiveMinimum": 0
             },
             "description": "Stop streaming after N seconds."
+          },
+          {
+            "in": "header",
+            "name": "x-pipeline",
+            "required": true,
+            "description": "JSON-encoded PipelineConfig",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineConfig"
+                }
+              }
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-state",
+            "required": false,
+            "description": "JSON-encoded per-stream cursor state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
           }
         ],
         "responses": {
@@ -340,19 +378,11 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/x-ndjson": {
-              "schema": {
-                "$ref": "#/components/schemas/SourceInput"
               }
             }
           }
@@ -362,7 +392,9 @@
     "/pipeline_write": {
       "post": {
         "operationId": "pipeline_write",
-        "tags": ["Stateless Sync API"],
+        "tags": [
+          "Stateless Sync API"
+        ],
         "summary": "Write records to destination",
         "description": "Reads NDJSON messages from the request body and writes them to the destination. Pipe /read output as input.",
         "parameters": [
@@ -370,7 +402,7 @@
             "in": "header",
             "name": "x-pipeline",
             "required": true,
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
+            "description": "JSON-encoded PipelineConfig",
             "content": {
               "application/json": {
                 "schema": {
@@ -410,7 +442,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -422,37 +456,12 @@
     "/pipeline_sync": {
       "post": {
         "operationId": "pipeline_sync",
-        "tags": ["Stateless Sync API"],
+        "tags": [
+          "Stateless Sync API"
+        ],
         "summary": "Run sync pipeline (read → write)",
         "description": "Without a request body, reads from the source connector and writes to the destination (backfill mode). With an NDJSON request body, uses the provided messages as input instead of reading from the source (push mode — e.g. piped webhook events).",
         "parameters": [
-          {
-            "in": "header",
-            "name": "x-pipeline",
-            "required": true,
-            "description": "JSON-encoded PipelineConfig: { source: { type, ...config }, destination: { type, ...config }, streams }",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineConfig"
-                }
-              }
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-state",
-            "description": "JSON-encoded per-stream cursor state. Engine uses this if present, falls back to StateStore.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "description": "Per-stream cursor state keyed by stream name"
-                }
-              }
-            }
-          },
           {
             "in": "query",
             "name": "state_limit",
@@ -475,6 +484,36 @@
               "exclusiveMinimum": 0
             },
             "description": "Stop streaming after N seconds."
+          },
+          {
+            "in": "header",
+            "name": "x-pipeline",
+            "required": true,
+            "description": "JSON-encoded PipelineConfig",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineConfig"
+                }
+              }
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-state",
+            "required": false,
+            "description": "JSON-encoded per-stream cursor state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
           }
         ],
         "responses": {
@@ -497,7 +536,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -509,7 +550,9 @@
     "/meta/sources": {
       "get": {
         "operationId": "meta_sources_list",
-        "tags": ["Meta"],
+        "tags": [
+          "Meta"
+        ],
         "summary": "List available source connectors",
         "responses": {
           "200": {
@@ -535,12 +578,17 @@
                             "type": "string"
                           }
                         },
-                        "required": ["config_schema", "type"],
+                        "required": [
+                          "config_schema",
+                          "type"
+                        ],
                         "additionalProperties": false
                       }
                     }
                   },
-                  "required": ["items"],
+                  "required": [
+                    "items"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -552,7 +600,9 @@
     "/meta/sources/{type}": {
       "get": {
         "operationId": "meta_sources_get",
-        "tags": ["Meta"],
+        "tags": [
+          "Meta"
+        ],
         "summary": "Get source connector spec",
         "parameters": [
           {
@@ -580,7 +630,9 @@
                       "additionalProperties": {}
                     }
                   },
-                  "required": ["config_schema"],
+                  "required": [
+                    "config_schema"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -595,7 +647,9 @@
     "/meta/destinations": {
       "get": {
         "operationId": "meta_destinations_list",
-        "tags": ["Meta"],
+        "tags": [
+          "Meta"
+        ],
         "summary": "List available destination connectors",
         "responses": {
           "200": {
@@ -621,12 +675,17 @@
                             "type": "string"
                           }
                         },
-                        "required": ["config_schema", "type"],
+                        "required": [
+                          "config_schema",
+                          "type"
+                        ],
                         "additionalProperties": false
                       }
                     }
                   },
-                  "required": ["items"],
+                  "required": [
+                    "items"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -638,7 +697,9 @@
     "/meta/destinations/{type}": {
       "get": {
         "operationId": "meta_destinations_get",
-        "tags": ["Meta"],
+        "tags": [
+          "Meta"
+        ],
         "summary": "Get destination connector spec",
         "parameters": [
           {
@@ -666,7 +727,9 @@
                       "additionalProperties": {}
                     }
                   },
-                  "required": ["config_schema"],
+                  "required": [
+                    "config_schema"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -756,11 +819,18 @@
                 "description": "ISO 8601 timestamp when the record was emitted by the source."
               }
             },
-            "required": ["stream", "data", "emitted_at"],
+            "required": [
+              "stream",
+              "data",
+              "emitted_at"
+            ],
             "description": "One record for one stream."
           }
         },
-        "required": ["type", "record"]
+        "required": [
+          "type",
+          "record"
+        ]
       },
       "StateMessage": {
         "type": "object",
@@ -780,11 +850,17 @@
                 "description": "Opaque checkpoint data — only the source understands its contents. The orchestrator persists it keyed by stream and passes it back on resume."
               }
             },
-            "required": ["stream", "data"],
+            "required": [
+              "stream",
+              "data"
+            ],
             "description": "Per-stream checkpoint for resumable syncs."
           }
         },
-        "required": ["type", "state"]
+        "required": [
+          "type",
+          "state"
+        ]
       },
       "CatalogMessage": {
         "type": "object",
@@ -832,17 +908,25 @@
                       "additionalProperties": {}
                     }
                   },
-                  "required": ["name", "primary_key"],
+                  "required": [
+                    "name",
+                    "primary_key"
+                  ],
                   "description": "A named collection of records — analogous to a table or API resource."
                 },
                 "description": "All streams available from this source."
               }
             },
-            "required": ["streams"],
+            "required": [
+              "streams"
+            ],
             "description": "Catalog of available streams."
           }
         },
-        "required": ["type", "catalog"]
+        "required": [
+          "type",
+          "catalog"
+        ]
       },
       "LogMessage": {
         "type": "object",
@@ -856,7 +940,12 @@
             "properties": {
               "level": {
                 "type": "string",
-                "enum": ["debug", "info", "warn", "error"],
+                "enum": [
+                  "debug",
+                  "info",
+                  "warn",
+                  "error"
+                ],
                 "description": "Log severity level."
               },
               "message": {
@@ -864,11 +953,17 @@
                 "description": "Human-readable log message."
               }
             },
-            "required": ["level", "message"],
+            "required": [
+              "level",
+              "message"
+            ],
             "description": "Structured log output from a connector."
           }
         },
-        "required": ["type", "log"]
+        "required": [
+          "type",
+          "log"
+        ]
       },
       "TraceMessage": {
         "type": "object",
@@ -891,7 +986,12 @@
                     "properties": {
                       "failure_type": {
                         "type": "string",
-                        "enum": ["config_error", "system_error", "transient_error", "auth_error"],
+                        "enum": [
+                          "config_error",
+                          "system_error",
+                          "transient_error",
+                          "auth_error"
+                        ],
                         "description": "Error category — lets the orchestrator decide whether to retry, alert, or abort."
                       },
                       "message": {
@@ -907,11 +1007,17 @@
                         "type": "string"
                       }
                     },
-                    "required": ["failure_type", "message"],
+                    "required": [
+                      "failure_type",
+                      "message"
+                    ],
                     "description": "Structured error from a connector."
                   }
                 },
-                "required": ["trace_type", "error"]
+                "required": [
+                  "trace_type",
+                  "error"
+                ]
               },
               {
                 "type": "object",
@@ -929,15 +1035,26 @@
                       },
                       "status": {
                         "type": "string",
-                        "enum": ["started", "running", "complete", "incomplete"],
+                        "enum": [
+                          "started",
+                          "running",
+                          "complete",
+                          "incomplete"
+                        ],
                         "description": "Current phase of the stream within this sync run."
                       }
                     },
-                    "required": ["stream", "status"],
+                    "required": [
+                      "stream",
+                      "status"
+                    ],
                     "description": "Per-stream status update."
                   }
                 },
-                "required": ["trace_type", "stream_status"]
+                "required": [
+                  "trace_type",
+                  "stream_status"
+                ]
               },
               {
                 "type": "object",
@@ -966,18 +1083,26 @@
                         "maximum": 9007199254740991
                       }
                     },
-                    "required": ["stream"],
+                    "required": [
+                      "stream"
+                    ],
                     "description": "Sync progress estimate for a stream."
                   }
                 },
-                "required": ["trace_type", "estimate"]
+                "required": [
+                  "trace_type",
+                  "estimate"
+                ]
               }
             ],
             "description": "Diagnostic/status payload with subtypes for error, stream status, and estimates.",
             "type": "object"
           }
         },
-        "required": ["type", "trace"]
+        "required": [
+          "type",
+          "trace"
+        ]
       },
       "SpecMessage": {
         "type": "object",
@@ -1014,11 +1139,16 @@
                 "additionalProperties": {}
               }
             },
-            "required": ["config"],
+            "required": [
+              "config"
+            ],
             "description": "JSON Schema describing the configuration a connector requires."
           }
         },
-        "required": ["type", "spec"]
+        "required": [
+          "type",
+          "spec"
+        ]
       },
       "ConnectionStatusMessage": {
         "type": "object",
@@ -1032,7 +1162,10 @@
             "properties": {
               "status": {
                 "type": "string",
-                "enum": ["succeeded", "failed"],
+                "enum": [
+                  "succeeded",
+                  "failed"
+                ],
                 "description": "Whether the connection check passed."
               },
               "message": {
@@ -1040,11 +1173,16 @@
                 "type": "string"
               }
             },
-            "required": ["status"],
+            "required": [
+              "status"
+            ],
             "description": "Result of a connection check."
           }
         },
-        "required": ["type", "connection_status"]
+        "required": [
+          "type",
+          "connection_status"
+        ]
       },
       "ControlMessage": {
         "type": "object",
@@ -1058,7 +1196,9 @@
             "properties": {
               "control_type": {
                 "type": "string",
-                "enum": ["config_update"],
+                "enum": [
+                  "config_update"
+                ],
                 "description": "What kind of control action the connector is requesting."
               },
               "config": {
@@ -1070,11 +1210,17 @@
                 "description": "Config fields to merge into the active connector configuration."
               }
             },
-            "required": ["control_type", "config"],
+            "required": [
+              "control_type",
+              "config"
+            ],
             "description": "Control signal from a connector to the orchestrator."
           }
         },
-        "required": ["type", "control"]
+        "required": [
+          "type",
+          "control"
+        ]
       },
       "EofMessage": {
         "type": "object",
@@ -1088,15 +1234,292 @@
             "properties": {
               "reason": {
                 "type": "string",
-                "enum": ["complete", "state_limit", "time_limit", "error"],
+                "enum": [
+                  "complete",
+                  "state_limit",
+                  "time_limit",
+                  "error"
+                ],
                 "description": "Why the stream ended."
               }
             },
-            "required": ["reason"],
+            "required": [
+              "reason"
+            ],
             "description": "Terminal payload — tells the client why the stream ended."
           }
         },
-        "required": ["type", "eof"]
+        "required": [
+          "type",
+          "eof"
+        ]
+      },
+      "SourceConfig": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SourceStripe"
+          }
+        ],
+        "type": "object",
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "stripe": "#/components/schemas/SourceStripe"
+          }
+        }
+      },
+      "SourceStripe": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "stripe"
+          },
+          "stripe": {
+            "$ref": "#/components/schemas/SourceStripeConfig"
+          }
+        },
+        "required": [
+          "type",
+          "stripe"
+        ]
+      },
+      "SourceStripeConfig": {
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "description": "Stripe API key (sk_test_... or sk_live_...)"
+          },
+          "account_id": {
+            "type": "string",
+            "description": "Stripe account ID (resolved from API if omitted)"
+          },
+          "livemode": {
+            "type": "boolean",
+            "description": "Whether this is a live mode sync"
+          },
+          "api_version": {
+            "type": "string",
+            "description": "Stripe API version (e.g. 2025-04-30.basil)"
+          },
+          "base_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Override the Stripe API base URL (e.g. http://localhost:12111 for stripe-mock)"
+          },
+          "webhook_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL for managed webhook endpoint registration"
+          },
+          "webhook_secret": {
+            "type": "string",
+            "description": "Webhook signing secret (whsec_...) for signature verification"
+          },
+          "websocket": {
+            "type": "boolean",
+            "description": "Enable WebSocket streaming for live events"
+          },
+          "poll_events": {
+            "type": "boolean",
+            "description": "Enable events API polling for incremental sync after backfill"
+          },
+          "webhook_port": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Port for built-in webhook HTTP listener (e.g. 4242)"
+          },
+          "revalidate_objects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Object types to re-fetch from Stripe API on webhook (e.g. [\"subscription\"])"
+          },
+          "backfill_limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Max objects to backfill per stream (useful for testing)"
+          },
+          "rate_limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Max Stripe API requests per second (default: 25)"
+          },
+          "backfill_concurrency": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Number of time-range segments for parallel backfill (default: 200)"
+          }
+        },
+        "required": [
+          "api_key"
+        ],
+        "additionalProperties": false
+      },
+      "DestinationConfig": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/DestinationPostgres"
+          },
+          {
+            "$ref": "#/components/schemas/DestinationGoogleSheets"
+          }
+        ],
+        "type": "object",
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "postgres": "#/components/schemas/DestinationPostgres",
+            "google-sheets": "#/components/schemas/DestinationGoogleSheets"
+          }
+        }
+      },
+      "DestinationPostgres": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "postgres"
+          },
+          "postgres": {
+            "$ref": "#/components/schemas/DestinationPostgresConfig"
+          }
+        },
+        "required": [
+          "type",
+          "postgres"
+        ]
+      },
+      "DestinationPostgresConfig": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Postgres connection string (alias for connection_string)"
+          },
+          "connection_string": {
+            "type": "string",
+            "description": "Postgres connection string"
+          },
+          "host": {
+            "type": "string",
+            "description": "Postgres host (required for AWS IAM)"
+          },
+          "port": {
+            "default": 5432,
+            "type": "number",
+            "description": "Postgres port"
+          },
+          "database": {
+            "type": "string",
+            "description": "Database name (required for AWS IAM)"
+          },
+          "user": {
+            "type": "string",
+            "description": "Database user (required for AWS IAM)"
+          },
+          "schema": {
+            "type": "string",
+            "description": "Target schema name (e.g. \"stripe_sync\")"
+          },
+          "batch_size": {
+            "default": 100,
+            "type": "number",
+            "description": "Records to buffer before flushing"
+          },
+          "aws": {
+            "type": "object",
+            "properties": {
+              "region": {
+                "type": "string",
+                "description": "AWS region for RDS instance"
+              },
+              "role_arn": {
+                "type": "string",
+                "description": "IAM role ARN to assume (cross-account)"
+              },
+              "external_id": {
+                "type": "string",
+                "description": "External ID for STS AssumeRole"
+              }
+            },
+            "required": [
+              "region"
+            ],
+            "additionalProperties": false,
+            "description": "AWS RDS IAM authentication config"
+          },
+          "ssl_ca_pem": {
+            "type": "string",
+            "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)"
+          }
+        },
+        "required": [
+          "schema"
+        ],
+        "additionalProperties": false
+      },
+      "DestinationGoogleSheets": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "google-sheets"
+          },
+          "google-sheets": {
+            "$ref": "#/components/schemas/DestinationGoogleSheetsConfig"
+          }
+        },
+        "required": [
+          "type",
+          "google-sheets"
+        ]
+      },
+      "DestinationGoogleSheetsConfig": {
+        "type": "object",
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "description": "Google OAuth2 client ID (env: GOOGLE_CLIENT_ID)"
+          },
+          "client_secret": {
+            "type": "string",
+            "description": "Google OAuth2 client secret (env: GOOGLE_CLIENT_SECRET)"
+          },
+          "access_token": {
+            "type": "string",
+            "description": "OAuth2 access token"
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "OAuth2 refresh token"
+          },
+          "spreadsheet_id": {
+            "type": "string",
+            "description": "Target spreadsheet ID (created if omitted)"
+          },
+          "spreadsheet_title": {
+            "default": "Stripe Sync",
+            "type": "string",
+            "description": "Title when creating a new spreadsheet"
+          },
+          "batch_size": {
+            "default": 50,
+            "type": "number",
+            "description": "Rows per Sheets API append call"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token"
+        ],
+        "additionalProperties": false
       },
       "DiscoverOutput": {
         "oneOf": [
@@ -1192,19 +1615,27 @@
                       "additionalProperties": {}
                     }
                   },
-                  "required": ["name", "primary_key"],
+                  "required": [
+                    "name",
+                    "primary_key"
+                  ],
                   "additionalProperties": false,
                   "description": "A named collection of records — analogous to a table or API resource."
                 },
                 "description": "All streams available from this source."
               }
             },
-            "required": ["streams"],
+            "required": [
+              "streams"
+            ],
             "additionalProperties": false,
             "description": "Catalog of available streams."
           }
         },
-        "required": ["type", "catalog"],
+        "required": [
+          "type",
+          "catalog"
+        ],
         "additionalProperties": false
       },
       "LogMessageOutput": {
@@ -1219,7 +1650,12 @@
             "properties": {
               "level": {
                 "type": "string",
-                "enum": ["debug", "info", "warn", "error"],
+                "enum": [
+                  "debug",
+                  "info",
+                  "warn",
+                  "error"
+                ],
                 "description": "Log severity level."
               },
               "message": {
@@ -1227,12 +1663,18 @@
                 "description": "Human-readable log message."
               }
             },
-            "required": ["level", "message"],
+            "required": [
+              "level",
+              "message"
+            ],
             "additionalProperties": false,
             "description": "Structured log output from a connector."
           }
         },
-        "required": ["type", "log"],
+        "required": [
+          "type",
+          "log"
+        ],
         "additionalProperties": false
       },
       "TraceMessageOutput": {
@@ -1256,7 +1698,12 @@
                     "properties": {
                       "failure_type": {
                         "type": "string",
-                        "enum": ["config_error", "system_error", "transient_error", "auth_error"],
+                        "enum": [
+                          "config_error",
+                          "system_error",
+                          "transient_error",
+                          "auth_error"
+                        ],
                         "description": "Error category — lets the orchestrator decide whether to retry, alert, or abort."
                       },
                       "message": {
@@ -1272,12 +1719,18 @@
                         "type": "string"
                       }
                     },
-                    "required": ["failure_type", "message"],
+                    "required": [
+                      "failure_type",
+                      "message"
+                    ],
                     "additionalProperties": false,
                     "description": "Structured error from a connector."
                   }
                 },
-                "required": ["trace_type", "error"],
+                "required": [
+                  "trace_type",
+                  "error"
+                ],
                 "additionalProperties": false
               },
               {
@@ -1296,16 +1749,27 @@
                       },
                       "status": {
                         "type": "string",
-                        "enum": ["started", "running", "complete", "incomplete"],
+                        "enum": [
+                          "started",
+                          "running",
+                          "complete",
+                          "incomplete"
+                        ],
                         "description": "Current phase of the stream within this sync run."
                       }
                     },
-                    "required": ["stream", "status"],
+                    "required": [
+                      "stream",
+                      "status"
+                    ],
                     "additionalProperties": false,
                     "description": "Per-stream status update."
                   }
                 },
-                "required": ["trace_type", "stream_status"],
+                "required": [
+                  "trace_type",
+                  "stream_status"
+                ],
                 "additionalProperties": false
               },
               {
@@ -1335,12 +1799,17 @@
                         "maximum": 9007199254740991
                       }
                     },
-                    "required": ["stream"],
+                    "required": [
+                      "stream"
+                    ],
                     "additionalProperties": false,
                     "description": "Sync progress estimate for a stream."
                   }
                 },
-                "required": ["trace_type", "estimate"],
+                "required": [
+                  "trace_type",
+                  "estimate"
+                ],
                 "additionalProperties": false
               }
             ],
@@ -1348,7 +1817,10 @@
             "type": "object"
           }
         },
-        "required": ["type", "trace"],
+        "required": [
+          "type",
+          "trace"
+        ],
         "additionalProperties": false
       },
       "MessageOutput": {
@@ -1426,12 +1898,19 @@
                 "description": "ISO 8601 timestamp when the record was emitted by the source."
               }
             },
-            "required": ["stream", "data", "emitted_at"],
+            "required": [
+              "stream",
+              "data",
+              "emitted_at"
+            ],
             "additionalProperties": false,
             "description": "One record for one stream."
           }
         },
-        "required": ["type", "record"],
+        "required": [
+          "type",
+          "record"
+        ],
         "additionalProperties": false
       },
       "StateMessageOutput": {
@@ -1452,12 +1931,18 @@
                 "description": "Opaque checkpoint data — only the source understands its contents. The orchestrator persists it keyed by stream and passes it back on resume."
               }
             },
-            "required": ["stream", "data"],
+            "required": [
+              "stream",
+              "data"
+            ],
             "additionalProperties": false,
             "description": "Per-stream checkpoint for resumable syncs."
           }
         },
-        "required": ["type", "state"],
+        "required": [
+          "type",
+          "state"
+        ],
         "additionalProperties": false
       },
       "SpecMessageOutput": {
@@ -1495,12 +1980,17 @@
                 "additionalProperties": {}
               }
             },
-            "required": ["config"],
+            "required": [
+              "config"
+            ],
             "additionalProperties": false,
             "description": "JSON Schema describing the configuration a connector requires."
           }
         },
-        "required": ["type", "spec"],
+        "required": [
+          "type",
+          "spec"
+        ],
         "additionalProperties": false
       },
       "ConnectionStatusMessageOutput": {
@@ -1515,7 +2005,10 @@
             "properties": {
               "status": {
                 "type": "string",
-                "enum": ["succeeded", "failed"],
+                "enum": [
+                  "succeeded",
+                  "failed"
+                ],
                 "description": "Whether the connection check passed."
               },
               "message": {
@@ -1523,12 +2016,17 @@
                 "type": "string"
               }
             },
-            "required": ["status"],
+            "required": [
+              "status"
+            ],
             "additionalProperties": false,
             "description": "Result of a connection check."
           }
         },
-        "required": ["type", "connection_status"],
+        "required": [
+          "type",
+          "connection_status"
+        ],
         "additionalProperties": false
       },
       "ControlMessageOutput": {
@@ -1543,7 +2041,9 @@
             "properties": {
               "control_type": {
                 "type": "string",
-                "enum": ["config_update"],
+                "enum": [
+                  "config_update"
+                ],
                 "description": "What kind of control action the connector is requesting."
               },
               "config": {
@@ -1555,12 +2055,18 @@
                 "description": "Config fields to merge into the active connector configuration."
               }
             },
-            "required": ["control_type", "config"],
+            "required": [
+              "control_type",
+              "config"
+            ],
             "additionalProperties": false,
             "description": "Control signal from a connector to the orchestrator."
           }
         },
-        "required": ["type", "control"],
+        "required": [
+          "type",
+          "control"
+        ],
         "additionalProperties": false
       },
       "EofMessageOutput": {
@@ -1575,121 +2081,121 @@
             "properties": {
               "reason": {
                 "type": "string",
-                "enum": ["complete", "state_limit", "time_limit", "error"],
+                "enum": [
+                  "complete",
+                  "state_limit",
+                  "time_limit",
+                  "error"
+                ],
                 "description": "Why the stream ended."
               }
             },
-            "required": ["reason"],
+            "required": [
+              "reason"
+            ],
             "additionalProperties": false,
             "description": "Terminal payload — tells the client why the stream ended."
           }
         },
-        "required": ["type", "eof"],
+        "required": [
+          "type",
+          "eof"
+        ],
         "additionalProperties": false
       },
-      "SourceStripeConfig": {
+      "SourceConfigOutput": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SourceStripeOutput"
+          }
+        ],
+        "type": "object",
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "stripe": "#/components/schemas/SourceStripeOutput"
+          }
+        }
+      },
+      "SourceStripeOutput": {
         "type": "object",
         "properties": {
-          "api_key": {
+          "type": {
             "type": "string",
-            "description": "Stripe API key (sk_test_... or sk_live_...)"
+            "const": "stripe"
           },
-          "account_id": {
-            "description": "Stripe account ID (resolved from API if omitted)",
-            "type": "string"
-          },
-          "livemode": {
-            "description": "Whether this is a live mode sync",
-            "type": "boolean"
-          },
-          "api_version": {
-            "description": "Stripe API version (e.g. 2025-04-30.basil)",
-            "type": "string"
-          },
-          "base_url": {
-            "description": "Override the Stripe API base URL (e.g. http://localhost:12111 for stripe-mock)",
-            "type": "string",
-            "format": "uri"
-          },
-          "webhook_url": {
-            "description": "URL for managed webhook endpoint registration",
-            "type": "string",
-            "format": "uri"
-          },
-          "webhook_secret": {
-            "description": "Webhook signing secret (whsec_...) for signature verification",
-            "type": "string"
-          },
-          "websocket": {
-            "description": "Enable WebSocket streaming for live events",
-            "type": "boolean"
-          },
-          "poll_events": {
-            "description": "Enable events API polling for incremental sync after backfill",
-            "type": "boolean"
-          },
-          "webhook_port": {
-            "description": "Port for built-in webhook HTTP listener (e.g. 4242)",
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "revalidate_objects": {
-            "description": "Object types to re-fetch from Stripe API on webhook (e.g. [\"subscription\"])",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "backfill_limit": {
-            "description": "Max objects to backfill per stream (useful for testing)",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "rate_limit": {
-            "description": "Max Stripe API requests per second (default: 25)",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "backfill_concurrency": {
-            "description": "Number of time-range segments for parallel backfill (default: 200)",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+          "stripe": {
+            "$ref": "#/components/schemas/SourceStripeConfig"
           }
         },
-        "required": ["api_key"],
+        "required": [
+          "type",
+          "stripe"
+        ],
         "additionalProperties": false
       },
-      "DestinationPostgresConfig": {
+      "DestinationConfigOutput": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/DestinationPostgresOutput"
+          },
+          {
+            "$ref": "#/components/schemas/DestinationGoogleSheetsOutput"
+          }
+        ],
+        "type": "object",
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "postgres": "#/components/schemas/DestinationPostgresOutput",
+            "google-sheets": "#/components/schemas/DestinationGoogleSheetsOutput"
+          }
+        }
+      },
+      "DestinationPostgresOutput": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "postgres"
+          },
+          "postgres": {
+            "$ref": "#/components/schemas/DestinationPostgresConfigOutput"
+          }
+        },
+        "required": [
+          "type",
+          "postgres"
+        ],
+        "additionalProperties": false
+      },
+      "DestinationPostgresConfigOutput": {
         "type": "object",
         "properties": {
           "url": {
-            "description": "Postgres connection string (alias for connection_string)",
-            "type": "string"
+            "type": "string",
+            "description": "Postgres connection string (alias for connection_string)"
           },
           "connection_string": {
-            "description": "Postgres connection string",
-            "type": "string"
+            "type": "string",
+            "description": "Postgres connection string"
           },
           "host": {
-            "description": "Postgres host (required for AWS IAM)",
-            "type": "string"
+            "type": "string",
+            "description": "Postgres host (required for AWS IAM)"
           },
           "port": {
             "default": 5432,
-            "description": "Postgres port",
-            "type": "number"
+            "type": "number",
+            "description": "Postgres port"
           },
           "database": {
-            "description": "Database name (required for AWS IAM)",
-            "type": "string"
+            "type": "string",
+            "description": "Database name (required for AWS IAM)"
           },
           "user": {
-            "description": "Database user (required for AWS IAM)",
-            "type": "string"
+            "type": "string",
+            "description": "Database user (required for AWS IAM)"
           },
           "schema": {
             "type": "string",
@@ -1697,11 +2203,10 @@
           },
           "batch_size": {
             "default": 100,
-            "description": "Records to buffer before flushing",
-            "type": "number"
+            "type": "number",
+            "description": "Records to buffer before flushing"
           },
           "aws": {
-            "description": "AWS RDS IAM authentication config",
             "type": "object",
             "properties": {
               "region": {
@@ -1709,35 +2214,59 @@
                 "description": "AWS region for RDS instance"
               },
               "role_arn": {
-                "description": "IAM role ARN to assume (cross-account)",
-                "type": "string"
+                "type": "string",
+                "description": "IAM role ARN to assume (cross-account)"
               },
               "external_id": {
-                "description": "External ID for STS AssumeRole",
-                "type": "string"
+                "type": "string",
+                "description": "External ID for STS AssumeRole"
               }
             },
-            "required": ["region"],
-            "additionalProperties": false
+            "required": [
+              "region"
+            ],
+            "additionalProperties": false,
+            "description": "AWS RDS IAM authentication config"
           },
           "ssl_ca_pem": {
-            "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)",
-            "type": "string"
+            "type": "string",
+            "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)"
           }
         },
-        "required": ["port", "schema", "batch_size"],
+        "required": [
+          "port",
+          "schema",
+          "batch_size"
+        ],
         "additionalProperties": false
       },
-      "DestinationGoogleSheetsConfig": {
+      "DestinationGoogleSheetsOutput": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "google-sheets"
+          },
+          "google-sheets": {
+            "$ref": "#/components/schemas/DestinationGoogleSheetsConfigOutput"
+          }
+        },
+        "required": [
+          "type",
+          "google-sheets"
+        ],
+        "additionalProperties": false
+      },
+      "DestinationGoogleSheetsConfigOutput": {
         "type": "object",
         "properties": {
           "client_id": {
-            "description": "Google OAuth2 client ID (env: GOOGLE_CLIENT_ID)",
-            "type": "string"
+            "type": "string",
+            "description": "Google OAuth2 client ID (env: GOOGLE_CLIENT_ID)"
           },
           "client_secret": {
-            "description": "Google OAuth2 client secret (env: GOOGLE_CLIENT_SECRET)",
-            "type": "string"
+            "type": "string",
+            "description": "Google OAuth2 client secret (env: GOOGLE_CLIENT_SECRET)"
           },
           "access_token": {
             "type": "string",
@@ -1748,238 +2277,80 @@
             "description": "OAuth2 refresh token"
           },
           "spreadsheet_id": {
-            "description": "Target spreadsheet ID (created if omitted)",
-            "type": "string"
+            "type": "string",
+            "description": "Target spreadsheet ID (created if omitted)"
           },
           "spreadsheet_title": {
             "default": "Stripe Sync",
-            "description": "Title when creating a new spreadsheet",
-            "type": "string"
+            "type": "string",
+            "description": "Title when creating a new spreadsheet"
           },
           "batch_size": {
             "default": 50,
-            "description": "Rows per Sheets API append call",
-            "type": "number"
-          }
-        },
-        "required": ["access_token", "refresh_token", "spreadsheet_title", "batch_size"],
-        "additionalProperties": false
-      },
-      "SourceConfig": {
-        "discriminator": {
-          "propertyName": "type"
-        },
-        "oneOf": [
-          {
-            "type": "object",
-            "required": ["type"],
-            "properties": {
-              "type": {
-                "const": "stripe"
-              },
-              "stripe": {
-                "$ref": "#/components/schemas/SourceStripeConfig"
-              }
-            }
-          }
-        ]
-      },
-      "SourceStripeInput": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Unique identifier for the object."
-          },
-          "object": {
-            "type": "string",
-            "const": "event",
-            "description": "String representing the object's type. Objects of the same type share the same value."
-          },
-          "account": {
-            "description": "The connected account that originates the event.",
-            "type": "string"
-          },
-          "api_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The Stripe API version used to render `data`. This property is populated only for events on or after October 31, 2014."
-          },
-          "created": {
             "type": "number",
-            "description": "Time at which the object was created. Measured in seconds since the Unix epoch."
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "object": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {}
-              },
-              "previous_attributes": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {}
-              }
-            },
-            "required": ["object"],
-            "additionalProperties": false
-          },
-          "livemode": {
-            "type": "boolean",
-            "description": "Has the value `true` if the object exists in live mode or the value `false` if the object exists in test mode."
-          },
-          "pending_webhooks": {
-            "type": "number",
-            "description": "Number of webhooks that haven't been successfully delivered (for example, to return a 20x response) to the URLs you specify."
-          },
-          "request": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "idempotency_key": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": ["id", "idempotency_key"],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Information on the API request that triggers the event."
-          },
-          "type": {
-            "type": "string",
-            "description": "Description of the event (for example, `invoice.created` or `charge.refunded`)."
+            "description": "Rows per Sheets API append call"
           }
         },
         "required": [
-          "id",
-          "object",
-          "api_version",
-          "created",
-          "data",
-          "livemode",
-          "pending_webhooks",
-          "request",
-          "type"
+          "access_token",
+          "refresh_token",
+          "spreadsheet_title",
+          "batch_size"
         ],
         "additionalProperties": false
       },
-      "SourceInput": {
-        "discriminator": {
-          "propertyName": "type"
-        },
-        "oneOf": [
-          {
-            "type": "object",
-            "required": ["type"],
-            "properties": {
-              "type": {
-                "const": "stripe"
-              },
-              "stripe": {
-                "$ref": "#/components/schemas/SourceStripeInput"
-              }
-            }
-          }
-        ]
-      },
-      "DestinationConfig": {
-        "discriminator": {
-          "propertyName": "type"
-        },
-        "oneOf": [
-          {
-            "type": "object",
-            "required": ["type"],
-            "properties": {
-              "type": {
-                "const": "postgres"
-              },
-              "postgres": {
-                "$ref": "#/components/schemas/DestinationPostgresConfig"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": ["type"],
-            "properties": {
-              "type": {
-                "const": "google-sheets"
-              },
-              "google-sheets": {
-                "$ref": "#/components/schemas/DestinationGoogleSheetsConfig"
-              }
-            }
-          }
-        ]
-      },
       "PipelineConfig": {
         "type": "object",
-        "required": ["source", "destination"],
         "properties": {
           "source": {
-            "$ref": "#/components/schemas/SourceConfig"
+            "$ref": "#/components/schemas/SourceConfigOutput"
           },
           "destination": {
-            "$ref": "#/components/schemas/DestinationConfig"
+            "$ref": "#/components/schemas/DestinationConfigOutput"
           },
           "streams": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["name"],
               "properties": {
                 "name": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Stream (table) name to sync."
                 },
                 "sync_mode": {
+                  "description": "How the source reads this stream. Defaults to full_refresh.",
                   "type": "string",
-                  "enum": ["incremental", "full_refresh"]
+                  "enum": [
+                    "incremental",
+                    "full_refresh"
+                  ]
                 },
                 "fields": {
+                  "description": "If set, only these fields are synced.",
                   "type": "array",
                   "items": {
                     "type": "string"
                   }
+                },
+                "backfill_limit": {
+                  "description": "Cap backfill to this many records, then mark the stream complete.",
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
                 }
-              }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
             }
           }
-        }
+        },
+        "required": [
+          "source",
+          "destination"
+        ],
+        "additionalProperties": false
       }
     }
   }

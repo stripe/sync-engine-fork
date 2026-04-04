@@ -9,7 +9,9 @@
     "/health": {
       "get": {
         "operationId": "health",
-        "tags": ["Status"],
+        "tags": [
+          "Status"
+        ],
         "summary": "Health check",
         "responses": {
           "200": {
@@ -24,7 +26,9 @@
                       "const": true
                     }
                   },
-                  "required": ["ok"],
+                  "required": [
+                    "ok"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -36,7 +40,9 @@
     "/pipelines": {
       "get": {
         "operationId": "pipelines.list",
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "List pipelines",
         "responses": {
           "200": {
@@ -137,11 +143,16 @@
                                         "description": "Number of time-range segments for parallel backfill (default: 200)"
                                       }
                                     },
-                                    "required": ["api_key"],
+                                    "required": [
+                                      "api_key"
+                                    ],
                                     "additionalProperties": false
                                   }
                                 },
-                                "required": ["type", "stripe"],
+                                "required": [
+                                  "type",
+                                  "stripe"
+                                ],
                                 "additionalProperties": false
                               }
                             ],
@@ -212,7 +223,9 @@
                                             "description": "External ID for STS AssumeRole"
                                           }
                                         },
-                                        "required": ["region"],
+                                        "required": [
+                                          "region"
+                                        ],
                                         "additionalProperties": false,
                                         "description": "AWS RDS IAM authentication config"
                                       },
@@ -221,11 +234,18 @@
                                         "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)"
                                       }
                                     },
-                                    "required": ["port", "schema", "batch_size"],
+                                    "required": [
+                                      "port",
+                                      "schema",
+                                      "batch_size"
+                                    ],
                                     "additionalProperties": false
                                   }
                                 },
-                                "required": ["type", "postgres"],
+                                "required": [
+                                  "type",
+                                  "postgres"
+                                ],
                                 "additionalProperties": false
                               },
                               {
@@ -278,7 +298,10 @@
                                     "additionalProperties": false
                                   }
                                 },
-                                "required": ["type", "google-sheets"],
+                                "required": [
+                                  "type",
+                                  "google-sheets"
+                                ],
                                 "additionalProperties": false
                               }
                             ],
@@ -300,7 +323,10 @@
                                 "sync_mode": {
                                   "description": "How the source reads this stream. Defaults to full_refresh.",
                                   "type": "string",
-                                  "enum": ["incremental", "full_refresh"]
+                                  "enum": [
+                                    "incremental",
+                                    "full_refresh"
+                                  ]
                                 },
                                 "backfill_limit": {
                                   "description": "Cap backfill to this many records, then mark the stream complete.",
@@ -309,7 +335,9 @@
                                   "maximum": 9007199254740991
                                 }
                               },
-                              "required": ["name"],
+                              "required": [
+                                "name"
+                              ],
                               "additionalProperties": false
                             }
                           },
@@ -330,11 +358,19 @@
                                 "description": "Number of times this workflow has continued-as-new."
                               }
                             },
-                            "required": ["phase", "paused", "iteration"],
+                            "required": [
+                              "phase",
+                              "paused",
+                              "iteration"
+                            ],
                             "additionalProperties": false
                           }
                         },
-                        "required": ["id", "source", "destination"],
+                        "required": [
+                          "id",
+                          "source",
+                          "destination"
+                        ],
                         "additionalProperties": false
                       }
                     },
@@ -342,7 +378,10 @@
                       "type": "boolean"
                     }
                   },
-                  "required": ["data", "has_more"],
+                  "required": [
+                    "data",
+                    "has_more"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -352,7 +391,9 @@
       },
       "post": {
         "operationId": "pipelines.create",
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Create pipeline",
         "requestBody": {
           "content": {
@@ -442,11 +483,16 @@
                                 "description": "Number of time-range segments for parallel backfill (default: 200)"
                               }
                             },
-                            "required": ["api_key"],
+                            "required": [
+                              "api_key"
+                            ],
                             "additionalProperties": false
                           }
                         },
-                        "required": ["type", "stripe"]
+                        "required": [
+                          "type",
+                          "stripe"
+                        ]
                       }
                     ],
                     "type": "object",
@@ -516,7 +562,9 @@
                                     "description": "External ID for STS AssumeRole"
                                   }
                                 },
-                                "required": ["region"],
+                                "required": [
+                                  "region"
+                                ],
                                 "additionalProperties": false,
                                 "description": "AWS RDS IAM authentication config"
                               },
@@ -525,11 +573,16 @@
                                 "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)"
                               }
                             },
-                            "required": ["schema"],
+                            "required": [
+                              "schema"
+                            ],
                             "additionalProperties": false
                           }
                         },
-                        "required": ["type", "postgres"]
+                        "required": [
+                          "type",
+                          "postgres"
+                        ]
                       },
                       {
                         "type": "object",
@@ -572,11 +625,17 @@
                                 "description": "Rows per Sheets API append call"
                               }
                             },
-                            "required": ["access_token", "refresh_token"],
+                            "required": [
+                              "access_token",
+                              "refresh_token"
+                            ],
                             "additionalProperties": false
                           }
                         },
-                        "required": ["type", "google-sheets"]
+                        "required": [
+                          "type",
+                          "google-sheets"
+                        ]
                       }
                     ],
                     "type": "object",
@@ -597,7 +656,10 @@
                         "sync_mode": {
                           "description": "How the source reads this stream. Defaults to full_refresh.",
                           "type": "string",
-                          "enum": ["incremental", "full_refresh"]
+                          "enum": [
+                            "incremental",
+                            "full_refresh"
+                          ]
                         },
                         "backfill_limit": {
                           "description": "Cap backfill to this many records, then mark the stream complete.",
@@ -606,11 +668,16 @@
                           "maximum": 9007199254740991
                         }
                       },
-                      "required": ["name"]
+                      "required": [
+                        "name"
+                      ]
                     }
                   }
                 },
-                "required": ["source", "destination"]
+                "required": [
+                  "source",
+                  "destination"
+                ]
               }
             }
           }
@@ -709,11 +776,16 @@
                                   "description": "Number of time-range segments for parallel backfill (default: 200)"
                                 }
                               },
-                              "required": ["api_key"],
+                              "required": [
+                                "api_key"
+                              ],
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "stripe"],
+                          "required": [
+                            "type",
+                            "stripe"
+                          ],
                           "additionalProperties": false
                         }
                       ],
@@ -784,7 +856,9 @@
                                       "description": "External ID for STS AssumeRole"
                                     }
                                   },
-                                  "required": ["region"],
+                                  "required": [
+                                    "region"
+                                  ],
                                   "additionalProperties": false,
                                   "description": "AWS RDS IAM authentication config"
                                 },
@@ -793,11 +867,18 @@
                                   "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)"
                                 }
                               },
-                              "required": ["port", "schema", "batch_size"],
+                              "required": [
+                                "port",
+                                "schema",
+                                "batch_size"
+                              ],
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "postgres"],
+                          "required": [
+                            "type",
+                            "postgres"
+                          ],
                           "additionalProperties": false
                         },
                         {
@@ -850,7 +931,10 @@
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "google-sheets"],
+                          "required": [
+                            "type",
+                            "google-sheets"
+                          ],
                           "additionalProperties": false
                         }
                       ],
@@ -872,7 +956,10 @@
                           "sync_mode": {
                             "description": "How the source reads this stream. Defaults to full_refresh.",
                             "type": "string",
-                            "enum": ["incremental", "full_refresh"]
+                            "enum": [
+                              "incremental",
+                              "full_refresh"
+                            ]
                           },
                           "backfill_limit": {
                             "description": "Cap backfill to this many records, then mark the stream complete.",
@@ -881,12 +968,18 @@
                             "maximum": 9007199254740991
                           }
                         },
-                        "required": ["name"],
+                        "required": [
+                          "name"
+                        ],
                         "additionalProperties": false
                       }
                     }
                   },
-                  "required": ["id", "source", "destination"],
+                  "required": [
+                    "id",
+                    "source",
+                    "destination"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -901,7 +994,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -913,7 +1008,9 @@
     "/pipelines/{id}": {
       "get": {
         "operationId": "pipelines.get",
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Retrieve pipeline",
         "parameters": [
           {
@@ -1020,11 +1117,16 @@
                                   "description": "Number of time-range segments for parallel backfill (default: 200)"
                                 }
                               },
-                              "required": ["api_key"],
+                              "required": [
+                                "api_key"
+                              ],
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "stripe"],
+                          "required": [
+                            "type",
+                            "stripe"
+                          ],
                           "additionalProperties": false
                         }
                       ],
@@ -1095,7 +1197,9 @@
                                       "description": "External ID for STS AssumeRole"
                                     }
                                   },
-                                  "required": ["region"],
+                                  "required": [
+                                    "region"
+                                  ],
                                   "additionalProperties": false,
                                   "description": "AWS RDS IAM authentication config"
                                 },
@@ -1104,11 +1208,18 @@
                                   "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)"
                                 }
                               },
-                              "required": ["port", "schema", "batch_size"],
+                              "required": [
+                                "port",
+                                "schema",
+                                "batch_size"
+                              ],
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "postgres"],
+                          "required": [
+                            "type",
+                            "postgres"
+                          ],
                           "additionalProperties": false
                         },
                         {
@@ -1161,7 +1272,10 @@
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "google-sheets"],
+                          "required": [
+                            "type",
+                            "google-sheets"
+                          ],
                           "additionalProperties": false
                         }
                       ],
@@ -1183,7 +1297,10 @@
                           "sync_mode": {
                             "description": "How the source reads this stream. Defaults to full_refresh.",
                             "type": "string",
-                            "enum": ["incremental", "full_refresh"]
+                            "enum": [
+                              "incremental",
+                              "full_refresh"
+                            ]
                           },
                           "backfill_limit": {
                             "description": "Cap backfill to this many records, then mark the stream complete.",
@@ -1192,7 +1309,9 @@
                             "maximum": 9007199254740991
                           }
                         },
-                        "required": ["name"],
+                        "required": [
+                          "name"
+                        ],
                         "additionalProperties": false
                       }
                     },
@@ -1213,11 +1332,19 @@
                           "description": "Number of times this workflow has continued-as-new."
                         }
                       },
-                      "required": ["phase", "paused", "iteration"],
+                      "required": [
+                        "phase",
+                        "paused",
+                        "iteration"
+                      ],
                       "additionalProperties": false
                     }
                   },
-                  "required": ["id", "source", "destination"],
+                  "required": [
+                    "id",
+                    "source",
+                    "destination"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -1232,7 +1359,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -1242,7 +1371,9 @@
       },
       "patch": {
         "operationId": "pipelines.update",
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Update pipeline",
         "parameters": [
           {
@@ -1343,11 +1474,16 @@
                                 "description": "Number of time-range segments for parallel backfill (default: 200)"
                               }
                             },
-                            "required": ["api_key"],
+                            "required": [
+                              "api_key"
+                            ],
                             "additionalProperties": false
                           }
                         },
-                        "required": ["type", "stripe"]
+                        "required": [
+                          "type",
+                          "stripe"
+                        ]
                       }
                     ],
                     "type": "object",
@@ -1417,7 +1553,9 @@
                                     "description": "External ID for STS AssumeRole"
                                   }
                                 },
-                                "required": ["region"],
+                                "required": [
+                                  "region"
+                                ],
                                 "additionalProperties": false,
                                 "description": "AWS RDS IAM authentication config"
                               },
@@ -1426,11 +1564,16 @@
                                 "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)"
                               }
                             },
-                            "required": ["schema"],
+                            "required": [
+                              "schema"
+                            ],
                             "additionalProperties": false
                           }
                         },
-                        "required": ["type", "postgres"]
+                        "required": [
+                          "type",
+                          "postgres"
+                        ]
                       },
                       {
                         "type": "object",
@@ -1473,11 +1616,17 @@
                                 "description": "Rows per Sheets API append call"
                               }
                             },
-                            "required": ["access_token", "refresh_token"],
+                            "required": [
+                              "access_token",
+                              "refresh_token"
+                            ],
                             "additionalProperties": false
                           }
                         },
-                        "required": ["type", "google-sheets"]
+                        "required": [
+                          "type",
+                          "google-sheets"
+                        ]
                       }
                     ],
                     "type": "object",
@@ -1498,7 +1647,10 @@
                         "sync_mode": {
                           "description": "How the source reads this stream. Defaults to full_refresh.",
                           "type": "string",
-                          "enum": ["incremental", "full_refresh"]
+                          "enum": [
+                            "incremental",
+                            "full_refresh"
+                          ]
                         },
                         "backfill_limit": {
                           "description": "Cap backfill to this many records, then mark the stream complete.",
@@ -1507,7 +1659,9 @@
                           "maximum": 9007199254740991
                         }
                       },
-                      "required": ["name"]
+                      "required": [
+                        "name"
+                      ]
                     }
                   }
                 }
@@ -1609,11 +1763,16 @@
                                   "description": "Number of time-range segments for parallel backfill (default: 200)"
                                 }
                               },
-                              "required": ["api_key"],
+                              "required": [
+                                "api_key"
+                              ],
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "stripe"],
+                          "required": [
+                            "type",
+                            "stripe"
+                          ],
                           "additionalProperties": false
                         }
                       ],
@@ -1684,7 +1843,9 @@
                                       "description": "External ID for STS AssumeRole"
                                     }
                                   },
-                                  "required": ["region"],
+                                  "required": [
+                                    "region"
+                                  ],
                                   "additionalProperties": false,
                                   "description": "AWS RDS IAM authentication config"
                                 },
@@ -1693,11 +1854,18 @@
                                   "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)"
                                 }
                               },
-                              "required": ["port", "schema", "batch_size"],
+                              "required": [
+                                "port",
+                                "schema",
+                                "batch_size"
+                              ],
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "postgres"],
+                          "required": [
+                            "type",
+                            "postgres"
+                          ],
                           "additionalProperties": false
                         },
                         {
@@ -1750,7 +1918,10 @@
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "google-sheets"],
+                          "required": [
+                            "type",
+                            "google-sheets"
+                          ],
                           "additionalProperties": false
                         }
                       ],
@@ -1772,7 +1943,10 @@
                           "sync_mode": {
                             "description": "How the source reads this stream. Defaults to full_refresh.",
                             "type": "string",
-                            "enum": ["incremental", "full_refresh"]
+                            "enum": [
+                              "incremental",
+                              "full_refresh"
+                            ]
                           },
                           "backfill_limit": {
                             "description": "Cap backfill to this many records, then mark the stream complete.",
@@ -1781,7 +1955,9 @@
                             "maximum": 9007199254740991
                           }
                         },
-                        "required": ["name"],
+                        "required": [
+                          "name"
+                        ],
                         "additionalProperties": false
                       }
                     },
@@ -1802,11 +1978,19 @@
                           "description": "Number of times this workflow has continued-as-new."
                         }
                       },
-                      "required": ["phase", "paused", "iteration"],
+                      "required": [
+                        "phase",
+                        "paused",
+                        "iteration"
+                      ],
                       "additionalProperties": false
                     }
                   },
-                  "required": ["id", "source", "destination"],
+                  "required": [
+                    "id",
+                    "source",
+                    "destination"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -1821,7 +2005,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -1836,7 +2022,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -1846,7 +2034,9 @@
       },
       "delete": {
         "operationId": "pipelines.delete",
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Delete pipeline",
         "parameters": [
           {
@@ -1875,7 +2065,10 @@
                       "const": true
                     }
                   },
-                  "required": ["id", "deleted"],
+                  "required": [
+                    "id",
+                    "deleted"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -1890,7 +2083,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -1905,7 +2100,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -1917,7 +2114,9 @@
     "/pipelines/{id}/pause": {
       "post": {
         "operationId": "pipelines.pause",
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Pause pipeline",
         "parameters": [
           {
@@ -2024,11 +2223,16 @@
                                   "description": "Number of time-range segments for parallel backfill (default: 200)"
                                 }
                               },
-                              "required": ["api_key"],
+                              "required": [
+                                "api_key"
+                              ],
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "stripe"],
+                          "required": [
+                            "type",
+                            "stripe"
+                          ],
                           "additionalProperties": false
                         }
                       ],
@@ -2099,7 +2303,9 @@
                                       "description": "External ID for STS AssumeRole"
                                     }
                                   },
-                                  "required": ["region"],
+                                  "required": [
+                                    "region"
+                                  ],
                                   "additionalProperties": false,
                                   "description": "AWS RDS IAM authentication config"
                                 },
@@ -2108,11 +2314,18 @@
                                   "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)"
                                 }
                               },
-                              "required": ["port", "schema", "batch_size"],
+                              "required": [
+                                "port",
+                                "schema",
+                                "batch_size"
+                              ],
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "postgres"],
+                          "required": [
+                            "type",
+                            "postgres"
+                          ],
                           "additionalProperties": false
                         },
                         {
@@ -2165,7 +2378,10 @@
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "google-sheets"],
+                          "required": [
+                            "type",
+                            "google-sheets"
+                          ],
                           "additionalProperties": false
                         }
                       ],
@@ -2187,7 +2403,10 @@
                           "sync_mode": {
                             "description": "How the source reads this stream. Defaults to full_refresh.",
                             "type": "string",
-                            "enum": ["incremental", "full_refresh"]
+                            "enum": [
+                              "incremental",
+                              "full_refresh"
+                            ]
                           },
                           "backfill_limit": {
                             "description": "Cap backfill to this many records, then mark the stream complete.",
@@ -2196,7 +2415,9 @@
                             "maximum": 9007199254740991
                           }
                         },
-                        "required": ["name"],
+                        "required": [
+                          "name"
+                        ],
                         "additionalProperties": false
                       }
                     },
@@ -2217,11 +2438,19 @@
                           "description": "Number of times this workflow has continued-as-new."
                         }
                       },
-                      "required": ["phase", "paused", "iteration"],
+                      "required": [
+                        "phase",
+                        "paused",
+                        "iteration"
+                      ],
                       "additionalProperties": false
                     }
                   },
-                  "required": ["id", "source", "destination"],
+                  "required": [
+                    "id",
+                    "source",
+                    "destination"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -2236,7 +2465,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -2248,7 +2479,9 @@
     "/pipelines/{id}/resume": {
       "post": {
         "operationId": "pipelines.resume",
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Resume pipeline",
         "parameters": [
           {
@@ -2355,11 +2588,16 @@
                                   "description": "Number of time-range segments for parallel backfill (default: 200)"
                                 }
                               },
-                              "required": ["api_key"],
+                              "required": [
+                                "api_key"
+                              ],
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "stripe"],
+                          "required": [
+                            "type",
+                            "stripe"
+                          ],
                           "additionalProperties": false
                         }
                       ],
@@ -2430,7 +2668,9 @@
                                       "description": "External ID for STS AssumeRole"
                                     }
                                   },
-                                  "required": ["region"],
+                                  "required": [
+                                    "region"
+                                  ],
                                   "additionalProperties": false,
                                   "description": "AWS RDS IAM authentication config"
                                 },
@@ -2439,11 +2679,18 @@
                                   "description": "PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA)"
                                 }
                               },
-                              "required": ["port", "schema", "batch_size"],
+                              "required": [
+                                "port",
+                                "schema",
+                                "batch_size"
+                              ],
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "postgres"],
+                          "required": [
+                            "type",
+                            "postgres"
+                          ],
                           "additionalProperties": false
                         },
                         {
@@ -2496,7 +2743,10 @@
                               "additionalProperties": false
                             }
                           },
-                          "required": ["type", "google-sheets"],
+                          "required": [
+                            "type",
+                            "google-sheets"
+                          ],
                           "additionalProperties": false
                         }
                       ],
@@ -2518,7 +2768,10 @@
                           "sync_mode": {
                             "description": "How the source reads this stream. Defaults to full_refresh.",
                             "type": "string",
-                            "enum": ["incremental", "full_refresh"]
+                            "enum": [
+                              "incremental",
+                              "full_refresh"
+                            ]
                           },
                           "backfill_limit": {
                             "description": "Cap backfill to this many records, then mark the stream complete.",
@@ -2527,7 +2780,9 @@
                             "maximum": 9007199254740991
                           }
                         },
-                        "required": ["name"],
+                        "required": [
+                          "name"
+                        ],
                         "additionalProperties": false
                       }
                     },
@@ -2548,11 +2803,19 @@
                           "description": "Number of times this workflow has continued-as-new."
                         }
                       },
-                      "required": ["phase", "paused", "iteration"],
+                      "required": [
+                        "phase",
+                        "paused",
+                        "iteration"
+                      ],
                       "additionalProperties": false
                     }
                   },
-                  "required": ["id", "source", "destination"],
+                  "required": [
+                    "id",
+                    "source",
+                    "destination"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -2567,7 +2830,9 @@
                   "properties": {
                     "error": {}
                   },
-                  "required": ["error"],
+                  "required": [
+                    "error"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -2579,7 +2844,9 @@
     "/webhooks/{pipeline_id}": {
       "post": {
         "operationId": "webhooks.push",
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Ingest a Stripe webhook event",
         "description": "Receives a raw Stripe webhook event, verifies its signature using the pipeline's webhook secret, and enqueues it for processing by the active pipeline.",
         "parameters": [
