@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { apiReference } from '@scalar/hono-api-reference'
 import { HTTPException } from 'hono/http-exception'
 import pg from 'pg'
-import type { Message, ConnectorResolver } from '../lib/index.js'
+import type { Message, ConnectorResolver, TraceMessage } from '../lib/index.js'
 import {
   createEngine,
   createConnectorSchemas,
@@ -59,12 +59,28 @@ function syncRequestContext(pipeline: {
   }
 }
 
+function traceError(err: unknown): TraceMessage {
+  const message = err instanceof Error ? err.message : String(err)
+  const stack_trace = err instanceof Error ? err.stack : undefined
+  return {
+    type: 'trace',
+    trace: {
+      trace_type: 'error',
+      error: {
+        failure_type: 'system_error',
+        message,
+        ...(stack_trace ? { stack_trace } : {}),
+      },
+    },
+  }
+}
+
 async function* logApiStream<T>(
   label: string,
   iter: AsyncIterable<T>,
   context: Record<string, unknown>,
   startedAt = Date.now()
-): AsyncIterable<T> {
+): AsyncIterable<T | TraceMessage> {
   let itemCount = 0
   try {
     for await (const item of iter) {
@@ -77,7 +93,7 @@ async function* logApiStream<T>(
       { ...context, itemCount, durationMs: Date.now() - startedAt, err: error },
       `${label} failed`
     )
-    throw error
+    yield traceError(error)
   }
 }
 

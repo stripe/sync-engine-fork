@@ -57,6 +57,29 @@ describe('merge', () => {
     const result = await collect(merge(fromArray([]), fromArray([])))
     expect(result).toEqual([])
   })
+
+  it('propagates rejection from one iterable without unhandled rejection', async () => {
+    const good = fromArray([1, 2, 3])
+    async function* bad(): AsyncIterable<number> {
+      throw new Error('boom')
+    }
+    await expect(collect(merge(good, bad()))).rejects.toThrow('boom')
+  })
+
+  it('propagates rejection even when the failing iterable is slower', async () => {
+    async function* delayed(): AsyncIterable<number> {
+      yield 1
+      throw new Error('delayed boom')
+    }
+    const result: number[] = []
+    await expect(async () => {
+      for await (const item of merge(fromArray([10, 20]), delayed())) {
+        result.push(item)
+      }
+    }).rejects.toThrow('delayed boom')
+    // Should have yielded some items before the error
+    expect(result.length).toBeGreaterThan(0)
+  })
 })
 
 describe('split', () => {

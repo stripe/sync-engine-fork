@@ -29,6 +29,7 @@ export function buildStripeClientOptions(
   env: TransportEnv = process.env
 ): Stripe.StripeConfig {
   const options: Stripe.StripeConfig = {
+    httpClient: Stripe.createFetchHttpClient(),
     timeout: parsePositiveInteger(
       'STRIPE_REQUEST_TIMEOUT_MS',
       env.STRIPE_REQUEST_TIMEOUT_MS,

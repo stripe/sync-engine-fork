@@ -56,11 +56,20 @@ export async function* merge<T>(
     .map((it) => it[Symbol.asyncIterator]())
   const pending = new Map<number, Promise<{ index: number; result: IteratorResult<T> }>>()
 
-  for (const [i, iter] of iterators.entries()) {
-    pending.set(
-      i,
-      iter.next().then((result) => ({ index: i, result }))
-    )
+  // Suppress unhandled-rejection on a promise while it sits in the pending map.
+  // The rejection is still observed when Promise.race settles on it.
+  const suppress = (p: Promise<unknown>) => {
+    p.catch(() => {})
+    return p
+  }
+  const enqueue = (i: number) => {
+    const p = iterators[i]!.next().then((result) => ({ index: i, result }))
+    suppress(p)
+    pending.set(i, p)
+  }
+
+  for (const [i] of iterators.entries()) {
+    enqueue(i)
   }
 
   while (pending.size > 0) {
@@ -69,10 +78,7 @@ export async function* merge<T>(
       pending.delete(index)
     } else {
       yield result.value
-      pending.set(
-        index,
-        iterators[index]!.next().then((result) => ({ index, result }))
-      )
+      enqueue(index)
     }
   }
 }
