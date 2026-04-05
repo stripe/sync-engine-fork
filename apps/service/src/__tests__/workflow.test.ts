@@ -45,7 +45,6 @@ beforeAll(async () => {
   testEnv = await TestWorkflowEnvironment.createLocal()
 }, 120_000)
 
-
 afterAll(async () => {
   await testEnv?.teardown()
 })

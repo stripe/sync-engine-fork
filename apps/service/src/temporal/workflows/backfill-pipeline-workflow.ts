@@ -26,7 +26,10 @@ export async function backfillPipelineWorkflow(
 
   async function maybeContinueAsNew() {
     if (++iteration >= CONTINUE_AS_NEW_THRESHOLD) {
-      await continueAsNew<typeof backfillPipelineWorkflow>(pipelineId, { desiredStatus, state: syncState })
+      await continueAsNew<typeof backfillPipelineWorkflow>(pipelineId, {
+        desiredStatus,
+        state: syncState,
+      })
     }
   }
 

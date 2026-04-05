@@ -1,7 +1,7 @@
 import { condition, continueAsNew, setHandler } from '@temporalio/workflow'
 
 import type { SourceInputMessage, SourceState } from '@stripe/sync-protocol'
-import type { DesiredStatus } from '../../lib/createSchemas.js'
+import type { DesiredStatus, WorkflowStatus } from '../../lib/createSchemas.js'
 import { CONTINUE_AS_NEW_THRESHOLD, EVENT_BATCH_SIZE } from '../../lib/utils.js'
 import {
   desiredStatusSignal,
@@ -72,7 +72,10 @@ export async function pipelineWorkflow(
 
     if (readComplete && inputQueue.length === 0) {
       // Idle — wait up to one week; timeout means recon is due.
-      const timedOut = !(await condition(() => desiredStatus !== 'active' || inputQueue.length > 0, ONE_WEEK_MS))
+      const timedOut = !(await condition(
+        () => desiredStatus !== 'active' || inputQueue.length > 0,
+        ONE_WEEK_MS
+      ))
       if (timedOut) readComplete = false
       continue
     }

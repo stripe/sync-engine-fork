@@ -1,5 +1,9 @@
 import { condition, continueAsNew, setHandler, sleep } from '@temporalio/workflow'
-import type { ConfiguredCatalog, SourceInputMessage, SourceState as SyncState } from '@stripe/sync-engine'
+import type {
+  ConfiguredCatalog,
+  SourceInputMessage,
+  SourceState as SyncState,
+} from '@stripe/sync-engine'
 
 import {
   desiredStatusSignal,
