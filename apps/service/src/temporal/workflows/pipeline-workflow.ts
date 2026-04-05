@@ -27,8 +27,15 @@ export async function pipelineWorkflow(
   let desiredStatus = opts?.desiredStatus ?? 'active'
   const inputQueue: SourceInputMessage[] = [...(opts?.inputQueue ?? [])]
   let iteration = 0
-  let syncState: SourceState = opts?.sourceState ?? { streams: {}, global: {} }
-  let readComplete = false
+  let sourceState: SourceState = opts?.sourceState ?? { streams: {}, global: {} }
+  let eofCompleted = false
+  let workflowStatus: WorkflowStatus = 'setup'
+
+  async function setStatus(status: WorkflowStatus) {
+    if (workflowStatus === status) return
+    workflowStatus = status
+    await updatePipelineStatus(pipelineId, status)
+  }
 
   setHandler(stripeEventSignal, (event: SourceInputMessage) => {
     inputQueue.push(event)
@@ -41,7 +48,7 @@ export async function pipelineWorkflow(
     if (++iteration >= CONTINUE_AS_NEW_THRESHOLD) {
       await continueAsNew<typeof pipelineWorkflow>(pipelineId, {
         desiredStatus,
-        sourceState: syncState,
+        sourceState: sourceState,
         inputQueue: inputQueue.length > 0 ? [...inputQueue] : undefined,
       })
     }
@@ -49,7 +56,7 @@ export async function pipelineWorkflow(
 
   // Setup
   await setup(pipelineId)
-  await updatePipelineStatus(pipelineId, 'backfill')
+  await setStatus('backfill')
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -58,25 +65,20 @@ export async function pipelineWorkflow(
     }
 
     if (desiredStatus === 'paused') {
-      await updatePipelineStatus(pipelineId, 'paused')
+      await setStatus('paused')
       await condition(() => desiredStatus !== 'paused')
       continue
     }
 
-    // Resuming from paused — update status
-    if (readComplete) {
-      await updatePipelineStatus(pipelineId, 'ready')
-    } else {
-      await updatePipelineStatus(pipelineId, 'backfill')
-    }
+    await setStatus(eofCompleted ? 'ready' : 'backfill')
 
-    if (readComplete && inputQueue.length === 0) {
+    if (eofCompleted && inputQueue.length === 0) {
       // Idle — wait up to one week; timeout means recon is due.
       const timedOut = !(await condition(
         () => desiredStatus !== 'active' || inputQueue.length > 0,
         ONE_WEEK_MS
       ))
-      if (timedOut) readComplete = false
+      if (timedOut) eofCompleted = false
       continue
     }
 
@@ -85,23 +87,20 @@ export async function pipelineWorkflow(
       await syncImmediate(pipelineId, { input: batch })
     } else {
       const result = await syncImmediate(pipelineId, {
-        state: syncState,
+        state: sourceState,
         state_limit: 100,
         time_limit: 10,
       })
-      syncState = {
-        streams: { ...syncState.streams, ...result.state.streams },
-        global: { ...syncState.global, ...result.state.global },
-      }
+      sourceState = result.state
       if (result.eof?.reason === 'complete') {
-        readComplete = true
-        await updatePipelineStatus(pipelineId, 'ready')
+        eofCompleted = true
+        await setStatus('ready')
       }
     }
 
     await maybeContinueAsNew()
   }
 
-  await updatePipelineStatus(pipelineId, 'teardown')
+  await setStatus('teardown')
   await teardown(pipelineId)
 }
