@@ -11,7 +11,7 @@
     }
   },
   "scripts": {
-    "build": "node scripts/generate-versions.mjs && tsc && cp -r oas dist/",
+    "build": "tsc && cp -r oas dist/",
     "test": "vitest --passWithNoTests"
   },
   "files": [
