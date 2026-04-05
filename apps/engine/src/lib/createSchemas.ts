@@ -77,10 +77,7 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
   const SourceConfig =
     sources.length > 0
       ? z
-          .discriminatedUnion(
-            'type',
-            sources.map((s) => s.variant) as [any, any, ...any[]]
-          )
+          .discriminatedUnion('type', sources.map((s) => s.variant) as [any, any, ...any[]])
           .meta({ id: connectorUnionId('Source') })
       : z.object({ type: z.string() }).catchall(z.unknown())
 
@@ -88,10 +85,7 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
   const DestinationConfig =
     destinations.length > 0
       ? z
-          .discriminatedUnion(
-            'type',
-            destinations.map((d) => d.variant) as [any, any, ...any[]]
-          )
+          .discriminatedUnion('type', destinations.map((d) => d.variant) as [any, any, ...any[]])
           .meta({ id: connectorUnionId('Destination') })
       : z.object({ type: z.string() }).catchall(z.unknown())
 
@@ -129,7 +123,14 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
   const sourceConfigNames = sources.map((s) => connectorSchemaName(s.name, 'Source'))
   const destConfigNames = destinations.map((d) => connectorSchemaName(d.name, 'Destination'))
 
-  return { SourceConfig, DestinationConfig, SourceInput, PipelineConfig, sourceConfigNames, destConfigNames }
+  return {
+    SourceConfig,
+    DestinationConfig,
+    SourceInput,
+    PipelineConfig,
+    sourceConfigNames,
+    destConfigNames,
+  }
 }
 
 /** Single schema, union, or fallback record from a list of config schemas. */
