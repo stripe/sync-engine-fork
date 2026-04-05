@@ -129,7 +129,7 @@ export function createWriteGoogleSheetsFromQueueActivity(context: ActivitiesCont
     const queued = await context.consumeQueueBatch(pipelineId, maxBatch)
 
     if (queued.length === 0) {
-      return { errors: [], state: {}, written: 0, rowAssignments: {} }
+      return { errors: [], state: { streams: {}, global: {} }, written: 0, rowAssignments: {} }
     }
 
     const pipeline = await context.pipelineStore.get(pipelineId)
@@ -146,7 +146,7 @@ export function createWriteGoogleSheetsFromQueueActivity(context: ActivitiesCont
     const filteredCatalog = augmentGoogleSheetsCatalog(opts.catalog)
     const destination = createGoogleSheetsDestination()
     const errors: RunResult['errors'] = []
-    const state: Record<string, unknown> = {}
+    const state: import('@stripe/sync-engine').SyncState = { streams: {}, global: {} }
     const rowAssignments: Record<string, Record<string, number>> = {}
     const input = enforceCatalog(filteredCatalog)(
       asIterable(writeBatch)
@@ -163,7 +163,11 @@ export function createWriteGoogleSheetsFromQueueActivity(context: ActivitiesCont
       if (error) {
         errors.push(error)
       } else if (raw.type === 'state') {
-        state[raw.state.stream] = raw.state.data
+        if (raw.state.state_type === 'global') {
+          Object.assign(state.global, raw.state.data as Record<string, unknown>)
+        } else {
+          state.streams[raw.state.stream] = raw.state.data
+        }
       } else if (raw.type === 'log') {
         const meta = parseGoogleSheetsMetaLog(raw.log.message)
         if (meta?.type === 'row_assignments') {

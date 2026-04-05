@@ -15,8 +15,10 @@ import { CONTINUE_AS_NEW_THRESHOLD, EVENT_BATCH_SIZE } from '../../lib/utils.js'
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
+import type { SyncState } from '@stripe/sync-protocol'
+
 export interface PipelineWorkflowOpts {
-  state?: Record<string, unknown>
+  state?: SyncState
   time_limit?: number
   inputQueue?: unknown[]
 }
@@ -29,7 +31,7 @@ export async function pipelineWorkflow(
   let deleted = false
   const inputQueue: unknown[] = [...(opts?.inputQueue ?? [])]
   let iteration = 0
-  let syncState: Record<string, unknown> = opts?.state ?? {}
+  let syncState: SyncState = opts?.state ?? { streams: {}, global: {} }
   let readComplete = false
 
   setHandler(stripeEventSignal, (event: unknown) => {
@@ -43,7 +45,7 @@ export async function pipelineWorkflow(
   })
 
   setHandler(statusQuery, (): WorkflowStatus => ({ phase: 'running', paused, iteration }))
-  setHandler(stateQuery, (): Record<string, unknown> => syncState)
+  setHandler(stateQuery, (): SyncState => syncState)
 
   async function maybeContinueAsNew() {
     if (++iteration >= CONTINUE_AS_NEW_THRESHOLD) {
@@ -86,7 +88,10 @@ export async function pipelineWorkflow(
         state_limit: 1,
         time_limit: opts?.time_limit,
       })
-      syncState = { ...syncState, ...result.state }
+      syncState = {
+        streams: { ...syncState.streams, ...result.state.streams },
+        global: { ...syncState.global, ...result.state.global },
+      }
       readComplete = result.eof?.reason === 'complete'
     }
 

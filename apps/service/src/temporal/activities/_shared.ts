@@ -1,5 +1,5 @@
 import { heartbeat } from '@temporalio/activity'
-import type { Message, Engine } from '@stripe/sync-engine'
+import type { Message, Engine, SyncState } from '@stripe/sync-engine'
 import { createRemoteEngine } from '@stripe/sync-engine'
 import { Kafka } from 'kafkajs'
 import type { Producer } from 'kafkajs'
@@ -105,7 +105,7 @@ export function createActivitiesContext(opts: {
 
 export interface RunResult {
   errors: Array<{ message: string; failure_type?: string; stream?: string }>
-  state: Record<string, unknown>
+  state: SyncState
 }
 
 export async function* asIterable<T>(items: T[]): AsyncIterable<T> {
@@ -129,13 +129,13 @@ export function collectError(message: Message): RunResult['errors'][number] | nu
 
 export async function drainMessages(stream: AsyncIterable<Message>): Promise<{
   errors: RunResult['errors']
-  state: Record<string, unknown>
+  state: SyncState
   records: Message[]
   controls: Array<Record<string, unknown>>
   eof?: { reason: string }
 }> {
   const errors: RunResult['errors'] = []
-  const state: Record<string, unknown> = {}
+  const state: SyncState = { streams: {}, global: {} }
   const records: Message[] = []
   const controls: Array<Record<string, unknown>> = []
   let eof: { reason: string } | undefined
@@ -154,7 +154,11 @@ export async function drainMessages(stream: AsyncIterable<Message>): Promise<{
       if (error) {
         errors.push(error)
       } else if (message.type === 'state') {
-        state[message.state.stream] = message.state.data
+        if (message.state.state_type === 'global') {
+          Object.assign(state.global, message.state.data as Record<string, unknown>)
+        } else {
+          state.streams[message.state.stream] = message.state.data
+        }
       } else if (message.type === 'record') {
         records.push(message)
       }
