@@ -108,7 +108,7 @@
                               "deleted"
                             ]
                           },
-                          "workflow_status": {
+                          "status": {
                             "default": "setup",
                             "description": "Workflow-controlled execution state. Updated by the Temporal workflow.",
                             "type": "string",
@@ -120,10 +120,6 @@
                               "teardown",
                               "error"
                             ]
-                          },
-                          "status": {
-                            "type": "string",
-                            "description": "Derived user-facing status (e.g. \"backfilling\", \"pausing\", \"ready\")."
                           }
                         },
                         "required": [
@@ -131,7 +127,6 @@
                           "source",
                           "destination",
                           "desired_status",
-                          "workflow_status",
                           "status"
                         ],
                         "additionalProperties": false
@@ -268,7 +263,7 @@
                         "deleted"
                       ]
                     },
-                    "workflow_status": {
+                    "status": {
                       "default": "setup",
                       "description": "Workflow-controlled execution state. Updated by the Temporal workflow.",
                       "type": "string",
@@ -280,10 +275,6 @@
                         "teardown",
                         "error"
                       ]
-                    },
-                    "status": {
-                      "type": "string",
-                      "description": "Derived user-facing status (e.g. \"backfilling\", \"pausing\", \"ready\")."
                     }
                   },
                   "required": [
@@ -291,7 +282,6 @@
                     "source",
                     "destination",
                     "desired_status",
-                    "workflow_status",
                     "status"
                   ],
                   "additionalProperties": false
@@ -396,7 +386,7 @@
                         "deleted"
                       ]
                     },
-                    "workflow_status": {
+                    "status": {
                       "default": "setup",
                       "description": "Workflow-controlled execution state. Updated by the Temporal workflow.",
                       "type": "string",
@@ -408,10 +398,6 @@
                         "teardown",
                         "error"
                       ]
-                    },
-                    "status": {
-                      "type": "string",
-                      "description": "Derived user-facing status (e.g. \"backfilling\", \"pausing\", \"ready\")."
                     }
                   },
                   "required": [
@@ -419,7 +405,6 @@
                     "source",
                     "destination",
                     "desired_status",
-                    "workflow_status",
                     "status"
                   ],
                   "additionalProperties": false
@@ -578,7 +563,7 @@
                         "deleted"
                       ]
                     },
-                    "workflow_status": {
+                    "status": {
                       "default": "setup",
                       "description": "Workflow-controlled execution state. Updated by the Temporal workflow.",
                       "type": "string",
@@ -590,10 +575,6 @@
                         "teardown",
                         "error"
                       ]
-                    },
-                    "status": {
-                      "type": "string",
-                      "description": "Derived user-facing status (e.g. \"backfilling\", \"pausing\", \"ready\")."
                     }
                   },
                   "required": [
@@ -601,7 +582,6 @@
                     "source",
                     "destination",
                     "desired_status",
-                    "workflow_status",
                     "status"
                   ],
                   "additionalProperties": false

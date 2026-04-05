@@ -264,9 +264,7 @@ export interface operations {
                              * @default setup
                              * @enum {string}
                              */
-                            workflow_status: "setup" | "backfill" | "ready" | "paused" | "teardown" | "error";
-                            /** @description Derived user-facing status (e.g. "backfilling", "pausing", "ready"). */
-                            status: string;
+                            status: "setup" | "backfill" | "ready" | "paused" | "teardown" | "error";
                         }[];
                         has_more: boolean;
                     };
@@ -336,9 +334,7 @@ export interface operations {
                          * @default setup
                          * @enum {string}
                          */
-                        workflow_status: "setup" | "backfill" | "ready" | "paused" | "teardown" | "error";
-                        /** @description Derived user-facing status (e.g. "backfilling", "pausing", "ready"). */
-                        status: string;
+                        status: "setup" | "backfill" | "ready" | "paused" | "teardown" | "error";
                     };
                 };
             };
@@ -400,9 +396,7 @@ export interface operations {
                          * @default setup
                          * @enum {string}
                          */
-                        workflow_status: "setup" | "backfill" | "ready" | "paused" | "teardown" | "error";
-                        /** @description Derived user-facing status (e.g. "backfilling", "pausing", "ready"). */
-                        status: string;
+                        status: "setup" | "backfill" | "ready" | "paused" | "teardown" | "error";
                     };
                 };
             };
@@ -488,9 +482,7 @@ export interface operations {
                          * @default setup
                          * @enum {string}
                          */
-                        workflow_status: "setup" | "backfill" | "ready" | "paused" | "teardown" | "error";
-                        /** @description Derived user-facing status (e.g. "backfilling", "pausing", "ready"). */
-                        status: string;
+                        status: "setup" | "backfill" | "ready" | "paused" | "teardown" | "error";
                     };
                 };
             };
