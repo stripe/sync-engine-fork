@@ -23,3 +23,15 @@ export type {
   ListParams,
 } from './listFnResolver.js'
 export { parsedTableToJsonSchema } from './jsonSchemaConverter.js'
+export {
+  StripeAccountSchema,
+  StripeWebhookEndpointSchema,
+  StripeApiListSchema,
+  StripeApiErrorSchema,
+} from './src/stripeApiTypes.js'
+export type {
+  StripeAccount,
+  StripeApiList,
+  StripeWebhookEndpoint,
+  StripeApiErrorBody,
+} from './src/stripeApiTypes.js'

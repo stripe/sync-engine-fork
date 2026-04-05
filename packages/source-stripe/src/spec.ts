@@ -83,7 +83,7 @@ export const streamStateSpec = z.object({
   backfill: backfillStateSpec.optional(),
 })
 
-export const webhookEventSchema = z.object({
+export const stripeEventSchema = z.object({
   id: z.string().describe('Unique identifier for the object.'),
   object: z
     .literal('event')
@@ -126,10 +126,10 @@ export const webhookEventSchema = z.object({
     .describe('Description of the event (for example, `invoice.created` or `charge.refunded`).'),
 })
 
-export type WebhookEvent = z.infer<typeof webhookEventSchema>
+export type StripeEvent = z.infer<typeof stripeEventSchema>
 
 export default {
   config: z.toJSONSchema(configSchema),
   source_state_stream: z.toJSONSchema(streamStateSpec),
-  source_input: z.toJSONSchema(webhookEventSchema),
+  source_input: z.toJSONSchema(stripeEventSchema),
 } satisfies ConnectorSpecification

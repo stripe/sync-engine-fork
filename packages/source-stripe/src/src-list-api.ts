@@ -3,7 +3,7 @@ import { toRecordMessage, stateMsg } from '@stripe/sync-protocol'
 import type { ResourceConfig } from './types.js'
 import type { SegmentState, BackfillState } from './index.js'
 import type { RateLimiter } from './rate-limiter.js'
-import type Stripe from 'stripe'
+import type { StripeClient } from './client.js'
 
 const SKIPPABLE_ERROR_PATTERNS = [
   'only available in testmode',
@@ -181,8 +181,8 @@ async function* mergeAsync<T>(
 
 // MARK: - Account created timestamp
 
-async function getAccountCreatedTimestamp(stripe: Stripe): Promise<number> {
-  const account = await stripe.accounts.retrieve()
+async function getAccountCreatedTimestamp(client: StripeClient): Promise<number> {
+  const account = await client.getAccount()
   return account.created ?? 1293840000
 }
 
@@ -358,7 +358,7 @@ export async function* listApiBackfill(opts: {
       >
     | undefined
   registry: Record<string, ResourceConfig>
-  stripe: Stripe
+  client: StripeClient
   rateLimiter: RateLimiter
   backfillLimit?: number
   backfillConcurrency?: number
@@ -368,7 +368,7 @@ export async function* listApiBackfill(opts: {
     catalog,
     state,
     registry,
-    stripe,
+    client,
     rateLimiter,
     backfillLimit,
     backfillConcurrency = DEFAULT_BACKFILL_CONCURRENCY,
@@ -430,7 +430,7 @@ export async function* listApiBackfill(opts: {
         } else {
           // First run: fetch account creation date and build segments
           if (accountCreated === null) {
-            accountCreated = await getAccountCreatedTimestamp(stripe)
+            accountCreated = await getAccountCreatedTimestamp(client)
           }
           const now = Math.floor(Date.now() / 1000)
           range = { gte: accountCreated, lt: now + 1 }

@@ -1,7 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type Stripe from 'stripe'
+import type { StripeEvent } from './spec.js'
+import type { StripeClient } from './client.js'
 import type {
   ConfiguredCatalog,
   Message,
@@ -11,7 +12,7 @@ import type {
 } from '@stripe/sync-protocol'
 import { collectFirst, drain } from '@stripe/sync-protocol'
 import source, { createStripeSource, discoverCache } from './index.js'
-import { fromWebhookEvent } from './process-event.js'
+import { fromStripeEvent } from './process-event.js'
 import { buildResourceRegistry } from './resourceRegistry.js'
 import type { ResourceConfig } from './types.js'
 import type { StripeWebhookEvent, StripeWebSocketClient } from './src-websocket.js'
@@ -90,13 +91,13 @@ function getAllTsFiles(dir: string): string[] {
   return results
 }
 
-/** Create a minimal Stripe.Event for testing fromWebhookEvent(). */
+/** Create a minimal StripeEvent for testing fromStripeEvent(). */
 function makeEvent(overrides: {
   id?: string
   type?: string
   created?: number
   dataObject: Record<string, unknown>
-}): Stripe.Event {
+}): StripeEvent {
   return {
     id: overrides.id ?? 'evt_test_123',
     object: 'event',
@@ -107,9 +108,9 @@ function makeEvent(overrides: {
     pending_webhooks: 0,
     request: null,
     data: {
-      object: overrides.dataObject as Stripe.Event.Data['object'],
+      object: overrides.dataObject,
     },
-  } as Stripe.Event
+  } satisfies StripeEvent
 }
 
 const config = { api_key: 'sk_test_fake' }
@@ -395,7 +396,7 @@ describe('StripeSource', () => {
     // test verifies this transition end-to-end.
   })
 
-  describe('fromWebhookEvent() — live mode scenarios', () => {
+  describe('fromStripeEvent() — live mode scenarios', () => {
     it('webhook mode emits one RecordMessage + one SourceStateMessage per event', () => {
       const registry: Record<string, ResourceConfig> = {
         customers: makeConfig({ order: 1, tableName: 'customers' }),
@@ -408,7 +409,7 @@ describe('StripeSource', () => {
         dataObject: { id: 'cus_1', object: 'customer', name: 'Alice' },
       })
 
-      const result = fromWebhookEvent(event, registry)
+      const result = fromStripeEvent(event, registry)
 
       expect(result).not.toBeNull()
       expect(result!.record.type).toBe('record')
@@ -437,7 +438,7 @@ describe('StripeSource', () => {
         dataObject: { id: 'unknown_1', object: 'unknown_type' },
       })
 
-      const result = fromWebhookEvent(event, registry)
+      const result = fromStripeEvent(event, registry)
       expect(result).toBeNull()
     })
 
@@ -451,7 +452,7 @@ describe('StripeSource', () => {
         dataObject: { object: 'invoice', amount_due: 5000 },
       })
 
-      const result = fromWebhookEvent(event, registry)
+      const result = fromStripeEvent(event, registry)
       expect(result).toBeNull()
     })
 
@@ -465,7 +466,7 @@ describe('StripeSource', () => {
         dataObject: { id: 'cus_1', object: 'customer', deleted: true },
       })
 
-      const result = fromWebhookEvent(event, registry)
+      const result = fromStripeEvent(event, registry)
 
       expect(result).not.toBeNull()
       expect(result!.record.record.data).toMatchObject({
@@ -484,14 +485,14 @@ describe('StripeSource', () => {
         dataObject: { id: 'cus_1' },
       })
 
-      const result = fromWebhookEvent(event, registry)
+      const result = fromStripeEvent(event, registry)
       expect(result).toBeNull()
     })
 
-    it('WebSocket mode uses same fromWebhookEvent conversion as webhook mode', () => {
+    it('WebSocket mode uses same fromStripeEvent conversion as webhook mode', () => {
       // WebSocket is a transport concern — the conversion is identical.
-      // The same Stripe.Event structure is received regardless of transport.
-      // This test verifies fromWebhookEvent works for any Stripe.Event input.
+      // The same StripeEvent structure is received regardless of transport.
+      // This test verifies fromStripeEvent works for any StripeEvent input.
       const registry: Record<string, ResourceConfig> = {
         invoices: makeConfig({ order: 1, tableName: 'invoices' }),
       }
@@ -503,7 +504,7 @@ describe('StripeSource', () => {
         dataObject: { id: 'inv_1', object: 'invoice', amount_paid: 1000 },
       })
 
-      const result = fromWebhookEvent(event, registry)
+      const result = fromStripeEvent(event, registry)
 
       expect(result).not.toBeNull()
       expect(result!.record.record.stream).toBe('invoices')
@@ -760,7 +761,7 @@ describe('StripeSource', () => {
     })
 
     it('stream via websocket (input): same code path as webhook', async () => {
-      // WebSocket is a transport concern — the Stripe.Event is identical.
+      // WebSocket is a transport concern — the StripeEvent is identical.
       // read() with input= behaves the same regardless of transport.
       vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
       const event = makeEvent({
@@ -1205,7 +1206,7 @@ describe('StripeSource', () => {
     }
 
     /** Push a synthetic event through the captured onEvent callback. */
-    function pushWsEvent(event: Stripe.Event) {
+    function pushWsEvent(event: StripeEvent) {
       capturedOnEvent!({
         type: 'webhook_event',
         webhook_id: 'wh_' + event.id,
@@ -1703,7 +1704,7 @@ describe('StripeSource', () => {
         { index: 2, gte: 1200000, lt: 1300001, page_cursor: null, status: 'complete' },
       ]
 
-      const mockStripe = {} as unknown as Stripe
+      const mockClient = {} as unknown as StripeClient
       const rateLimiter: RateLimiter = async () => 0
 
       const messages = await collect(
@@ -1713,7 +1714,7 @@ describe('StripeSource', () => {
             customers: { page_cursor: null, status: 'pending', segments: priorSegments },
           },
           registry,
-          stripe: mockStripe,
+          client: mockClient,
           rateLimiter,
           backfillConcurrency: 3,
         })
@@ -1755,9 +1756,11 @@ describe('StripeSource', () => {
         }),
       }
 
-      const mockStripe = {
-        accounts: { retrieve: vi.fn().mockResolvedValue({ created: 1000000 }) },
-      } as unknown as Stripe
+      const mockClient = {
+        getAccount: vi
+          .fn()
+          .mockResolvedValue({ id: 'acct_test', object: 'account', created: 1000000 }),
+      } as unknown as StripeClient
       const rateLimiter: RateLimiter = async () => 0
 
       const messages = await collect(
@@ -1765,7 +1768,7 @@ describe('StripeSource', () => {
           catalog: catalog({ name: 'customers' }),
           state: undefined,
           registry,
-          stripe: mockStripe,
+          client: mockClient,
           rateLimiter,
           backfillConcurrency: 3,
         })
@@ -1803,7 +1806,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      const mockStripe = {} as unknown as Stripe
+      const mockClient = {} as unknown as StripeClient
       const rateLimiter: RateLimiter = async () => 0
 
       const messages = await collect(
@@ -1811,7 +1814,7 @@ describe('StripeSource', () => {
           catalog: catalog({ name: 'tax_ids' }),
           state: undefined,
           registry,
-          stripe: mockStripe,
+          client: mockClient,
           rateLimiter,
         })
       )
@@ -1850,9 +1853,11 @@ describe('StripeSource', () => {
         }),
       }
 
-      const mockStripe = {
-        accounts: { retrieve: vi.fn().mockResolvedValue({ created: 1000000 }) },
-      } as unknown as Stripe
+      const mockClient = {
+        getAccount: vi
+          .fn()
+          .mockResolvedValue({ id: 'acct_test', object: 'account', created: 1000000 }),
+      } as unknown as StripeClient
       const rateLimiter: RateLimiter = async () => 0
 
       const messages = await collect(
@@ -1862,7 +1867,7 @@ describe('StripeSource', () => {
           },
           state: undefined,
           registry,
-          stripe: mockStripe,
+          client: mockClient,
           rateLimiter,
           backfillConcurrency: 3,
         })
@@ -1945,7 +1950,7 @@ describe('StripeSource', () => {
           catalog: catalog({ name: 'items' }),
           state: undefined,
           registry,
-          stripe: {} as unknown as Stripe,
+          client: {} as unknown as StripeClient,
           rateLimiter: rateLimiterSpy,
         })
       )

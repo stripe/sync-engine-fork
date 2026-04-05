@@ -528,6 +528,10 @@ importers:
         version: 3.2.4(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.1)
 
   packages/openapi:
+    dependencies:
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: ^24.5.0
@@ -563,9 +567,6 @@ importers:
       https-proxy-agent:
         specifier: ^7.0.6
         version: 7.0.6(supports-color@10.2.2)
-      stripe:
-        specifier: ^17.7.0
-        version: 17.7.0
       undici:
         specifier: ^7.16.0
         version: 7.24.6
@@ -7238,7 +7239,9 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@stripe/sync-openapi@file:packages/openapi': {}
+  '@stripe/sync-openapi@file:packages/openapi':
+    dependencies:
+      zod: 4.3.6
 
   '@stripe/sync-protocol@file:packages/protocol':
     dependencies:
@@ -7287,7 +7290,6 @@ snapshots:
       '@stripe/sync-openapi': file:packages/openapi
       '@stripe/sync-protocol': file:packages/protocol
       https-proxy-agent: 7.0.6(supports-color@10.2.2)
-      stripe: 17.7.0
       undici: 7.24.6
       ws: 8.18.3
       zod: 4.3.6
