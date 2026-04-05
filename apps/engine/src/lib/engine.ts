@@ -228,10 +228,7 @@ async function discoverCatalog(
   engine: Engine,
   pipeline: PipelineConfig
 ): Promise<{ catalog: ConfiguredCatalog; filteredCatalog: ConfiguredCatalog }> {
-  const catalogMsg = await collectFirst(
-    engine.source_discover(pipeline.source),
-    'catalog'
-  )
+  const catalogMsg = await collectFirst(engine.source_discover(pipeline.source), 'catalog')
   const catalog = buildCatalog(catalogMsg.catalog.streams, pipeline.streams)
   const filteredCatalog = applySelection(catalog)
   return { catalog, filteredCatalog }
@@ -305,8 +302,16 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       const destTag = `destination/${pipeline.destination.type}`
 
       yield* merge(
-        withLoggedStream('Engine source check', baseContext, map(srcConnector.check({ config: sourceConfig }), tag(sourceTag))),
-        withLoggedStream('Engine destination check', baseContext, map(destConnector.check({ config: destConfig }), tag(destTag))),
+        withLoggedStream(
+          'Engine source check',
+          baseContext,
+          map(srcConnector.check({ config: sourceConfig }), tag(sourceTag))
+        ),
+        withLoggedStream(
+          'Engine destination check',
+          baseContext,
+          map(destConnector.check({ config: destConfig }), tag(destTag))
+        )
       )
     },
 
@@ -330,9 +335,17 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
 
       yield* merge(
         srcConnector.setup &&
-          withLoggedStream('Engine source setup', baseContext, map(srcConnector.setup({ config: sourceConfig, catalog }), tag(sourceTag))),
+          withLoggedStream(
+            'Engine source setup',
+            baseContext,
+            map(srcConnector.setup({ config: sourceConfig, catalog }), tag(sourceTag))
+          ),
         destConnector.setup &&
-          withLoggedStream('Engine destination setup', baseContext, map(destConnector.setup({ config: destConfig, catalog: filteredCatalog }), tag(destTag))),
+          withLoggedStream(
+            'Engine destination setup',
+            baseContext,
+            map(destConnector.setup({ config: destConfig, catalog: filteredCatalog }), tag(destTag))
+          )
       )
     },
 
@@ -354,9 +367,17 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
 
       yield* merge(
         srcConnector.teardown &&
-          withLoggedStream('Engine source teardown', baseContext, map(srcConnector.teardown({ config: sourceConfig }), tag(sourceTag))),
+          withLoggedStream(
+            'Engine source teardown',
+            baseContext,
+            map(srcConnector.teardown({ config: sourceConfig }), tag(sourceTag))
+          ),
         destConnector.teardown &&
-          withLoggedStream('Engine destination teardown', baseContext, map(destConnector.teardown({ config: destConfig }), tag(destTag))),
+          withLoggedStream(
+            'Engine destination teardown',
+            baseContext,
+            map(destConnector.teardown({ config: destConfig }), tag(destTag))
+          )
       )
     },
 

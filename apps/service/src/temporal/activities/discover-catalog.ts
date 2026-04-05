@@ -1,17 +1,12 @@
 import type { ConfiguredCatalog } from '@stripe/sync-engine'
 import { applySelection, buildCatalog } from '@stripe/sync-engine'
 import { collectFirst } from '@stripe/sync-protocol'
-
 import type { ActivitiesContext } from './_shared.js'
 
 export function createDiscoverCatalogActivity(context: ActivitiesContext) {
   return async function discoverCatalog(pipelineId: string): Promise<ConfiguredCatalog> {
-    const pipeline = await context.pipelineStore.get(pipelineId)
-    const { id: _, ...config } = pipeline
-    const catalogMsg = await collectFirst(
-      context.engine.source_discover(config.source),
-      'catalog'
-    )
-    return applySelection(buildCatalog(catalogMsg.catalog.streams, config.streams))
+    const { source, streams } = await context.pipelineStore.get(pipelineId)
+    const catalogMsg = await collectFirst(context.engine.source_discover(source), 'catalog')
+    return applySelection(buildCatalog(catalogMsg.catalog.streams, streams))
   }
 }

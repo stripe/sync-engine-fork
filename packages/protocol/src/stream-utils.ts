@@ -51,7 +51,9 @@ export function channel<T>(): AsyncIterable<T> & {
 export async function* merge<T>(
   ...iterables: (AsyncIterable<T> | false | null | undefined)[]
 ): AsyncIterable<T> {
-  const iterators = iterables.filter(Boolean).map((it) => it![Symbol.asyncIterator]())
+  const iterators = iterables
+    .filter((x): x is AsyncIterable<T> => !!x)
+    .map((it) => it[Symbol.asyncIterator]())
   const pending = new Map<number, Promise<{ index: number; result: IteratorResult<T> }>>()
 
   for (const [i, iter] of iterators.entries()) {
