@@ -9,8 +9,8 @@
 
 ---
 
-- /discover endpoint passing stripe api version
-- ~~how to return a list of all stripe api versions~~ done (DDR-008: enum on config JSON Schema)
+- [x] ~~_/discover endpoint passing stripe api version_~~ [2026-04-04]
+- [x] ~~\*~~how to return a list of all stripe api versions~~ done (DDR-008: enum on config JSON Schema)\*~~ [2026-04-04]
 - Consider renaming generated OpenAPI specs to `.oas.json` for consistency (e.g. `engine.oas.json`, `service.oas.json`)
 
 - /check (implmeent or remove for now)
