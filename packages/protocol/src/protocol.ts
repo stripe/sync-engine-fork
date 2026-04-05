@@ -10,6 +10,23 @@
 
 import { z } from 'zod'
 
+// MARK: - Aggregate state
+
+/**
+ * Aggregate state shape — replaces `Record<string, unknown>` everywhere.
+ * `streams` holds per-stream checkpoints (existing behavior).
+ * `global` holds sync-wide state shared across all streams (new).
+ */
+export const SyncState = z.object({
+  streams: z
+    .record(z.string(), z.unknown())
+    .describe('Per-stream checkpoint data, keyed by stream name.'),
+  global: z
+    .record(z.string(), z.unknown())
+    .describe('Sync-wide state shared across all streams (e.g. a global events cursor).'),
+})
+export type SyncState = z.infer<typeof SyncState>
+
 // MARK: - Data model
 
 export const Stream = z
@@ -104,7 +121,9 @@ export const ConnectorSpecification = z
     stream_state: z
       .record(z.string(), z.unknown())
       .optional()
-      .describe('JSON Schema for per-stream state (cursor/checkpoint shape).'),
+      .describe(
+        'JSON Schema for per-stream state (cursor/checkpoint shape). See also SyncState.global for sync-wide cursors.'
+      ),
     input: z
       .record(z.string(), z.unknown())
       .optional()
@@ -125,8 +144,9 @@ export const RecordPayload = z
   .describe('One record for one stream.')
 export type RecordPayload = z.infer<typeof RecordPayload>
 
-export const StatePayload = z
+export const StreamStatePayload = z
   .object({
+    state_type: z.literal('stream').default('stream'),
     stream: z.string().describe('Stream being checkpointed.'),
     data: z
       .unknown()
@@ -135,6 +155,29 @@ export const StatePayload = z
       ),
   })
   .describe('Per-stream checkpoint for resumable syncs.')
+export type StreamStatePayload = z.infer<typeof StreamStatePayload>
+
+export const GlobalStatePayload = z
+  .object({
+    state_type: z.literal('global'),
+    data: z
+      .unknown()
+      .describe(
+        'Sync-wide state shared across all streams (e.g. a global events cursor).'
+      ),
+  })
+  .describe('Sync-wide checkpoint shared across all streams.')
+export type GlobalStatePayload = z.infer<typeof GlobalStatePayload>
+
+/**
+ * Wire-format state payload — discriminated on `state_type`.
+ *
+ * Uses `z.union` (not `z.discriminatedUnion`) so that old messages without
+ * `state_type` fall through to `StreamStatePayload` where `.default('stream')`
+ * fills it in. New messages with `state_type: 'global'` fail the stream literal
+ * and match `GlobalStatePayload`.
+ */
+export const StatePayload = z.union([StreamStatePayload, GlobalStatePayload])
 export type StatePayload = z.infer<typeof StatePayload>
 
 export const CatalogPayload = z
@@ -339,7 +382,7 @@ export type PipelineConfig = z.infer<typeof PipelineConfig>
 /** The full set of parsed sync request params: pipeline config + cursor state + stream limits. */
 export interface SyncParams {
   pipeline: PipelineConfig
-  state?: Record<string, unknown>
+  state?: SyncState
   state_limit?: number
   time_limit?: number
 }
@@ -451,7 +494,7 @@ export interface Source<
     params: {
       config: TConfig
       catalog: ConfiguredCatalog
-      state?: Record<string, TStreamState>
+      state?: SyncState
     },
     $stdin?: AsyncIterable<TInput>
   ): AsyncIterable<Message>

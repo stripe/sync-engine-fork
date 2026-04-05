@@ -4,13 +4,14 @@ import type {
   ControlMessage,
   DestinationInput,
   EofMessage,
+  GlobalStatePayload,
   LogMessage,
   Message,
   RecordMessage,
   RecordPayload,
   SpecMessage,
   StateMessage,
-  StatePayload,
+  StreamStatePayload,
   TraceMessage,
 } from './protocol.js'
 
@@ -38,9 +39,9 @@ export function recordStream(msg: RecordMessage): string {
   return msg.record.stream
 }
 
-/** Extract the stream name from a StateMessage. */
-export function stateStream(msg: StateMessage): string {
-  return msg.state.stream
+/** Extract the stream name from a StateMessage, or undefined for global state. */
+export function stateStream(msg: StateMessage): string | undefined {
+  return msg.state.state_type === 'global' ? undefined : msg.state.stream
 }
 
 /** Extract the state data from a StateMessage. */
@@ -172,7 +173,18 @@ export function recordMsg(payload: RecordPayload): RecordMessage {
   return { type: 'record', record: payload }
 }
 
-/** Shorthand to create a state envelope message. */
-export function stateMsg(payload: StatePayload): StateMessage {
-  return { type: 'state', state: payload }
+/** Shorthand to create a stream state envelope message. */
+export function stateMsg(payload: { stream: string; data: unknown }): StateMessage
+/** Shorthand to create a global state envelope message. */
+export function stateMsg(payload: { state_type: 'global'; data: unknown }): StateMessage
+export function stateMsg(
+  payload:
+    | { stream: string; data: unknown }
+    | { state_type: 'global'; data: unknown }
+): StateMessage {
+  const state: StreamStatePayload | GlobalStatePayload =
+    'state_type' in payload
+      ? (payload as GlobalStatePayload)
+      : { state_type: 'stream' as const, ...(payload as { stream: string; data: unknown }) }
+  return { type: 'state', state }
 }
