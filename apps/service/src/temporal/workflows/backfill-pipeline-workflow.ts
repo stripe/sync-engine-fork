@@ -56,7 +56,11 @@ export async function backfillPipelineWorkflow(
       continue
     }
 
-    const result = await syncImmediate(pipelineId, { state: syncState, state_limit: 1 })
+    const result = await syncImmediate(pipelineId, {
+      state: syncState,
+      state_limit: 100,
+      time_limit: 10,
+    })
     syncState = {
       streams: { ...syncState.streams, ...result.state.streams },
       global: { ...syncState.global, ...result.state.global },

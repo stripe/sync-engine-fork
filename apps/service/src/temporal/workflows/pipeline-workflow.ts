@@ -19,7 +19,6 @@ import type { SyncState } from '@stripe/sync-protocol'
 
 export interface PipelineWorkflowOpts {
   state?: SyncState
-  time_limit?: number
   inputQueue?: unknown[]
 }
 
@@ -51,7 +50,6 @@ export async function pipelineWorkflow(
     if (++iteration >= CONTINUE_AS_NEW_THRESHOLD) {
       await continueAsNew<typeof pipelineWorkflow>(pipelineId, {
         state: syncState,
-        time_limit: opts?.time_limit,
         inputQueue: inputQueue.length > 0 ? [...inputQueue] : undefined,
       })
     }
@@ -85,8 +83,8 @@ export async function pipelineWorkflow(
     } else {
       const result = await syncImmediate(pipelineId, {
         state: syncState,
-        state_limit: 1,
-        time_limit: opts?.time_limit,
+        state_limit: 100,
+        time_limit: 10,
       })
       syncState = {
         streams: { ...syncState.streams, ...result.state.streams },
