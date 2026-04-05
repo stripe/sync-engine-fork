@@ -35,12 +35,16 @@ export function enforceCatalog(
           yield msg
         }
       } else if (msg.type === 'state') {
-        const cs = streamMap.get(msg.state.stream)
-        if (!cs) {
-          logger.error({ stream: msg.state.stream }, 'Unknown stream not in catalog')
-          continue
+        if (msg.state.state_type === 'global') {
+          yield msg // global state needs no catalog validation
+        } else {
+          const cs = streamMap.get(msg.state.stream)
+          if (!cs) {
+            logger.error({ stream: msg.state.stream }, 'Unknown stream not in catalog')
+            continue
+          }
+          yield msg
         }
-        yield msg
       } else {
         yield msg
       }
@@ -100,7 +104,13 @@ export function persistState(
 ): (msgs: AsyncIterable<DestinationOutput>) => AsyncIterable<DestinationOutput> {
   return async function* (messages) {
     for await (const msg of messages) {
-      if (msg.type === 'state') await store.set(msg.state.stream, msg.state.data)
+      if (msg.type === 'state') {
+        if (msg.state.state_type === 'global') {
+          await store.setGlobal(msg.state.data)
+        } else {
+          await store.set(msg.state.stream, msg.state.data)
+        }
+      }
       yield msg
     }
   }
