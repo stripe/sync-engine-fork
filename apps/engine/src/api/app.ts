@@ -371,14 +371,13 @@ export async function createApp(resolver: ConnectorResolver) {
 
     let input: AsyncIterable<unknown> | undefined
     if (inputPresent) {
-      const sourceType = pipeline.source.type
       if (SourceInput) {
-        // Validate each NDJSON line against the SourceInput discriminated union,
-        // then unwrap the connector-specific payload for source.read().
+        // Validate each NDJSON line against the SourceInput envelope,
+        // then unwrap the source_input payload for source.read().
         input = (async function* () {
           for await (const msg of parseNdjsonStream(c.req.raw.body!)) {
             const parsed = SourceInput.parse(msg)
-            yield (parsed as Record<string, unknown>)[sourceType]
+            yield (parsed as { source_input: unknown }).source_input
           }
         })()
       } else {

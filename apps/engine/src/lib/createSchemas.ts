@@ -95,22 +95,23 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
           .meta({ id: connectorUnionId('Destination') })
       : z.object({ type: z.string() }).catchall(z.unknown())
 
-  // Source input discriminated union (only sources with rawInputJsonSchema)
-  const inputVariants = [...resolver.sources()]
+  // Source input message envelope: { type: 'source_input', source_input: { ...connector payload } }
+  const inputSchemas = [...resolver.sources()]
     .filter(([, r]) => r.rawInputJsonSchema != null)
     .map(([name, r]) => {
       const base = z.fromJSONSchema(r.rawInputJsonSchema!)
-      const obj = (base instanceof z.ZodObject ? base : z.object({})).meta({
+      return (base instanceof z.ZodObject ? base : z.object({})).meta({
         id: connectorInputSchemaName(name),
       })
-      return z.object({ type: z.literal(name), [name]: obj })
     })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SourceInput =
-    inputVariants.length > 0
+    inputSchemas.length > 0
       ? z
-          .discriminatedUnion('type', inputVariants as [any, any, ...any[]])
+          .object({
+            type: z.literal('source_input'),
+            source_input: configUnion(inputSchemas),
+          })
           .meta({ id: 'SourceInput' })
       : undefined
 
@@ -129,4 +130,12 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
   const destConfigNames = destinations.map((d) => connectorSchemaName(d.name, 'Destination'))
 
   return { SourceConfig, DestinationConfig, SourceInput, PipelineConfig, sourceConfigNames, destConfigNames }
+}
+
+/** Single schema, union, or fallback record from a list of config schemas. */
+function configUnion(configs: z.ZodType[]): z.ZodType {
+  if (configs.length === 0) return z.record(z.string(), z.unknown())
+  if (configs.length === 1) return configs[0]!
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return z.union(configs as [any, any, ...any[]])
 }

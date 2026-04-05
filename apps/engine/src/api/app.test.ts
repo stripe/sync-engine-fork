@@ -481,7 +481,7 @@ describe('POST /read', () => {
           emitted_at: new Date().toISOString(),
         },
       }
-      const body = toNdjson([{ type: 'test', test: record }])
+      const body = toNdjson([{ type: 'source_input', source_input: record }])
       const res = await inputApp.request('/pipeline_read', {
         method: 'POST',
         headers: { 'X-Pipeline': syncParams, ...bodyHeaders(body) },
@@ -495,7 +495,7 @@ describe('POST /read', () => {
 
     it('rejects input that fails the SourceInput schema', async () => {
       // Missing required 'type' field in the inner payload
-      const body = toNdjson([{ type: 'test', test: { noTypeField: true } }])
+      const body = toNdjson([{ type: 'source_input', source_input: { noTypeField: true } }])
       const res = await inputApp.request('/pipeline_read', {
         method: 'POST',
         headers: { 'X-Pipeline': syncParams, ...bodyHeaders(body) },
