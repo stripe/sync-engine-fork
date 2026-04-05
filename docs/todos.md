@@ -10,11 +10,13 @@
 ---
 
 - /discover endpoint passing stripe api version
-- how to return a list of all stripe api versions
+- ~~how to return a list of all stripe api versions~~ done (DDR-008: enum on config JSON Schema)
+- Consider renaming generated OpenAPI specs to `.oas.json` for consistency (e.g. `engine.oas.json`, `service.oas.json`)
 
 - /check (implmeent or remove for now)
 
 - The pipeline state machine.... maintain status
+- more resilient engine, not crash and do something else to recover from source / destination issues?
 
 ---
 

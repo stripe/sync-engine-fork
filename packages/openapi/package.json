@@ -11,7 +11,7 @@
     }
   },
   "scripts": {
-    "build": "tsc && cp bundled-spec.json dist/bundled-spec.json",
+    "build": "tsc && cp -r oas dist/",
     "test": "vitest --passWithNoTests"
   },
   "files": [
