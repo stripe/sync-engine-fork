@@ -272,18 +272,6 @@
         "description": "Streams NDJSON messages (records, state, catalog). Optional NDJSON body provides live events as input.",
         "parameters": [
           {
-            "in": "header",
-            "name": "x-state",
-            "schema": {
-              "description": "JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state",
-              "type": "string"
-            },
-            "content": {
-              "application/json": {}
-            },
-            "description": "JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state"
-          },
-          {
             "in": "query",
             "name": "state_limit",
             "schema": {
@@ -315,6 +303,42 @@
               "[object Object]": {
                 "schema": {
                   "$ref": "#/components/schemas/PipelineConfig"
+                }
+              }
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-state",
+            "required": false,
+            "description": "JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state",
+            "content": {
+              "[object Object]": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "streams": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {},
+                      "description": "Per-stream checkpoint data, keyed by stream name."
+                    },
+                    "global": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {},
+                      "description": "Sync-wide state shared across all streams (e.g. a global events cursor)."
+                    }
+                  },
+                  "required": [
+                    "streams",
+                    "global"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -435,18 +459,6 @@
         "description": "Without a request body, reads from the source connector and writes to the destination (backfill mode). With an NDJSON request body, uses the provided messages as input instead of reading from the source (push mode — e.g. piped webhook events).",
         "parameters": [
           {
-            "in": "header",
-            "name": "x-state",
-            "schema": {
-              "description": "JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state",
-              "type": "string"
-            },
-            "content": {
-              "application/json": {}
-            },
-            "description": "JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state"
-          },
-          {
             "in": "query",
             "name": "state_limit",
             "schema": {
@@ -478,6 +490,42 @@
               "[object Object]": {
                 "schema": {
                   "$ref": "#/components/schemas/PipelineConfig"
+                }
+              }
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-state",
+            "required": false,
+            "description": "JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state",
+            "content": {
+              "[object Object]": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "streams": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {},
+                      "description": "Per-stream checkpoint data, keyed by stream name."
+                    },
+                    "global": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {},
+                      "description": "Sync-wide state shared across all streams (e.g. a global events cursor)."
+                    }
+                  },
+                  "required": [
+                    "streams",
+                    "global"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }

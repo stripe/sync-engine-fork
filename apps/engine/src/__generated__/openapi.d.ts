@@ -851,10 +851,10 @@ export interface operations {
                 time_limit?: number;
             };
             header: {
-                /** @description JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state */
-                "x-state"?: string;
                 /** @description JSON-encoded PipelineConfig */
                 "x-pipeline": string;
+                /** @description JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state */
+                "x-state"?: string;
             };
             path?: never;
             cookie?: never;
@@ -934,10 +934,10 @@ export interface operations {
                 time_limit?: number;
             };
             header: {
-                /** @description JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state */
-                "x-state"?: string;
                 /** @description JSON-encoded PipelineConfig */
                 "x-pipeline": string;
+                /** @description JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state */
+                "x-state"?: string;
             };
             path?: never;
             cookie?: never;
