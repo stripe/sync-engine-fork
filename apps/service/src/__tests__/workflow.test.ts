@@ -45,9 +45,6 @@ beforeAll(async () => {
   testEnv = await TestWorkflowEnvironment.createLocal()
 }, 120_000)
 
-beforeEach(() => {
-  _desiredStatus = 'active'
-})
 
 afterAll(async () => {
   await testEnv?.teardown()

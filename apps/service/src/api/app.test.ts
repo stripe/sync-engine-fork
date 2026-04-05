@@ -111,7 +111,7 @@ describe('POST /pipelines workflow dispatch', () => {
       'googleSheetPipelineWorkflow',
       expect.objectContaining({
         taskQueue: 'unused',
-        args: [expect.stringMatching(/^pipe_/)],
+        args: [expect.stringMatching(/^pipe_/), expect.objectContaining({ desiredStatus: 'active' })],
       })
     )
   })
