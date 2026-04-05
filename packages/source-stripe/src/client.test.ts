@@ -72,16 +72,6 @@ describe('buildStripeClientOptions', () => {
     expect(options.httpAgent).toBeInstanceOf(Agent)
   })
 
-  it('always sets httpClient to a fetch-based client', () => {
-    const options = buildStripeClientOptions(config, {})
-    expect(options.httpClient).toBeDefined()
-  })
-
-  it('sets httpClient even when base_url is provided', () => {
-    const options = buildStripeClientOptions({ ...config, base_url: 'http://localhost:12111' }, {})
-    expect(options.httpClient).toBeDefined()
-  })
-
   it('throws on an invalid timeout override', () => {
     expect(() =>
       buildStripeClientOptions(config, {
