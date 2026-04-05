@@ -261,7 +261,7 @@ export interface components {
                 emitted_at: string;
             };
         };
-        StateMessage: {
+        SourceStateMessage: {
             /** @description Who emitted this message: "source/{type}", "destination/{type}", or "engine". Set by the engine. */
             _emitted_by?: string;
             /**
@@ -273,8 +273,8 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "state";
-            state: {
+            type: "source_state";
+            source_state: {
                 /**
                  * @default stream
                  * @constant
@@ -425,11 +425,11 @@ export interface components {
                     [key: string]: unknown;
                 };
                 /** @description JSON Schema for per-stream state (cursor/checkpoint shape). See also SyncState.global for sync-wide cursors. */
-                stream_state?: {
+                source_state_stream?: {
                     [key: string]: unknown;
                 };
                 /** @description JSON Schema for the read() input parameter (e.g. a webhook event). */
-                input?: {
+                source_input?: {
                     [key: string]: unknown;
                 };
             };
@@ -473,13 +473,17 @@ export interface components {
             type: "control";
             /** @description Control signal from a connector to the orchestrator. */
             control: {
-                /**
-                 * @description What kind of control action the connector is requesting.
-                 * @enum {string}
-                 */
-                control_type: "connector_config";
-                /** @description Config fields to merge into the active connector configuration. */
-                config: {
+                /** @constant */
+                control_type: "source_config";
+                /** @description Config fields to merge into the active source configuration. */
+                source_config: {
+                    [key: string]: unknown;
+                };
+            } | {
+                /** @constant */
+                control_type: "destination_config";
+                /** @description Config fields to merge into the active destination configuration. */
+                destination_config: {
                     [key: string]: unknown;
                 };
             };
@@ -547,8 +551,8 @@ export interface components {
             account_id?: string;
             /** @description Whether this is a live mode sync */
             livemode?: boolean;
-            /** @description Stripe API version (e.g. 2025-04-30.basil) */
-            api_version?: string;
+            /** @constant */
+            api_version?: "2026-03-25.dahlia";
             /**
              * Format: uri
              * @description Override the Stripe API base URL (e.g. http://localhost:12111 for stripe-mock)
@@ -642,10 +646,10 @@ export interface components {
              */
             batch_size: number;
         };
-        Message: components["schemas"]["RecordMessage"] | components["schemas"]["StateMessage"] | components["schemas"]["CatalogMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["SpecMessage"] | components["schemas"]["ConnectionStatusMessage"] | components["schemas"]["ControlMessage"] | components["schemas"]["EofMessage"];
+        Message: components["schemas"]["RecordMessage"] | components["schemas"]["SourceStateMessage"] | components["schemas"]["CatalogMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["SpecMessage"] | components["schemas"]["ConnectionStatusMessage"] | components["schemas"]["ControlMessage"] | components["schemas"]["EofMessage"];
         DiscoverOutput: components["schemas"]["CatalogMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"];
-        DestinationOutput: components["schemas"]["StateMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["EofMessage"];
-        SyncOutput: components["schemas"]["StateMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["EofMessage"] | components["schemas"]["ControlMessage"];
+        DestinationOutput: components["schemas"]["SourceStateMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["EofMessage"];
+        SyncOutput: components["schemas"]["SourceStateMessage"] | components["schemas"]["TraceMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["EofMessage"] | components["schemas"]["ControlMessage"];
         CheckOutput: components["schemas"]["ConnectionStatusMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"];
         SetupOutput: components["schemas"]["ControlMessage"] | components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"];
         TeardownOutput: components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"];

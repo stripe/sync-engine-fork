@@ -830,7 +830,7 @@
           "record"
         ]
       },
-      "StateMessage": {
+      "SourceStateMessage": {
         "type": "object",
         "properties": {
           "_emitted_by": {
@@ -845,9 +845,9 @@
           },
           "type": {
             "type": "string",
-            "const": "state"
+            "const": "source_state"
           },
-          "state": {
+          "source_state": {
             "anyOf": [
               {
                 "type": "object",
@@ -893,7 +893,7 @@
         },
         "required": [
           "type",
-          "state"
+          "source_state"
         ]
       },
       "CatalogMessage": {
@@ -1199,7 +1199,7 @@
                 "additionalProperties": {},
                 "description": "JSON Schema for the connector's configuration object."
               },
-              "stream_state": {
+              "source_state_stream": {
                 "description": "JSON Schema for per-stream state (cursor/checkpoint shape). See also SyncState.global for sync-wide cursors.",
                 "type": "object",
                 "propertyNames": {
@@ -1207,7 +1207,7 @@
                 },
                 "additionalProperties": {}
               },
-              "input": {
+              "source_input": {
                 "description": "JSON Schema for the read() input parameter (e.g. a webhook event).",
                 "type": "object",
                 "propertyNames": {
@@ -1289,29 +1289,55 @@
             "const": "control"
           },
           "control": {
-            "type": "object",
-            "properties": {
-              "control_type": {
-                "type": "string",
-                "enum": [
-                  "connector_config"
-                ],
-                "description": "What kind of control action the connector is requesting."
-              },
-              "config": {
+            "oneOf": [
+              {
                 "type": "object",
-                "propertyNames": {
-                  "type": "string"
+                "properties": {
+                  "control_type": {
+                    "type": "string",
+                    "const": "source_config"
+                  },
+                  "source_config": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {},
+                    "description": "Config fields to merge into the active source configuration."
+                  }
                 },
-                "additionalProperties": {},
-                "description": "Config fields to merge into the active connector configuration."
+                "required": [
+                  "control_type",
+                  "source_config"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "control_type": {
+                    "type": "string",
+                    "const": "destination_config"
+                  },
+                  "destination_config": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {},
+                    "description": "Config fields to merge into the active destination configuration."
+                  }
+                },
+                "required": [
+                  "control_type",
+                  "destination_config"
+                ]
               }
-            },
-            "required": [
-              "control_type",
-              "config"
             ],
-            "description": "Control signal from a connector to the orchestrator."
+            "description": "Control signal from a connector to the orchestrator.",
+            "type": "object",
+            "discriminator": {
+              "propertyName": "control_type"
+            }
           }
         },
         "required": [
@@ -1517,7 +1543,7 @@
           },
           "api_version": {
             "type": "string",
-            "description": "Stripe API version (e.g. 2025-04-30.basil)"
+            "const": "2026-03-25.dahlia"
           },
           "base_url": {
             "type": "string",
@@ -1733,7 +1759,7 @@
             "$ref": "#/components/schemas/RecordMessage"
           },
           {
-            "$ref": "#/components/schemas/StateMessage"
+            "$ref": "#/components/schemas/SourceStateMessage"
           },
           {
             "$ref": "#/components/schemas/CatalogMessage"
@@ -1762,7 +1788,7 @@
           "propertyName": "type",
           "mapping": {
             "record": "#/components/schemas/RecordMessage",
-            "state": "#/components/schemas/StateMessage",
+            "source_state": "#/components/schemas/SourceStateMessage",
             "catalog": "#/components/schemas/CatalogMessage",
             "log": "#/components/schemas/LogMessage",
             "trace": "#/components/schemas/TraceMessage",
@@ -1798,7 +1824,7 @@
       "DestinationOutput": {
         "oneOf": [
           {
-            "$ref": "#/components/schemas/StateMessage"
+            "$ref": "#/components/schemas/SourceStateMessage"
           },
           {
             "$ref": "#/components/schemas/TraceMessage"
@@ -1814,7 +1840,7 @@
         "discriminator": {
           "propertyName": "type",
           "mapping": {
-            "state": "#/components/schemas/StateMessage",
+            "source_state": "#/components/schemas/SourceStateMessage",
             "trace": "#/components/schemas/TraceMessage",
             "log": "#/components/schemas/LogMessage",
             "eof": "#/components/schemas/EofMessage"
@@ -1824,7 +1850,7 @@
       "SyncOutput": {
         "oneOf": [
           {
-            "$ref": "#/components/schemas/StateMessage"
+            "$ref": "#/components/schemas/SourceStateMessage"
           },
           {
             "$ref": "#/components/schemas/TraceMessage"
@@ -1843,7 +1869,7 @@
         "discriminator": {
           "propertyName": "type",
           "mapping": {
-            "state": "#/components/schemas/StateMessage",
+            "source_state": "#/components/schemas/SourceStateMessage",
             "trace": "#/components/schemas/TraceMessage",
             "log": "#/components/schemas/LogMessage",
             "eof": "#/components/schemas/EofMessage",
