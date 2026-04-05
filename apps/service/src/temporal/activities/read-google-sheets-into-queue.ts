@@ -35,7 +35,7 @@ export function createReadGoogleSheetsIntoQueueActivity(context: ActivitiesConte
       input?: SourceInput[]
       catalog?: ConfiguredCatalog
     }
-  ): Promise<{ count: number; state: import('@stripe/sync-engine').SyncState }> {
+  ): Promise<{ count: number; state: import('@stripe/sync-engine').SourceState }> {
     if (!context.kafkaBroker) throw new Error('kafkaBroker is required for Google Sheets workflow')
 
     const pipeline = await context.pipelineStore.get(pipelineId)
@@ -44,7 +44,7 @@ export function createReadGoogleSheetsIntoQueueActivity(context: ActivitiesConte
     const input = inputArr?.length ? asIterable(inputArr) : undefined
 
     const queued: Message[] = []
-    const state: import('@stripe/sync-engine').SyncState = {
+    const state: import('@stripe/sync-engine').SourceState = {
       streams: { ...readOpts.state?.streams },
       global: { ...readOpts.state?.global },
     }

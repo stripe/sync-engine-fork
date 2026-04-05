@@ -1,5 +1,5 @@
 import { heartbeat } from '@temporalio/activity'
-import type { Message, Engine, SyncState } from '@stripe/sync-engine'
+import type { Message, Engine, SourceState } from '@stripe/sync-engine'
 import { createRemoteEngine } from '@stripe/sync-engine'
 import { Kafka } from 'kafkajs'
 import type { Producer } from 'kafkajs'
@@ -105,7 +105,7 @@ export function createActivitiesContext(opts: {
 
 export interface RunResult {
   errors: Array<{ message: string; failure_type?: string; stream?: string }>
-  state: SyncState
+  state: SourceState
 }
 
 export async function* asIterable<T>(items: T[]): AsyncIterable<T> {
@@ -129,17 +129,17 @@ export function collectError(message: Message): RunResult['errors'][number] | nu
 
 export async function drainMessages(
   stream: AsyncIterable<Message>,
-  initialState?: SyncState
+  initialState?: SourceState
 ): Promise<{
   errors: RunResult['errors']
-  state: SyncState
+  state: SourceState
   records: Message[]
   sourceConfig?: Record<string, unknown>
   destConfig?: Record<string, unknown>
   eof?: { reason: string }
 }> {
   const errors: RunResult['errors'] = []
-  const state: SyncState = {
+  const state: SourceState = {
     streams: { ...initialState?.streams },
     global: { ...initialState?.global },
   }

@@ -116,7 +116,7 @@ export function createWriteGoogleSheetsFromQueueActivity(context: ActivitiesCont
       maxBatch?: number
       rowIndex?: Record<string, Record<string, number>>
       catalog?: ConfiguredCatalog
-      state?: import('@stripe/sync-engine').SyncState
+      state?: import('@stripe/sync-engine').SourceState
     }
   ): Promise<
     RunResult & {
@@ -129,7 +129,7 @@ export function createWriteGoogleSheetsFromQueueActivity(context: ActivitiesCont
     const maxBatch = opts?.maxBatch ?? 50
     const queued = await context.consumeQueueBatch(pipelineId, maxBatch)
 
-    const initialState: import('@stripe/sync-engine').SyncState = {
+    const initialState: import('@stripe/sync-engine').SourceState = {
       streams: { ...opts?.state?.streams },
       global: { ...opts?.state?.global },
     }
@@ -152,7 +152,7 @@ export function createWriteGoogleSheetsFromQueueActivity(context: ActivitiesCont
     const filteredCatalog = augmentGoogleSheetsCatalog(opts.catalog)
     const destination = createGoogleSheetsDestination()
     const errors: RunResult['errors'] = []
-    const state: import('@stripe/sync-engine').SyncState = {
+    const state: import('@stripe/sync-engine').SourceState = {
       streams: { ...initialState.streams },
       global: { ...initialState.global },
     }

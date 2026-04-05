@@ -1,5 +1,5 @@
 import { condition, continueAsNew, setHandler, sleep } from '@temporalio/workflow'
-import type { ConfiguredCatalog, SyncState } from '@stripe/sync-engine'
+import type { ConfiguredCatalog, SourceState } from '@stripe/sync-engine'
 
 import {
   deleteSignal,
@@ -19,8 +19,8 @@ import { CONTINUE_AS_NEW_THRESHOLD, deepEqual, EVENT_BATCH_SIZE } from '../../li
 
 export interface GoogleSheetPipelineWorkflowOpts {
   phase?: string
-  sourceState?: SyncState
-  readState?: SyncState
+  sourceState?: SourceState
+  readState?: SourceState
   rowIndex?: RowIndex
   catalog?: ConfiguredCatalog
   pendingWrites?: boolean
@@ -37,8 +37,8 @@ export async function googleSheetPipelineWorkflow(
   let deleted = false
   const inputQueue: unknown[] = [...(opts?.inputQueue ?? [])]
   let iteration = 0
-  let sourceState: SyncState = opts?.sourceState ?? { streams: {}, global: {} }
-  let readState: SyncState = opts?.readState ?? {
+  let sourceState: SourceState = opts?.sourceState ?? { streams: {}, global: {} }
+  let readState: SourceState = opts?.readState ?? {
     streams: { ...sourceState.streams },
     global: { ...sourceState.global },
   }
@@ -70,7 +70,7 @@ export async function googleSheetPipelineWorkflow(
       iteration,
     })
   )
-  setHandler(stateQuery, (): SyncState => sourceState)
+  setHandler(stateQuery, (): SourceState => sourceState)
 
   async function waitWhilePaused() {
     await condition(() => !paused || deleted)

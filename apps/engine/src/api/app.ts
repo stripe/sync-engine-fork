@@ -20,7 +20,7 @@ import {
   CheckOutput as CheckOutputSchema,
   SetupOutput as SetupOutputSchema,
   TeardownOutput as TeardownOutputSchema,
-  SyncState,
+  SourceState,
 } from '@stripe/sync-protocol'
 
 // Raw $refs for NDJSON content schemas — avoids zod-openapi generating *Output
@@ -161,7 +161,7 @@ export async function createApp(resolver: ConnectorResolver) {
       // Accept both new format { streams, global } and old flat format { stream_name: data }.
       'streams' in obj && 'global' in obj ? obj : { streams: obj, global: {} }
     )
-    .pipe(SyncState)
+    .pipe(SourceState)
     .optional()
     .meta({
       description: 'JSON-encoded SourceState ({ streams, global }) or legacy flat per-stream state',
