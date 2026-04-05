@@ -20,6 +20,7 @@ import {
   CheckOutput as CheckOutputSchema,
   SetupOutput as SetupOutputSchema,
   TeardownOutput as TeardownOutputSchema,
+  SyncState,
 } from '@stripe/sync-protocol'
 
 // Raw $refs for NDJSON content schemas — avoids zod-openapi generating *Output
@@ -135,10 +136,20 @@ export async function createApp(resolver: ConnectorResolver) {
   const xStateHeader = z
     .string()
     .transform(jsonParse)
-    .pipe(z.record(z.string(), z.unknown()))
+    .pipe(
+      // Accept both new format { streams, global } and old flat format { stream_name: data, ... }.
+      // Old format: any JSON object that lacks a 'streams' key — wrap as { streams: <obj>, global: {} }.
+      z.union([
+        SyncState,
+        z
+          .record(z.string(), z.unknown())
+          .transform((flat): z.infer<typeof SyncState> => ({ streams: flat, global: {} })),
+      ])
+    )
     .optional()
     .meta({
-      description: 'JSON-encoded per-stream cursor state',
+      description:
+        'JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state',
       param: { content: { 'application/json': {} } },
     })
 
@@ -326,7 +337,7 @@ export async function createApp(resolver: ConnectorResolver) {
   })
   app.openapi(pipelineReadRoute, async (c) => {
     const pipeline = c.req.valid('header')['x-pipeline']
-    const state = c.req.valid('header')['x-state'] as Record<string, unknown> | undefined
+    const state = c.req.valid('header')['x-state']
     const { state_limit, time_limit } = c.req.valid('query')
     const inputPresent = hasBody(c)
     const context = { path: '/pipeline_read', inputPresent, ...syncRequestContext(pipeline) }
@@ -422,7 +433,7 @@ export async function createApp(resolver: ConnectorResolver) {
   })
   app.openapi(pipelineSyncRoute, async (c) => {
     const pipeline = c.req.valid('header')['x-pipeline']
-    const state = c.req.valid('header')['x-state'] as Record<string, unknown> | undefined
+    const state = c.req.valid('header')['x-state']
     const { state_limit, time_limit } = c.req.valid('query')
     const input = hasBody(c) ? parseNdjsonStream(c.req.raw.body!) : undefined
     const output = engine.pipeline_sync(pipeline, { state, state_limit, time_limit }, input)
