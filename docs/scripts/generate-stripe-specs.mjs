@@ -139,4 +139,10 @@ ${rows}
 `
 )
 
+// Also write manifest to packages/openapi/oas/ so generate-versions.mjs
+// can build SUPPORTED_API_VERSIONS without a network fetch.
+const pkgManifestPath = new URL('../../packages/openapi/oas/manifest.json', import.meta.url)
+writeFileSync(pkgManifestPath, JSON.stringify(Object.fromEntries(seen), null, 2) + '\n')
+console.error(`Updated packages/openapi/oas/manifest.json`)
+
 console.error(`\nDone: ${seen.size} spec versions`)
