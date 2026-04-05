@@ -224,7 +224,9 @@ const destination = {
             await flushStream(stream)
           }
         } else if (msg.type === 'state') {
-          await flushStream(msg.state.stream)
+          if (msg.state.state_type !== 'global') {
+            await flushStream(msg.state.stream)
+          }
           yield msg
         }
       }

@@ -315,7 +315,9 @@ export function createDestination(
             }
           } else if (msg.type === 'state') {
             // Flush the stream's pending rows, then re-emit the state checkpoint
-            await flushStream(msg.state.stream)
+            if (msg.state.state_type !== 'global') {
+              await flushStream(msg.state.stream)
+            }
             yield msg
           }
         }

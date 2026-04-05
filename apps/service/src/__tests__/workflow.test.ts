@@ -226,8 +226,8 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
 
       await new Promise((r) => setTimeout(r, 1500))
 
-      const state = await handle.query('state')
-      expect(state).toHaveProperty('customers')
+      const state = await handle.query('state') as { streams: Record<string, unknown> }
+      expect(state.streams).toHaveProperty('customers')
 
       await handle.signal('delete')
       await handle.result()

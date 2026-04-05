@@ -136,16 +136,13 @@ export async function createApp(resolver: ConnectorResolver) {
   const xStateHeader = z
     .string()
     .transform(jsonParse)
-    .pipe(
-      // Accept both new format { streams, global } and old flat format { stream_name: data, ... }.
-      // Old format: any JSON object that lacks a 'streams' key — wrap as { streams: <obj>, global: {} }.
-      z.union([
-        SyncState,
-        z
-          .record(z.string(), z.unknown())
-          .transform((flat): z.infer<typeof SyncState> => ({ streams: flat, global: {} })),
-      ])
+    .transform((obj: Record<string, unknown>) =>
+      // Accept both new format { streams, global } and old flat format { stream_name: data }.
+      'streams' in obj && 'global' in obj
+        ? obj
+        : { streams: obj, global: {} }
     )
+    .pipe(SyncState)
     .optional()
     .meta({
       description:
