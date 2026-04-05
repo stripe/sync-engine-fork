@@ -11,7 +11,7 @@ type PipelinesGetResponse =
   ServicePaths['/pipelines/{id}']['get']['responses']['200']['content']['application/json']
 export type Pipeline = PipelinesGetResponse
 export type DesiredStatus = Pipeline['desired_status']
-export type WorkflowStatus = Pipeline['workflow_status']
+export type PipelineStatus = Pipeline['status']
 
 // ── Engine API ────────────────────────────────────────────────
 

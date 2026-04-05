@@ -29,7 +29,7 @@ function stubActivities(overrides: Partial<SyncActivities> = {}): SyncActivities
       rowAssignments: {},
     }),
     teardown: async () => {},
-    updateWorkflowStatus: async () => {},
+    updatePipelineStatus: async () => {},
     ...overrides,
   }
 }
@@ -160,7 +160,7 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
       taskQueue: 'test-queue-3',
       workflowsPath,
       activities: stubActivities({
-        updateWorkflowStatus: async (_id: string, status: string) => {
+        updatePipelineStatus: async (_id: string, status: string) => {
           statusWrites.push(status)
         },
       }),

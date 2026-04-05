@@ -389,14 +389,6 @@ export const PipelineConfig = z.object({
 })
 export type PipelineConfig = z.infer<typeof PipelineConfig>
 
-/** The full set of parsed sync request params: pipeline config + cursor state + stream limits. */
-export interface SyncParams {
-  pipeline: PipelineConfig
-  state?: SourceState
-  state_limit?: number
-  time_limit?: number
-}
-
 // MARK: - Message unions
 
 /** The subset of messages the destination receives on stdin. */
@@ -438,10 +430,15 @@ export const Message = z
 export type Message = z.infer<typeof Message>
 
 /**
- * A single source input item (e.g. a webhook event payload).
- * Generic at the protocol level; connectors narrow this via `Source<TConfig, TStreamState, TInput>`.
+ * Wire envelope for a single source input item (e.g. a webhook event payload).
+ * `source_input` carries the connector-specific payload; connectors narrow its type via
+ * `Source<TConfig, TStreamState, TInput>`.
  */
-export type SourceInput = unknown
+export const SourceInputMessage = MessageBase.extend({
+  type: z.literal('source_input'),
+  source_input: z.unknown(),
+}).meta({ id: 'SourceInputMessage' })
+export type SourceInputMessage = z.infer<typeof SourceInputMessage>
 
 // MARK: - Per-command output types
 
@@ -492,7 +489,7 @@ export type TeardownOutput = z.infer<typeof TeardownOutput>
  *
  * Type parameters:
  *   TConfig      — connector's configuration type, inferred from its Zod spec
- *   TStreamState — per-stream checkpoint shape (opaque to the orchestrator)
+ *   TSourceStreamState — per-stream checkpoint shape (opaque to the orchestrator)
  *   TInput       — serializable data passed to read() for event-driven reads
  *                  (e.g. a single webhook event). When absent, read() performs
  *                  a pull-based backfill.

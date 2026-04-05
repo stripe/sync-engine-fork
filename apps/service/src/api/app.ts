@@ -4,7 +4,7 @@ import { apiReference } from '@scalar/hono-api-reference'
 import type { WorkflowClient } from '@temporalio/client'
 import type { ConnectorResolver } from '@stripe/sync-engine'
 import { endpointTable } from '@stripe/sync-engine/api/openapi-utils'
-import { createSchemas, deriveStatus } from '../lib/createSchemas.js'
+import { createSchemas } from '../lib/createSchemas.js'
 import type { Pipeline } from '../lib/createSchemas.js'
 import type { PipelineStore } from '../lib/stores.js'
 import { verifyWebhookSignature, WebhookSignatureError } from '@stripe/sync-source-stripe'
@@ -53,16 +53,6 @@ export function createApp(options: AppOptions) {
     UpdatePipeline: UpdatePipelineSchema,
   } = createSchemas(options.resolver)
 
-  const PipelineResponseSchema = PipelineSchema.extend({
-    status: z
-      .string()
-      .describe('Derived user-facing status (e.g. "backfilling", "pausing", "ready").'),
-  })
-
-  function withStatus(pipeline: Pipeline) {
-    return { ...pipeline, status: deriveStatus(pipeline.desired_status, pipeline.workflow_status) }
-  }
-
   const app = new OpenAPIHono({
     defaultHook: (result, c) => {
       if (!result.success) {
@@ -110,7 +100,7 @@ export function createApp(options: AppOptions) {
       responses: {
         200: {
           content: {
-            'application/json': { schema: ListResponse(PipelineResponseSchema) },
+            'application/json': { schema: ListResponse(PipelineSchema) },
           },
           description: 'List of pipelines',
         },
@@ -118,7 +108,7 @@ export function createApp(options: AppOptions) {
     }),
     async (c) => {
       const stored = await pipelineStore.list()
-      const result = stored.map(withStatus)
+      const result = stored
       return c.json({ data: result, has_more: false }, 200)
     }
   )
@@ -135,7 +125,7 @@ export function createApp(options: AppOptions) {
       },
       responses: {
         201: {
-          content: { 'application/json': { schema: PipelineResponseSchema } },
+          content: { 'application/json': { schema: PipelineSchema } },
           description: 'Created pipeline',
         },
         400: {
@@ -151,7 +141,7 @@ export function createApp(options: AppOptions) {
         id,
         ...(body as Record<string, unknown>),
         desired_status: 'active',
-        workflow_status: 'setup',
+        status: 'setup',
       } as Pipeline
       await pipelineStore.set(id, pipeline)
       await temporal.start(workflowTypeForPipeline(pipeline), {
@@ -159,7 +149,7 @@ export function createApp(options: AppOptions) {
         taskQueue,
         args: [id, { desiredStatus: pipeline.desired_status }],
       })
-      return c.json(withStatus(pipeline), 201)
+      return c.json(pipeline, 201)
     }
   )
 
@@ -173,7 +163,7 @@ export function createApp(options: AppOptions) {
       requestParams: { path: PipelineIdParam },
       responses: {
         200: {
-          content: { 'application/json': { schema: PipelineResponseSchema } },
+          content: { 'application/json': { schema: PipelineSchema } },
           description: 'Retrieved pipeline with status',
         },
         404: {
@@ -190,7 +180,7 @@ export function createApp(options: AppOptions) {
       } catch {
         return c.json({ error: `Pipeline ${id} not found` }, 404)
       }
-      return c.json(withStatus(pipeline), 200)
+      return c.json(pipeline, 200)
     }
   )
 
@@ -207,7 +197,7 @@ export function createApp(options: AppOptions) {
       },
       responses: {
         200: {
-          content: { 'application/json': { schema: PipelineResponseSchema } },
+          content: { 'application/json': { schema: PipelineSchema } },
           description: 'Updated pipeline',
         },
         400: {
@@ -292,7 +282,7 @@ export function createApp(options: AppOptions) {
         }
       }
 
-      return c.json(withStatus(updated), 200)
+      return c.json(updated, 200)
     }
   )
 

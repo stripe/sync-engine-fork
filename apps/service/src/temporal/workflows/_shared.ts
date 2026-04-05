@@ -2,12 +2,14 @@ import { defineSignal, proxyActivities } from '@temporalio/workflow'
 
 import type { SyncActivities } from '../activities/index.js'
 import { retryPolicy } from '../../lib/utils.js'
+import { DesiredStatus } from '../../lib/createSchemas.js'
+import { SourceInputMessage } from '@stripe/sync-protocol'
 
 export type RowIndex = Record<string, Record<string, number>>
 
-export const stripeEventSignal = defineSignal<[unknown]>('stripe_event')
+export const stripeEventSignal = defineSignal<[SourceInputMessage]>('stripe_event')
 /** Carries the new desired_status value — workflow updates its local state directly. */
-export const desiredStatusSignal = defineSignal<[string]>('desired_status')
+export const desiredStatusSignal = defineSignal<[DesiredStatus]>('desired_status')
 
 export const { setup, teardown } = proxyActivities<SyncActivities>({
   startToCloseTimeout: '2m',
@@ -27,7 +29,7 @@ export const { discoverCatalog, readGoogleSheetsIntoQueue, writeGoogleSheetsFrom
     retry: retryPolicy,
   })
 
-export const { updateWorkflowStatus } = proxyActivities<SyncActivities>({
+export const { updatePipelineStatus } = proxyActivities<SyncActivities>({
   startToCloseTimeout: '30s',
   retry: retryPolicy,
 })

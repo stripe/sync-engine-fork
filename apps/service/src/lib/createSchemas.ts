@@ -29,18 +29,6 @@ export type WorkflowStatus = z.infer<typeof WorkflowStatus>
  * | active   | backfill  | backfilling   |
  * | active   | ready     | ready         |
  */
-export function deriveStatus(desired: string, workflow: string): string {
-  if (desired === 'deleted') return 'tearing_down'
-  if (workflow === 'teardown') return 'tearing_down'
-  if (workflow === 'error') return 'error'
-  if (workflow === 'setup') return 'setting_up'
-  if (workflow === 'paused' && desired === 'active') return 'resuming'
-  if (workflow === 'paused') return 'paused'
-  if (desired === 'paused') return 'pausing'
-  if (workflow === 'backfill') return 'backfilling'
-  if (workflow === 'ready') return 'ready'
-  return workflow
-}
 
 // MARK: - Static schemas (independent of connector set)
 
@@ -124,7 +112,7 @@ export function createSchemas(resolver: ConnectorResolver) {
     desired_status: DesiredStatus.default('active').describe(
       'User-controlled lifecycle state. Set via PATCH to pause, resume, or delete.'
     ),
-    workflow_status: WorkflowStatus.default('setup').describe(
+    status: WorkflowStatus.default('setup').describe(
       'Workflow-controlled execution state. Updated by the Temporal workflow.'
     ),
   })

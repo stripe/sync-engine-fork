@@ -3,7 +3,7 @@ import type {
   ConfiguredCatalog,
   Message,
   RecordMessage,
-  SourceInput,
+  SourceInputMessage,
   SourceReadOptions,
 } from '@stripe/sync-engine'
 import {
@@ -52,7 +52,7 @@ export function createReadGoogleSheetsIntoQueueActivity(context: ActivitiesConte
   return async function readGoogleSheetsIntoQueue(
     pipelineId: string,
     opts?: SourceReadOptions & {
-      input?: SourceInput[]
+      input?: SourceInputMessage[]
       catalog?: ConfiguredCatalog
       rowIndex?: RowIndex
     }

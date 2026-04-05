@@ -1,5 +1,5 @@
 import { createActivitiesContext } from './_shared.js'
-import { createUpdateWorkflowStatusActivity } from './update-workflow-status.js'
+import { createUpdatePipelineStatusActivity } from './update-pipeline-status.js'
 import { createDiscoverCatalogActivity } from './discover-catalog.js'
 import { createReadGoogleSheetsIntoQueueActivity } from './read-google-sheets-into-queue.js'
 import { createSetupActivity } from './setup.js'
@@ -24,7 +24,7 @@ export function createActivities(opts: {
     readGoogleSheetsIntoQueue: createReadGoogleSheetsIntoQueueActivity(context),
     writeGoogleSheetsFromQueue: createWriteGoogleSheetsFromQueueActivity(context),
     teardown: createTeardownActivity(context),
-    updateWorkflowStatus: createUpdateWorkflowStatusActivity(context),
+    updatePipelineStatus: createUpdatePipelineStatusActivity(context),
   }
 }
 

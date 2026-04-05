@@ -1,6 +1,6 @@
 import { condition, continueAsNew, setHandler } from '@temporalio/workflow'
 
-import { desiredStatusSignal, syncImmediate, updateWorkflowStatus } from './_shared.js'
+import { desiredStatusSignal, syncImmediate, updatePipelineStatus } from './_shared.js'
 import type { SourceState as SyncState } from '@stripe/sync-protocol'
 import { CONTINUE_AS_NEW_THRESHOLD } from '../../lib/utils.js'
 
@@ -30,17 +30,17 @@ export async function backfillPipelineWorkflow(
     }
   }
 
-  await updateWorkflowStatus(pipelineId, 'backfill')
+  await updatePipelineStatus(pipelineId, 'backfill')
 
   while (desiredStatus !== 'deleted') {
     if (desiredStatus === 'paused') {
-      await updateWorkflowStatus(pipelineId, 'paused')
+      await updatePipelineStatus(pipelineId, 'paused')
       await condition(() => desiredStatus !== 'paused')
       continue
     }
 
     if (backfillComplete) {
-      await updateWorkflowStatus(pipelineId, 'ready')
+      await updatePipelineStatus(pipelineId, 'ready')
       const timedOut = !(await condition(() => desiredStatus !== 'active', ONE_WEEK_MS))
       if (timedOut) backfillComplete = false
       continue
@@ -59,5 +59,5 @@ export async function backfillPipelineWorkflow(
     await maybeContinueAsNew()
   }
 
-  await updateWorkflowStatus(pipelineId, 'teardown')
+  await updatePipelineStatus(pipelineId, 'teardown')
 }
