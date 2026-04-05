@@ -32,7 +32,7 @@ export type StripeApiList<T> = {
 export const StripeAccountSchema = z.object({
   id: z.string(),
   object: z.literal('account'),
-  created: z.number(),
+  created: z.number().optional(),
 })
 
 export type StripeAccount = z.infer<typeof StripeAccountSchema>
