@@ -178,9 +178,7 @@ export function stateMsg(payload: { stream: string; data: unknown }): StateMessa
 /** Shorthand to create a global state envelope message. */
 export function stateMsg(payload: { state_type: 'global'; data: unknown }): StateMessage
 export function stateMsg(
-  payload:
-    | { stream: string; data: unknown }
-    | { state_type: 'global'; data: unknown }
+  payload: { stream: string; data: unknown } | { state_type: 'global'; data: unknown }
 ): StateMessage {
   const state: StreamStatePayload | GlobalStatePayload =
     'state_type' in payload

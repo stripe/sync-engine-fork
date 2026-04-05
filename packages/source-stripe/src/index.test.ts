@@ -812,7 +812,10 @@ describe('StripeSource', () => {
         source.read({
           config,
           catalog: catalog({ name: 'customers', primary_key: [['id']] }),
-          state: { streams: { customers: { page_cursor: 'cus_2', status: 'pending' } }, global: {} },
+          state: {
+            streams: { customers: { page_cursor: 'cus_2', status: 'pending' } },
+            global: {},
+          },
           // no input → backfill mode, but with state from prior run
         })
       )
@@ -840,7 +843,10 @@ describe('StripeSource', () => {
         source.read({
           config,
           catalog: catalog({ name: 'customers', primary_key: [['id']] }),
-          state: { streams: { customers: { page_cursor: 'cus_3', status: 'pending' } }, global: {} },
+          state: {
+            streams: { customers: { page_cursor: 'cus_3', status: 'pending' } },
+            global: {},
+          },
         })
       )
 

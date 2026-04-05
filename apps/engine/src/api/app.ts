@@ -138,15 +138,12 @@ export async function createApp(resolver: ConnectorResolver) {
     .transform(jsonParse)
     .transform((obj: Record<string, unknown>) =>
       // Accept both new format { streams, global } and old flat format { stream_name: data }.
-      'streams' in obj && 'global' in obj
-        ? obj
-        : { streams: obj, global: {} }
+      'streams' in obj && 'global' in obj ? obj : { streams: obj, global: {} }
     )
     .pipe(SyncState)
     .optional()
     .meta({
-      description:
-        'JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state',
+      description: 'JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state',
       param: { content: { 'application/json': {} } },
     })
 

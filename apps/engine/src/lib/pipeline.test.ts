@@ -174,7 +174,10 @@ describe('enforceCatalog()', () => {
 
   it('drops state with unknown stream and logs error', async () => {
     const msgs: Message[] = [
-      { type: 'state', state: { state_type: 'stream', stream: 'nonexistent', data: { cursor: 'x' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'nonexistent', data: { cursor: 'x' } },
+      },
     ]
     const result = await drain(enforceCatalog(catalog([{ name: 'customers' }]))(toAsync(msgs)))
     expect(result).toHaveLength(0)
@@ -240,7 +243,10 @@ describe('log()', () => {
           emitted_at: '2024-01-01T00:00:00.000Z',
         },
       },
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
+      },
       { type: 'log', log: { level: 'info', message: 'hello' } },
       {
         type: 'trace',
@@ -316,7 +322,10 @@ describe('log()', () => {
           emitted_at: '2024-01-01T00:00:00.000Z',
         },
       },
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
+      },
     ]
     await drain(log(toAsync(msgs)))
     expect(logger.info).not.toHaveBeenCalled()
@@ -340,7 +349,10 @@ describe('filterType()', () => {
           emitted_at: '2024-01-01T00:00:00.000Z',
         },
       },
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
+      },
       { type: 'log', log: { level: 'info', message: 'hello' } },
     ]
     const result = await drain(filterType('record')(toAsync(msgs)))
@@ -358,7 +370,10 @@ describe('filterType()', () => {
           emitted_at: '2024-01-01T00:00:00.000Z',
         },
       },
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
+      },
       { type: 'log', log: { level: 'info', message: 'hello' } },
       {
         type: 'trace',
@@ -405,16 +420,26 @@ describe('persistState()', () => {
       setGlobal: async () => {},
     }
     const msgs: DestinationOutput[] = [
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
+      },
     ]
     await drain(persistState(store)(toAsync(msgs)))
     expect(calls).toEqual([{ stream: 'customers', data: { cursor: 'abc' } }])
   })
 
   it('yields all messages through unchanged', async () => {
-    const store: StateStore = { get: async () => undefined, set: async () => {}, setGlobal: async () => {} }
+    const store: StateStore = {
+      get: async () => undefined,
+      set: async () => {},
+      setGlobal: async () => {},
+    }
     const msgs: DestinationOutput[] = [
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
+      },
       { type: 'log', log: { level: 'info', message: 'done' } },
     ]
     const result = await drain(persistState(store)(toAsync(msgs)))
@@ -476,9 +501,15 @@ describe('persistState()', () => {
       setGlobal: async () => {},
     }
     const msgs: DestinationOutput[] = [
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
+      },
       { type: 'state', state: { state_type: 'stream', stream: 'invoices', data: { cursor: '2' } } },
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: '3' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: '3' } },
+      },
     ]
     await drain(persistState(store)(toAsync(msgs)))
     expect(calls).toEqual([
@@ -504,7 +535,10 @@ describe('takeLimits()', () => {
           emitted_at: '2024-01-01T00:00:00.000Z',
         },
       },
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
+      },
       {
         type: 'record',
         record: {
@@ -513,7 +547,10 @@ describe('takeLimits()', () => {
           emitted_at: '2024-01-01T00:00:00.000Z',
         },
       },
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: '2' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: '2' } },
+      },
     ]
     const result = await drain(takeLimits<Message>({ state_limit: 1 })(toAsync(msgs)))
     expect(result).toHaveLength(3)
@@ -532,7 +569,10 @@ describe('takeLimits()', () => {
           emitted_at: '2024-01-01T00:00:00.000Z',
         },
       },
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
+      },
     ]
     const result = await drain(takeLimits<Message>({ state_limit: 5 })(toAsync(msgs)))
     expect(result).toHaveLength(3)
@@ -541,7 +581,10 @@ describe('takeLimits()', () => {
 
   it('emits eof complete with no limits set', async () => {
     const msgs: Message[] = [
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
+      },
     ]
     const result = await drain(takeLimits<Message>()(toAsync(msgs)))
     expect(result).toHaveLength(2)
@@ -558,7 +601,10 @@ describe('takeLimits()', () => {
           emitted_at: '2024-01-01T00:00:00.000Z',
         },
       },
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: 'a' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'a' } },
+      },
       {
         type: 'record',
         record: {
@@ -576,11 +622,17 @@ describe('takeLimits()', () => {
           emitted_at: '2024-01-01T00:00:00.000Z',
         },
       },
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: 'c' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'c' } },
+      },
     ]
     const result = await drain(takeLimits<Message>({ state_limit: 2 })(toAsync(msgs)))
     expect(result).toHaveLength(5)
-    expect(result[3]).toMatchObject({ type: 'state', state: { state_type: 'stream', stream: 'products' } })
+    expect(result[3]).toMatchObject({
+      type: 'state',
+      state: { state_type: 'stream', stream: 'products' },
+    })
     expect(result[4]).toMatchObject({ type: 'eof', eof: { reason: 'state_limit' } })
   })
 
@@ -603,7 +655,10 @@ describe('takeLimits()', () => {
           emitted_at: '2024-01-01T00:00:00.000Z',
         },
       }
-      yield { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: '2' } } }
+      yield {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: '2' } },
+      }
     }
 
     const result = await drain(takeLimits<Message>({ time_limit: 0.03 })(slowMessages()))
@@ -615,9 +670,18 @@ describe('takeLimits()', () => {
 
   it('time limit and state limit: whichever fires first wins', async () => {
     const msgs: Message[] = [
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } } },
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: '2' } } },
-      { type: 'state', state: { state_type: 'stream', stream: 'customers', data: { cursor: '3' } } },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
+      },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: '2' } },
+      },
+      {
+        type: 'state',
+        state: { state_type: 'stream', stream: 'customers', data: { cursor: '3' } },
+      },
     ]
     // State limit of 1 fires before any time limit
     const result = await drain(

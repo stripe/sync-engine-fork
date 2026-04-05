@@ -162,9 +162,7 @@ export const GlobalStatePayload = z
     state_type: z.literal('global'),
     data: z
       .unknown()
-      .describe(
-        'Sync-wide state shared across all streams (e.g. a global events cursor).'
-      ),
+      .describe('Sync-wide state shared across all streams (e.g. a global events cursor).'),
   })
   .describe('Sync-wide checkpoint shared across all streams.')
 export type GlobalStatePayload = z.infer<typeof GlobalStatePayload>

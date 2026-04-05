@@ -214,7 +214,10 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
       taskQueue: 'test-queue-7',
       workflowsPath,
       activities: stubActivities({
-        syncImmediate: async () => ({ errors: [], state: { streams: { customers: { cursor: 'cus_100' } }, global: {} } }),
+        syncImmediate: async () => ({
+          errors: [],
+          state: { streams: { customers: { cursor: 'cus_100' } }, global: {} },
+        }),
       }),
     })
 
@@ -227,7 +230,7 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
 
       await new Promise((r) => setTimeout(r, 1500))
 
-      const state = await handle.query('state') as { streams: Record<string, unknown> }
+      const state = (await handle.query('state')) as { streams: Record<string, unknown> }
       expect(state.streams).toHaveProperty('customers')
 
       await handle.signal('delete')

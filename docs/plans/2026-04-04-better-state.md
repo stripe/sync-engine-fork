@@ -12,28 +12,29 @@
 
 ## Files modified
 
-| File | Change |
-|------|--------|
-| `packages/protocol/src/protocol.ts` | Add `SyncState`, discriminated `StatePayload`, update `SyncParams`, `Source.read()` |
-| `apps/engine/src/lib/state-store.ts` | Add `setGlobal`, update `get()` → `SyncState` |
-| `apps/engine/src/lib/pipeline.ts` | `enforceCatalog` passes global state; `persistState` routes to `setGlobal` |
-| `apps/engine/src/lib/engine.ts` | `SourceReadOptions.state` → `SyncState`; pass `state.streams` to connector |
-| `apps/engine/src/api/app.ts` | `xStateHeader` accepts `SyncState` with old-format backward compat |
-| `packages/state-postgres/src/state-store.ts` | `_global` reserved row, `setGlobal()`, `get()` → `SyncState` |
-| `apps/service/src/temporal/workflows/_shared.ts` | `stateQuery` → `SyncState` |
-| `apps/service/src/temporal/workflows/pipeline-workflow.ts` | `syncState: SyncState`, new merge |
-| `apps/service/src/temporal/workflows/backfill-pipeline-workflow.ts` | Same |
-| `apps/service/src/temporal/activities/_shared.ts` | `RunResult.state → SyncState`, `drainMessages` accumulates `SyncState` |
-| `packages/source-stripe/src/src-list-api.ts` | `state?.[name]` → `state?.streams[name]` |
-| `packages/source-stripe/src/src-events-api.ts` | Same + update `state` param type |
-| `packages/source-stripe/src/index.ts` | `read()` params type: `state?: SyncState` |
-| `docs/architecture/protocol-comparison.md` | Update STATE table; remove gap #2 |
+| File                                                                | Change                                                                              |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `packages/protocol/src/protocol.ts`                                 | Add `SyncState`, discriminated `StatePayload`, update `SyncParams`, `Source.read()` |
+| `apps/engine/src/lib/state-store.ts`                                | Add `setGlobal`, update `get()` → `SyncState`                                       |
+| `apps/engine/src/lib/pipeline.ts`                                   | `enforceCatalog` passes global state; `persistState` routes to `setGlobal`          |
+| `apps/engine/src/lib/engine.ts`                                     | `SourceReadOptions.state` → `SyncState`; pass `state.streams` to connector          |
+| `apps/engine/src/api/app.ts`                                        | `xStateHeader` accepts `SyncState` with old-format backward compat                  |
+| `packages/state-postgres/src/state-store.ts`                        | `_global` reserved row, `setGlobal()`, `get()` → `SyncState`                        |
+| `apps/service/src/temporal/workflows/_shared.ts`                    | `stateQuery` → `SyncState`                                                          |
+| `apps/service/src/temporal/workflows/pipeline-workflow.ts`          | `syncState: SyncState`, new merge                                                   |
+| `apps/service/src/temporal/workflows/backfill-pipeline-workflow.ts` | Same                                                                                |
+| `apps/service/src/temporal/activities/_shared.ts`                   | `RunResult.state → SyncState`, `drainMessages` accumulates `SyncState`              |
+| `packages/source-stripe/src/src-list-api.ts`                        | `state?.[name]` → `state?.streams[name]`                                            |
+| `packages/source-stripe/src/src-events-api.ts`                      | Same + update `state` param type                                                    |
+| `packages/source-stripe/src/index.ts`                               | `read()` params type: `state?: SyncState`                                           |
+| `docs/architecture/protocol-comparison.md`                          | Update STATE table; remove gap #2                                                   |
 
 ---
 
 ## Task 1: Protocol — SyncState + discriminated StatePayload
 
 ### Files
+
 - Modify: `packages/protocol/src/protocol.ts`
 - Create: `packages/protocol/src/__tests__/state.test.ts`
 
@@ -76,7 +77,10 @@ describe('StreamStatePayload', () => {
 
 describe('GlobalStatePayload', () => {
   it('parses global state', () => {
-    const result = GlobalStatePayload.parse({ state_type: 'global', data: { events_cursor: 'evt_1' } })
+    const result = GlobalStatePayload.parse({
+      state_type: 'global',
+      data: { events_cursor: 'evt_1' },
+    })
     expect(result.state_type).toBe('global')
     expect(result.data).toEqual({ events_cursor: 'evt_1' })
   })
@@ -88,6 +92,7 @@ describe('GlobalStatePayload', () => {
 ```bash
 pnpm --filter @stripe/sync-protocol test --reporter=verbose
 ```
+
 Expected: FAIL — `SyncState`, `StreamStatePayload`, `GlobalStatePayload` not found.
 
 ### Step 3: Implement in protocol.ts
@@ -112,9 +117,7 @@ export const StreamStatePayload = z
     stream: z.string().describe('Stream being checkpointed.'),
     data: z
       .unknown()
-      .describe(
-        'Opaque checkpoint data — only the source understands its contents.'
-      ),
+      .describe('Opaque checkpoint data — only the source understands its contents.'),
   })
   .describe('Per-stream checkpoint for resumable syncs.')
 export type StreamStatePayload = z.infer<typeof StreamStatePayload>
@@ -133,11 +136,7 @@ export type GlobalStatePayload = z.infer<typeof GlobalStatePayload>
 // This provides backward compat: { stream, data } → { state_type: 'stream', stream, data }.
 export const StatePayload = z.preprocess(
   (input) => {
-    if (
-      typeof input === 'object' &&
-      input !== null &&
-      !('state_type' in input)
-    ) {
+    if (typeof input === 'object' && input !== null && !('state_type' in input)) {
       return { ...input, state_type: 'stream' }
     }
     return input
@@ -150,6 +149,7 @@ export type StatePayload = z.infer<typeof StatePayload>
 **c) Update `ConnectorSpecification.stream_state` description to mention global state:**
 
 Change the description to:
+
 ```ts
 stream_state: z
   .record(z.string(), z.unknown())
@@ -158,6 +158,7 @@ stream_state: z
 ```
 
 **d) Update `SyncParams` interface** (replace `state?: Record<string, unknown>` with):
+
 ```ts
 export interface SyncParams {
   pipeline: PipelineConfig
@@ -168,6 +169,7 @@ export interface SyncParams {
 ```
 
 **e) Update `Source.read()` params** — change `state?: Record<string, TStreamState>` to `state?: SyncState`:
+
 ```ts
 read(
   params: {
@@ -184,6 +186,7 @@ read(
 ```bash
 pnpm --filter @stripe/sync-protocol test --reporter=verbose
 ```
+
 Expected: All PASS.
 
 ### Step 5: Commit
@@ -198,6 +201,7 @@ git commit -m "feat(protocol): add SyncState + discriminated StatePayload (strea
 ## Task 2: Engine StateStore — add setGlobal, update get() return type
 
 ### Files
+
 - Modify: `apps/engine/src/lib/state-store.ts`
 
 ### Step 1: Write failing test
@@ -216,7 +220,10 @@ describe('readonlyStateStore', () => {
   })
 
   it('returns provided SyncState unchanged', async () => {
-    const state: SyncState = { streams: { orders: { cursor: 1 } }, global: { events_cursor: 'evt_1' } }
+    const state: SyncState = {
+      streams: { orders: { cursor: 1 } },
+      global: { events_cursor: 'evt_1' },
+    }
     const store = readonlyStateStore(state)
     expect(await store.get()).toEqual(state)
   })
@@ -290,6 +297,7 @@ git commit -m "feat(engine): update StateStore interface — get() → SyncState
 ## Task 3: Engine pipeline.ts — enforceCatalog + persistState
 
 ### Files
+
 - Modify: `apps/engine/src/lib/pipeline.ts`
 - Modify: `apps/engine/src/lib/pipeline.test.ts` (add tests)
 
@@ -310,7 +318,9 @@ it('calls setGlobal for global state messages', async () => {
     state: { state_type: 'global', data: { events_cursor: 'evt_123' } },
   }
   const output = persistState(store)(asIterable([msg]))
-  for await (const _ of output) { /* drain */ }
+  for await (const _ of output) {
+    /* drain */
+  }
   expect(store.setGlobal).toHaveBeenCalledWith({ events_cursor: 'evt_123' })
   expect(store.set).not.toHaveBeenCalled()
 })
@@ -326,7 +336,9 @@ it('calls set for stream state messages', async () => {
     state: { state_type: 'stream', stream: 'orders', data: { cursor: 1 } },
   }
   const output = persistState(store)(asIterable([msg]))
-  for await (const _ of output) { /* drain */ }
+  for await (const _ of output) {
+    /* drain */
+  }
   expect(store.set).toHaveBeenCalledWith('orders', { cursor: 1 })
   expect(store.setGlobal).not.toHaveBeenCalled()
 })
@@ -398,6 +410,7 @@ In `enforceCatalog` (lines 37–43), update the state branch:
 ```bash
 pnpm --filter @stripe/sync-engine test --reporter=verbose
 ```
+
 Expected: All PASS.
 
 ### Step 5: Commit
@@ -412,11 +425,13 @@ git commit -m "feat(engine): route global/stream state in persistState; pass glo
 ## Task 4: Engine engine.ts — SourceReadOptions.state → SyncState
 
 ### Files
+
 - Modify: `apps/engine/src/lib/engine.ts`
 
 ### Step 1: Update `SourceReadOptions`
 
 Change line 31:
+
 ```ts
 // Before:
 state: z.record(z.string(), z.unknown()).optional(),
@@ -425,6 +440,7 @@ state: SyncState.optional(),
 ```
 
 Add the `SyncState` import at the top (add to the existing `@stripe/sync-protocol` import):
+
 ```ts
 import {
   // ... existing imports ...
@@ -466,6 +482,7 @@ git commit -m "feat(engine): SourceReadOptions.state → SyncState"
 ## Task 5: Engine app.ts — xStateHeader with backward compat
 
 ### Files
+
 - Modify: `apps/engine/src/api/app.ts`
 
 ### Step 1: Update imports
@@ -485,9 +502,9 @@ const xStateHeader = z
     // Old format: any JSON object that lacks a 'streams' key — wrap it as { streams: <obj>, global: {} }.
     z.union([
       SyncState,
-      z.record(z.string(), z.unknown()).transform(
-        (flat): SyncState => ({ streams: flat, global: {} })
-      ),
+      z
+        .record(z.string(), z.unknown())
+        .transform((flat): SyncState => ({ streams: flat, global: {} })),
     ])
   )
   .optional()
@@ -505,7 +522,7 @@ Find the two places where `c.req.valid('header')['x-state']` is cast:
 // In pipelineReadRoute handler (around line 311):
 // Before: const state = c.req.valid('header')['x-state'] as Record<string, unknown> | undefined
 // After:
-const state = c.req.valid('header')['x-state']  // already SyncState | undefined after header parse
+const state = c.req.valid('header')['x-state'] // already SyncState | undefined after header parse
 
 // In pipelineSyncRoute handler (around line 407):
 // Before: const state = c.req.valid('header')['x-state'] as Record<string, unknown> | undefined
@@ -533,6 +550,7 @@ git commit -m "feat(engine): X-State header accepts SyncState with old-format ba
 ## Task 6: Postgres state store — \_global row + setGlobal
 
 ### Files
+
 - Modify: `packages/state-postgres/src/state-store.ts`
 
 ### Step 1: Write failing integration test
@@ -595,11 +613,13 @@ pnpm --filter @stripe/sync-state-postgres test --reporter=verbose
 ### Step 3: Implement
 
 **a) Add `SyncState` import** at top of the file:
+
 ```ts
 import type { SyncState } from '@stripe/sync-protocol'
 ```
 
 **b) Update `StateStore` interface** (lines 9–13):
+
 ```ts
 export interface StateStore {
   get(syncId: string): Promise<SyncState | undefined>
@@ -610,6 +630,7 @@ export interface StateStore {
 ```
 
 **c) Update `createPgStateStore.get()`** to reconstruct `SyncState`:
+
 ```ts
 async get(syncId: string): Promise<SyncState | undefined> {
   const { rows } = await pool.query<{ stream: string; state: unknown }>(
@@ -631,6 +652,7 @@ async get(syncId: string): Promise<SyncState | undefined> {
 ```
 
 **d) Add `setGlobal()` to `createPgStateStore`**:
+
 ```ts
 async setGlobal(syncId: string, data: unknown) {
   await pool.query(
@@ -643,6 +665,7 @@ async setGlobal(syncId: string, data: unknown) {
 ```
 
 **e) Update `ScopedStateStore` interface** (lines 59–62):
+
 ```ts
 export interface ScopedStateStore {
   get(): Promise<SyncState | undefined>
@@ -652,6 +675,7 @@ export interface ScopedStateStore {
 ```
 
 **f) Update `createScopedPgStateStore`** to add `setGlobal`:
+
 ```ts
 return {
   get: () => store.get(syncId),
@@ -680,6 +704,7 @@ git commit -m "feat(state-postgres): _global reserved row + setGlobal(); get() r
 ## Task 7: Service layer — workflows + activities
 
 ### Files
+
 - Modify: `apps/service/src/temporal/workflows/_shared.ts`
 - Modify: `apps/service/src/temporal/workflows/pipeline-workflow.ts`
 - Modify: `apps/service/src/temporal/workflows/backfill-pipeline-workflow.ts`
@@ -722,14 +747,16 @@ describe('drainMessages', () => {
 pnpm --filter @stripe/sync-service test --reporter=verbose 2>&1 | grep -A5 "drainMessages"
 ```
 
-### Step 3: Implement activities/_shared.ts
+### Step 3: Implement activities/\_shared.ts
 
 **a) Import `SyncState`**:
+
 ```ts
 import type { Message, Engine, SyncState } from '@stripe/sync-engine'
 ```
 
 **b) Update `RunResult`**:
+
 ```ts
 export interface RunResult {
   errors: Array<{ message: string; failure_type?: string; stream?: string }>
@@ -740,6 +767,7 @@ export interface RunResult {
 **c) Update `drainMessages` signature and accumulation**:
 
 Change the function to:
+
 ```ts
 export async function drainMessages(stream: AsyncIterable<Message>): Promise<{
   errors: RunResult['errors']
@@ -785,9 +813,10 @@ export async function drainMessages(stream: AsyncIterable<Message>): Promise<{
 }
 ```
 
-### Step 4: Implement workflows/_shared.ts
+### Step 4: Implement workflows/\_shared.ts
 
 Update `stateQuery` type:
+
 ```ts
 import type { SyncState } from '@stripe/sync-engine'
 
@@ -802,6 +831,7 @@ export const stateQuery = defineQuery<SyncState>('state')
 **a) Add `SyncState` to imports from `_shared.js`** (or import from `@stripe/sync-engine`).
 
 **b) Update `PipelineWorkflowOpts`**:
+
 ```ts
 export interface PipelineWorkflowOpts {
   state?: SyncState
@@ -811,16 +841,19 @@ export interface PipelineWorkflowOpts {
 ```
 
 **c) Update `syncState` initial value and type**:
+
 ```ts
 let syncState: SyncState = opts?.state ?? { streams: {}, global: {} }
 ```
 
 **d) Update `stateQuery` handler**:
+
 ```ts
 setHandler(stateQuery, (): SyncState => syncState)
 ```
 
 **e) Update merge after `syncImmediate`**:
+
 ```ts
 syncState = {
   streams: { ...syncState.streams, ...result.state.streams },
@@ -871,6 +904,7 @@ git commit -m "feat(service): thread SyncState through workflows + drainMessages
 ## Task 8: Source-stripe — update state access to state.streams
 
 ### Files
+
 - Modify: `packages/source-stripe/src/index.ts`
 - Modify: `packages/source-stripe/src/src-list-api.ts`
 - Modify: `packages/source-stripe/src/src-events-api.ts`
@@ -895,6 +929,7 @@ Current pattern (line 402): `const streamState = state?.[stream.name]`
 Change to: `const streamState = state?.streams[stream.name]`
 
 Update the `listApiBackfill` function parameter type:
+
 ```ts
 // Change the state param type from:
 state: Record<string, StripeStreamState> | undefined
@@ -911,6 +946,7 @@ Same pattern. The `pollEvents` function takes `state: Record<string, StripeStrea
 Change parameter type to `state: { streams: Record<string, StripeStreamState>; global: Record<string, unknown> } | undefined` and replace all `state?.[name]` with `state?.streams[name]`.
 
 Specifically:
+
 - Line 26: `state?.[cs.stream.name]?.status` → `state?.streams[cs.stream.name]?.status`
 - Line 32: `state?.[cs.stream.name]?.events_cursor` → `state?.streams[cs.stream.name]?.events_cursor`
 - Line 39: `state?.[cs.stream.name]` → `state?.streams[cs.stream.name]`
@@ -927,6 +963,7 @@ pnpm --filter @stripe/sync-source-stripe test --reporter=verbose
 ```bash
 pnpm build 2>&1 | tail -20
 ```
+
 Expected: Zero errors.
 
 ### Step 6: Commit
@@ -941,6 +978,7 @@ git commit -m "feat(source-stripe): update state access to state.streams (SyncSt
 ## Task 9: Docs — update protocol-comparison.md
 
 ### Files
+
 - Modify: `docs/architecture/protocol-comparison.md`
 
 ### Step 1: Update STATE comparison table
@@ -948,9 +986,9 @@ git commit -m "feat(source-stripe): update state access to state.streams (SyncSt
 Replace the `state_type` row in the STATE section:
 
 ```markdown
-| `state_type` | `enum(LEGACY, STREAM, GLOBAL)`    | `enum('stream', 'global')`        | We skip LEGACY; backward compat via preprocess default |
-| `stream`     | `AirbyteStreamState` object       | `string` (stream name)            | Only present on stream-type messages |
-| `global`     | `AirbyteGlobalState` object       | `GlobalStatePayload` object       | Sync-wide cursor (e.g. events_cursor) |
+| `state_type` | `enum(LEGACY, STREAM, GLOBAL)` | `enum('stream', 'global')` | We skip LEGACY; backward compat via preprocess default |
+| `stream` | `AirbyteStreamState` object | `string` (stream name) | Only present on stream-type messages |
+| `global` | `AirbyteGlobalState` object | `GlobalStatePayload` object | Sync-wide cursor (e.g. events_cursor) |
 ```
 
 Update the **Key difference** paragraph:
@@ -966,11 +1004,13 @@ The `SyncState` aggregate shape (`{ streams, global }`) replaces the flat
 ### Step 2: Update Summary of Divergences
 
 Change item 2:
+
 ```markdown
 2. ~~**Per-stream state only** — no global or legacy state modes.~~ **Global state added** — `state_type: STREAM | GLOBAL` discriminator aligned with Airbyte (LEGACY skipped). Aggregate `SyncState = { streams, global }` replaces flat `Record<string, unknown>`.
 ```
 
 Or simply remove the old item 2 and renumber, updating the description:
+
 ```markdown
 2. **No legacy state** — we support `stream` and `global` modes but skip `LEGACY`.
 ```
@@ -1003,6 +1043,7 @@ pnpm format:check && pnpm lint
 ```
 
 Also verify:
+
 - `pnpm test` covers the new `SyncState` parse tests
 - `pnpm test` covers `drainMessages` accumulating both stream and global state
 - `pnpm test` covers `persistState` routing to `setGlobal` for global messages
