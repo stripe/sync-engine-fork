@@ -17,14 +17,16 @@ import { z } from 'zod'
  * `streams` holds per-stream checkpoints (existing behavior).
  * `global` holds sync-wide state shared across all streams (new).
  */
-export const SyncState = z.object({
-  streams: z
-    .record(z.string(), z.unknown())
-    .describe('Per-stream checkpoint data, keyed by stream name.'),
-  global: z
-    .record(z.string(), z.unknown())
-    .describe('Sync-wide state shared across all streams (e.g. a global events cursor).'),
-})
+export const SyncState = z
+  .object({
+    streams: z
+      .record(z.string(), z.unknown())
+      .describe('Per-stream checkpoint data, keyed by stream name.'),
+    global: z
+      .record(z.string(), z.unknown())
+      .describe('Sync-wide state shared across all streams (e.g. a global events cursor).'),
+  })
+  .meta({ id: 'SourceState' })
 export type SyncState = z.infer<typeof SyncState>
 
 // MARK: - Data model

@@ -61,7 +61,7 @@
             "required": true,
             "description": "JSON-encoded PipelineConfig",
             "content": {
-              "[object Object]": {
+              "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PipelineConfig"
                 }
@@ -115,7 +115,7 @@
             "required": true,
             "description": "JSON-encoded PipelineConfig",
             "content": {
-              "[object Object]": {
+              "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PipelineConfig"
                 }
@@ -169,7 +169,7 @@
             "required": true,
             "description": "JSON-encoded PipelineConfig",
             "content": {
-              "[object Object]": {
+              "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PipelineConfig"
                 }
@@ -223,7 +223,7 @@
             "required": true,
             "description": "JSON-encoded source config ({ type, ...config })",
             "content": {
-              "[object Object]": {
+              "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
@@ -309,7 +309,7 @@
             "required": true,
             "description": "JSON-encoded PipelineConfig",
             "content": {
-              "[object Object]": {
+              "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PipelineConfig"
                 }
@@ -318,36 +318,13 @@
           },
           {
             "in": "header",
-            "name": "x-state",
+            "name": "x-source-state",
             "required": false,
-            "description": "JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state",
+            "description": "JSON-encoded SourceState ({ streams, global }) or legacy flat per-stream state",
             "content": {
-              "[object Object]": {
+              "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "streams": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {},
-                      "description": "Per-stream checkpoint data, keyed by stream name."
-                    },
-                    "global": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {},
-                      "description": "Sync-wide state shared across all streams (e.g. a global events cursor)."
-                    }
-                  },
-                  "required": [
-                    "streams",
-                    "global"
-                  ],
-                  "additionalProperties": false
+                  "$ref": "#/components/schemas/SourceState"
                 }
               }
             }
@@ -409,7 +386,7 @@
             "required": true,
             "description": "JSON-encoded PipelineConfig",
             "content": {
-              "[object Object]": {
+              "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PipelineConfig"
                 }
@@ -496,7 +473,7 @@
             "required": true,
             "description": "JSON-encoded PipelineConfig",
             "content": {
-              "[object Object]": {
+              "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PipelineConfig"
                 }
@@ -505,36 +482,13 @@
           },
           {
             "in": "header",
-            "name": "x-state",
+            "name": "x-source-state",
             "required": false,
-            "description": "JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state",
+            "description": "JSON-encoded SourceState ({ streams, global }) or legacy flat per-stream state",
             "content": {
-              "[object Object]": {
+              "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "streams": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {},
-                      "description": "Per-stream checkpoint data, keyed by stream name."
-                    },
-                    "global": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {},
-                      "description": "Sync-wide state shared across all streams (e.g. a global events cursor)."
-                    }
-                  },
-                  "required": [
-                    "streams",
-                    "global"
-                  ],
-                  "additionalProperties": false
+                  "$ref": "#/components/schemas/SourceState"
                 }
               }
             }
@@ -2055,6 +2009,32 @@
         "required": [
           "source",
           "destination"
+        ],
+        "additionalProperties": false
+      },
+      "SourceState": {
+        "type": "object",
+        "properties": {
+          "streams": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {},
+            "description": "Per-stream checkpoint data, keyed by stream name."
+          },
+          "global": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {},
+            "description": "Sync-wide state shared across all streams (e.g. a global events cursor)."
+          }
+        },
+        "required": [
+          "streams",
+          "global"
         ],
         "additionalProperties": false
       }

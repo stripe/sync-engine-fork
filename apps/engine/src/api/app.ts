@@ -164,7 +164,7 @@ export async function createApp(resolver: ConnectorResolver) {
     .pipe(SyncState)
     .optional()
     .meta({
-      description: 'JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state',
+      description: 'JSON-encoded SourceState ({ streams, global }) or legacy flat per-stream state',
       param: { content: { 'application/json': {} } },
     })
 
@@ -181,7 +181,7 @@ export async function createApp(resolver: ConnectorResolver) {
   const sourceHeaders = z.object({ 'x-source': xSourceHeader })
   const allSyncHeaders = z.object({
     'x-pipeline': xPipelineHeader,
-    'x-state': xStateHeader,
+    'x-source-state': xStateHeader,
   })
 
   const syncQueryParams = z.object({
@@ -365,7 +365,7 @@ export async function createApp(resolver: ConnectorResolver) {
   })
   app.openapi(pipelineReadRoute, async (c) => {
     const pipeline = c.req.valid('header')['x-pipeline']
-    const state = c.req.valid('header')['x-state']
+    const state = c.req.valid('header')['x-source-state']
     const { state_limit, time_limit } = c.req.valid('query')
     const inputPresent = hasBody(c)
     const context = { path: '/pipeline_read', inputPresent, ...syncRequestContext(pipeline) }
@@ -460,7 +460,7 @@ export async function createApp(resolver: ConnectorResolver) {
   })
   app.openapi(pipelineSyncRoute, async (c) => {
     const pipeline = c.req.valid('header')['x-pipeline']
-    const state = c.req.valid('header')['x-state']
+    const state = c.req.valid('header')['x-source-state']
     const { state_limit, time_limit } = c.req.valid('query')
     const input = hasBody(c) ? parseNdjsonStream(c.req.raw.body!) : undefined
     const output = engine.pipeline_sync(pipeline, { state, state_limit, time_limit }, input)

@@ -669,6 +669,16 @@ export interface components {
                 backfill_limit?: number;
             }[];
         };
+        SourceState: {
+            /** @description Per-stream checkpoint data, keyed by stream name. */
+            streams: {
+                [key: string]: unknown;
+            };
+            /** @description Sync-wide state shared across all streams (e.g. a global events cursor). */
+            global: {
+                [key: string]: unknown;
+            };
+        };
     };
     responses: never;
     parameters: never;
@@ -851,8 +861,8 @@ export interface operations {
             header: {
                 /** @description JSON-encoded PipelineConfig */
                 "x-pipeline": string;
-                /** @description JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state */
-                "x-state"?: string;
+                /** @description JSON-encoded SourceState ({ streams, global }) or legacy flat per-stream state */
+                "x-source-state"?: string;
             };
             path?: never;
             cookie?: never;
@@ -934,8 +944,8 @@ export interface operations {
             header: {
                 /** @description JSON-encoded PipelineConfig */
                 "x-pipeline": string;
-                /** @description JSON-encoded SyncState ({ streams, global }) or legacy flat per-stream state */
-                "x-state"?: string;
+                /** @description JSON-encoded SourceState ({ streams, global }) or legacy flat per-stream state */
+                "x-source-state"?: string;
             };
             path?: never;
             cookie?: never;
