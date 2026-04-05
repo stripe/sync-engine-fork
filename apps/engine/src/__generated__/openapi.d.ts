@@ -649,8 +649,8 @@ export interface components {
         TeardownOutput: components["schemas"]["LogMessage"] | components["schemas"]["TraceMessage"];
         SourceInput: {
             /** @constant */
-            type: "stripe";
-            stripe: components["schemas"]["SourceStripeInput"];
+            type: "source_input";
+            source_input: components["schemas"]["SourceStripeInput"];
         };
         PipelineConfig: {
             source: components["schemas"]["SourceConfig"];

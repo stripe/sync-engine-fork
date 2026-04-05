@@ -1937,29 +1937,21 @@
         }
       },
       "SourceInput": {
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "stripe"
-              },
-              "stripe": {
-                "$ref": "#/components/schemas/SourceStripeInput"
-              }
-            },
-            "required": [
-              "type",
-              "stripe"
-            ],
-            "additionalProperties": false
-          }
-        ],
         "type": "object",
-        "discriminator": {
-          "propertyName": "type"
-        }
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "source_input"
+          },
+          "source_input": {
+            "$ref": "#/components/schemas/SourceStripeInput"
+          }
+        },
+        "required": [
+          "type",
+          "source_input"
+        ],
+        "additionalProperties": false
       },
       "PipelineConfig": {
         "type": "object",
