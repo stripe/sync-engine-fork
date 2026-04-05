@@ -29,7 +29,7 @@ function app() {
   return createApp({
     temporal: { client: {} as WorkflowClient, taskQueue: 'unused' },
     resolver,
-    pipelines: memoryPipelineStore(),
+    pipelineStore: memoryPipelineStore(),
   })
 }
 
@@ -87,7 +87,7 @@ describe('POST /pipelines workflow dispatch', () => {
     const res = await createApp({
       temporal: { client: { start } as unknown as WorkflowClient, taskQueue: 'unused' },
       resolver,
-      pipelines: memoryPipelineStore(),
+      pipelineStore: memoryPipelineStore(),
     }).request('/pipelines', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -171,7 +171,7 @@ function liveApp() {
   return createApp({
     temporal: { client: testEnv.client.workflow, taskQueue: 'test-api' },
     resolver,
-    pipelines: sharedStore,
+    pipelineStore: sharedStore,
   })
 }
 
