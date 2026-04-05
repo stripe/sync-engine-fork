@@ -164,7 +164,7 @@ export function createWriteGoogleSheetsFromQueueActivity(context: ActivitiesCont
         errors.push(error)
       } else if (raw.type === 'source_state') {
         if (raw.source_state.state_type === 'global') {
-          Object.assign(state.global, raw.source_state.data as Record<string, unknown>)
+          state.global = raw.source_state.data as Record<string, unknown>
         } else {
           state.streams[raw.source_state.stream] = raw.source_state.data
         }

@@ -159,7 +159,7 @@ export async function drainMessages(stream: AsyncIterable<Message>): Promise<{
         errors.push(error)
       } else if (message.type === 'source_state') {
         if (message.source_state.state_type === 'global') {
-          Object.assign(state.global, message.source_state.data as Record<string, unknown>)
+          state.global = message.source_state.data as Record<string, unknown>
         } else {
           state.streams[message.source_state.stream] = message.source_state.data
         }
