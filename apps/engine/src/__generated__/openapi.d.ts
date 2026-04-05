@@ -812,8 +812,8 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description JSON-encoded PipelineConfig */
-                "x-pipeline": string;
+                /** @description JSON-encoded source config ({ type, ...config }) */
+                "x-source": string;
             };
             path?: never;
             cookie?: never;

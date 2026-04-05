@@ -219,13 +219,22 @@
         "parameters": [
           {
             "in": "header",
-            "name": "x-pipeline",
+            "name": "x-source",
             "required": true,
-            "description": "JSON-encoded PipelineConfig",
+            "description": "JSON-encoded source config ({ type, ...config })",
             "content": {
               "[object Object]": {
                 "schema": {
-                  "$ref": "#/components/schemas/PipelineConfig"
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": {}
                 }
               }
             }
