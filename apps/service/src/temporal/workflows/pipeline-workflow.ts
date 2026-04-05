@@ -51,14 +51,12 @@ export async function pipelineWorkflow(
   await setup(pipelineId)
   await updatePipelineStatus(pipelineId, 'backfill')
 
-  if (desiredStatus === 'deleted') {
-    await updatePipelineStatus(pipelineId, 'teardown')
-    await teardown(pipelineId)
-    return
-  }
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    if (desiredStatus === 'deleted') {
+      break
+    }
 
-  // @ts-expect-error TS2367 -- signal handler can set desiredStatus to 'deleted' between await points
-  while (desiredStatus !== 'deleted') {
     if (desiredStatus === 'paused') {
       await updatePipelineStatus(pipelineId, 'paused')
       await condition(() => desiredStatus !== 'paused')
