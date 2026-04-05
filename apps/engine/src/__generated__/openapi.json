@@ -1298,12 +1298,7 @@
                     "const": "source_config"
                   },
                   "source_config": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {},
-                    "description": "Config fields to merge into the active source configuration."
+                    "$ref": "#/components/schemas/SourceStripeConfig"
                   }
                 },
                 "required": [
@@ -1319,12 +1314,14 @@
                     "const": "destination_config"
                   },
                   "destination_config": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {},
-                    "description": "Config fields to merge into the active destination configuration."
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/DestinationPostgresConfig"
+                      },
+                      {
+                        "$ref": "#/components/schemas/DestinationGoogleSheetsConfig"
+                      }
+                    ]
                   }
                 },
                 "required": [

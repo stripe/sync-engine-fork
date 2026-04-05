@@ -475,17 +475,11 @@ export interface components {
             control: {
                 /** @constant */
                 control_type: "source_config";
-                /** @description Config fields to merge into the active source configuration. */
-                source_config: {
-                    [key: string]: unknown;
-                };
+                source_config: components["schemas"]["SourceStripeConfig"];
             } | {
                 /** @constant */
                 control_type: "destination_config";
-                /** @description Config fields to merge into the active destination configuration. */
-                destination_config: {
-                    [key: string]: unknown;
-                };
+                destination_config: components["schemas"]["DestinationPostgresConfig"] | components["schemas"]["DestinationGoogleSheetsConfig"];
             };
         };
         EofMessage: {
