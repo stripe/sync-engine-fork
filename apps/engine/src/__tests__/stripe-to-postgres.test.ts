@@ -5,6 +5,7 @@ import source from '@stripe/sync-source-stripe'
 import destination from '@stripe/sync-destination-postgres'
 import { createEngine, collectFirst } from '../lib/index.js'
 import type { ConnectorResolver, Message, DestinationOutput } from '../lib/index.js'
+import { drain } from '@stripe/sync-protocol'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -196,7 +197,7 @@ describe('engine read → write', () => {
     const pipeline = makePipeline({ streams: [{ name: targetStream }] })
 
     // Setup first (creates tables)
-    await engine.pipeline_setup(pipeline)
+    await drain(engine.pipeline_setup(pipeline))
 
     // Read → collect → feed into write
     const readMessages = await collect<Message>(engine.pipeline_read(pipeline))
