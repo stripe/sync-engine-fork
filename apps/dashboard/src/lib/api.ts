@@ -39,7 +39,7 @@ export interface CatalogResponse {
 export async function discover(source: Record<string, unknown>): Promise<CatalogResponse> {
   const response = await fetch('/api/engine/source_discover', {
     method: 'POST',
-    headers: { 'x-pipeline': JSON.stringify({ source, destination: { type: '_' } }) },
+    headers: { 'x-source': JSON.stringify(source) },
   })
   if (!response.ok) {
     const text = await response.text().catch(() => '')
