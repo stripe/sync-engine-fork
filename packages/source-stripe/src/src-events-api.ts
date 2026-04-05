@@ -81,11 +81,11 @@ export async function* pollEvents(opts: {
       registry,
       streamNames
     )) {
-      if (msg.type === 'state' && msg.state.state_type !== 'global') {
+      if (msg.type === 'source_state' && msg.source_state.state_type !== 'global') {
         // Intercept state messages to preserve complete status + update events_cursor
-        const existing = state?.[msg.state.stream]
+        const existing = state?.[msg.source_state.stream]
         yield stateMsg({
-          stream: msg.state.stream,
+          stream: msg.source_state.stream,
           data: {
             page_cursor: existing?.page_cursor ?? null,
             status: 'complete' as const,

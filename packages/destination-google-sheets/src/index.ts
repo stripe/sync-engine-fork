@@ -153,8 +153,8 @@ export function createDestination(
       yield {
         type: 'control' as const,
         control: {
-          control_type: 'connector_config' as const,
-          config: { spreadsheet_id: spreadsheetId },
+          control_type: 'destination_config' as const,
+          destination_config: { spreadsheet_id: spreadsheetId },
         },
       }
     },
@@ -313,10 +313,10 @@ export function createDestination(
             if (appendCount + updateCount >= batchSize) {
               await flushStream(stream)
             }
-          } else if (msg.type === 'state') {
+          } else if (msg.type === 'source_state') {
             // Flush the stream's pending rows, then re-emit the state checkpoint
-            if (msg.state.state_type !== 'global') {
-              await flushStream(msg.state.stream)
+            if (msg.source_state.state_type !== 'global') {
+              await flushStream(msg.source_state.stream)
             }
             yield msg
           }

@@ -175,8 +175,8 @@ describe('enforceCatalog()', () => {
   it('drops state with unknown stream and logs error', async () => {
     const msgs: Message[] = [
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'nonexistent', data: { cursor: 'x' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'nonexistent', data: { cursor: 'x' } },
       },
     ]
     const result = await drain(enforceCatalog(catalog([{ name: 'customers' }]))(toAsync(msgs)))
@@ -189,14 +189,17 @@ describe('enforceCatalog()', () => {
 
   it('passes global state messages through without catalog validation', async () => {
     const msgs: Message[] = [
-      { type: 'state', state: { state_type: 'global', data: { events_cursor: 'evt_1' } } },
+      {
+        type: 'source_state',
+        source_state: { state_type: 'global', data: { events_cursor: 'evt_1' } },
+      },
     ]
     // Empty catalog — no streams configured at all
     const result = await drain(enforceCatalog(catalog([]))(toAsync(msgs)))
     expect(result).toHaveLength(1)
     expect(result[0]).toMatchObject({
-      type: 'state',
-      state: { state_type: 'global', data: { events_cursor: 'evt_1' } },
+      type: 'source_state',
+      source_state: { state_type: 'global', data: { events_cursor: 'evt_1' } },
     })
   })
 
@@ -244,8 +247,8 @@ describe('log()', () => {
         },
       },
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
       },
       { type: 'log', log: { level: 'info', message: 'hello' } },
       {
@@ -266,7 +269,7 @@ describe('log()', () => {
     const result = await drain(log(toAsync(msgs)))
     expect(result).toHaveLength(5)
     expect(result[0]).toMatchObject({ type: 'record' })
-    expect(result[1]).toMatchObject({ type: 'state' })
+    expect(result[1]).toMatchObject({ type: 'source_state' })
     expect(result[2]).toMatchObject({ type: 'log' })
     expect(result[3]).toMatchObject({ type: 'trace' })
     expect(result[4]).toMatchObject({ type: 'trace' })
@@ -323,8 +326,8 @@ describe('log()', () => {
         },
       },
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
       },
     ]
     await drain(log(toAsync(msgs)))
@@ -350,8 +353,8 @@ describe('filterType()', () => {
         },
       },
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
       },
       { type: 'log', log: { level: 'info', message: 'hello' } },
     ]
@@ -371,8 +374,8 @@ describe('filterType()', () => {
         },
       },
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
       },
       { type: 'log', log: { level: 'info', message: 'hello' } },
       {
@@ -383,10 +386,10 @@ describe('filterType()', () => {
         },
       },
     ]
-    const result = await drain(filterType('record', 'state')(toAsync(msgs)))
+    const result = await drain(filterType('record', 'source_state')(toAsync(msgs)))
     expect(result).toHaveLength(2)
     expect(result[0]).toMatchObject({ type: 'record' })
-    expect(result[1]).toMatchObject({ type: 'state' })
+    expect(result[1]).toMatchObject({ type: 'source_state' })
   })
 
   it('returns empty when nothing matches', async () => {
@@ -421,8 +424,8 @@ describe('persistState()', () => {
     }
     const msgs: DestinationOutput[] = [
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
       },
     ]
     await drain(persistState(store)(toAsync(msgs)))
@@ -437,14 +440,14 @@ describe('persistState()', () => {
     }
     const msgs: DestinationOutput[] = [
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: 'abc' } },
       },
       { type: 'log', log: { level: 'info', message: 'done' } },
     ]
     const result = await drain(persistState(store)(toAsync(msgs)))
     expect(result).toHaveLength(2)
-    expect(result[0]).toMatchObject({ type: 'state' })
+    expect(result[0]).toMatchObject({ type: 'source_state' })
     expect(result[1]).toMatchObject({ type: 'log' })
   })
 
@@ -484,7 +487,10 @@ describe('persistState()', () => {
       },
     }
     const msgs: DestinationOutput[] = [
-      { type: 'state', state: { state_type: 'global', data: { events_cursor: 'evt_123' } } },
+      {
+        type: 'source_state',
+        source_state: { state_type: 'global', data: { events_cursor: 'evt_123' } },
+      },
     ]
     await drain(persistState(store)(toAsync(msgs)))
     expect(globalCalls).toEqual([{ events_cursor: 'evt_123' }])
@@ -502,13 +508,16 @@ describe('persistState()', () => {
     }
     const msgs: DestinationOutput[] = [
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
       },
-      { type: 'state', state: { state_type: 'stream', stream: 'invoices', data: { cursor: '2' } } },
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: '3' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'invoices', data: { cursor: '2' } },
+      },
+      {
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: '3' } },
       },
     ]
     await drain(persistState(store)(toAsync(msgs)))
@@ -536,8 +545,8 @@ describe('takeLimits()', () => {
         },
       },
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
       },
       {
         type: 'record',
@@ -548,14 +557,17 @@ describe('takeLimits()', () => {
         },
       },
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: '2' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: '2' } },
       },
     ]
     const result = await drain(takeLimits<Message>({ state_limit: 1 })(toAsync(msgs)))
     expect(result).toHaveLength(3)
     expect(result[0]).toMatchObject({ type: 'record', record: { data: { id: 'cus_1' } } })
-    expect(result[1]).toMatchObject({ type: 'state', state: { data: { cursor: '1' } } })
+    expect(result[1]).toMatchObject({
+      type: 'source_state',
+      source_state: { data: { cursor: '1' } },
+    })
     expect(result[2]).toMatchObject({ type: 'eof', eof: { reason: 'state_limit' } })
   })
 
@@ -570,8 +582,8 @@ describe('takeLimits()', () => {
         },
       },
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
       },
     ]
     const result = await drain(takeLimits<Message>({ state_limit: 5 })(toAsync(msgs)))
@@ -582,8 +594,8 @@ describe('takeLimits()', () => {
   it('emits eof complete with no limits set', async () => {
     const msgs: Message[] = [
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
       },
     ]
     const result = await drain(takeLimits<Message>()(toAsync(msgs)))
@@ -602,8 +614,8 @@ describe('takeLimits()', () => {
         },
       },
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'a' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: 'a' } },
       },
       {
         type: 'record',
@@ -613,7 +625,10 @@ describe('takeLimits()', () => {
           emitted_at: '2024-01-01T00:00:00.000Z',
         },
       },
-      { type: 'state', state: { state_type: 'stream', stream: 'products', data: { cursor: 'b' } } },
+      {
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'products', data: { cursor: 'b' } },
+      },
       {
         type: 'record',
         record: {
@@ -623,15 +638,15 @@ describe('takeLimits()', () => {
         },
       },
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: 'c' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: 'c' } },
       },
     ]
     const result = await drain(takeLimits<Message>({ state_limit: 2 })(toAsync(msgs)))
     expect(result).toHaveLength(5)
     expect(result[3]).toMatchObject({
-      type: 'state',
-      state: { state_type: 'stream', stream: 'products' },
+      type: 'source_state',
+      source_state: { state_type: 'stream', stream: 'products' },
     })
     expect(result[4]).toMatchObject({ type: 'eof', eof: { reason: 'state_limit' } })
   })
@@ -656,8 +671,8 @@ describe('takeLimits()', () => {
         },
       }
       yield {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: '2' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: '2' } },
       }
     }
 
@@ -671,16 +686,16 @@ describe('takeLimits()', () => {
   it('time limit and state limit: whichever fires first wins', async () => {
     const msgs: Message[] = [
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: '1' } },
       },
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: '2' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: '2' } },
       },
       {
-        type: 'state',
-        state: { state_type: 'stream', stream: 'customers', data: { cursor: '3' } },
+        type: 'source_state',
+        source_state: { state_type: 'stream', stream: 'customers', data: { cursor: '3' } },
       },
     ]
     // State limit of 1 fires before any time limit

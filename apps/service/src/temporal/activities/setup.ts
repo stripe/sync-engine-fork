@@ -10,12 +10,12 @@ export function createSetupActivity(context: ActivitiesContext) {
       context.engine.pipeline_setup(config),
       'control'
     )
-    const sourceConfigs = controlMsgs
-      .filter((m) => m._emitted_by?.startsWith('source/'))
-      .map((m) => m.control.config)
-    const destConfigs = controlMsgs
-      .filter((m) => m._emitted_by?.startsWith('destination/'))
-      .map((m) => m.control.config)
+    const sourceConfigs = controlMsgs.flatMap((m) =>
+      m.control.control_type === 'source_config' ? [m.control.source_config] : []
+    )
+    const destConfigs = controlMsgs.flatMap((m) =>
+      m.control.control_type === 'destination_config' ? [m.control.destination_config] : []
+    )
     const patch: Record<string, unknown> = {}
     if (sourceConfigs.length > 0)
       patch.source = { ...pipeline.source, ...Object.assign({}, ...sourceConfigs) }

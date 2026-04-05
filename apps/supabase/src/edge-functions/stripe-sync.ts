@@ -195,8 +195,8 @@ Deno.serve(async (req) => {
     let checkpoints = 0
     let stopReason = 'complete'
     for await (const msg of destOutput) {
-      if (msg.type === 'state' && msg.state.state_type !== 'global') {
-        await stateStore.set(msg.state.stream, msg.state.data)
+      if (msg.type === 'source_state' && msg.source_state.state_type !== 'global') {
+        await stateStore.set(msg.source_state.stream, msg.source_state.data)
         checkpoints++
         if (Date.now() - startedAt >= MAX_WALL_MS) {
           stopReason = 'time_limit'

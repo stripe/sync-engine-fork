@@ -1,4 +1,9 @@
-import type { ConfiguredCatalog, Message, RecordMessage, StateMessage } from '@stripe/sync-protocol'
+import type {
+  ConfiguredCatalog,
+  Message,
+  RecordMessage,
+  SourceStateMessage,
+} from '@stripe/sync-protocol'
 import { toRecordMessage, stateMsg } from '@stripe/sync-protocol'
 import type Stripe from 'stripe'
 import type { Config } from './index.js'
@@ -41,7 +46,7 @@ function isDeleteEvent(event: Stripe.Event): boolean {
 export function fromWebhookEvent(
   event: Stripe.Event,
   registry: Record<string, ResourceConfig>
-): { record: RecordMessage; state: StateMessage } | null {
+): { record: RecordMessage; state: SourceStateMessage } | null {
   const dataObject = event.data?.object as unknown as
     | { id?: string; object?: string; deleted?: boolean; [key: string]: unknown }
     | undefined
@@ -55,7 +60,7 @@ export function fromWebhookEvent(
   if (!dataObject.id) return null
 
   const record = toRecordMessage(config.tableName, dataObject as Record<string, unknown>)
-  const state: StateMessage = stateMsg({
+  const state: SourceStateMessage = stateMsg({
     stream: config.tableName,
     data: {
       eventId: event.id,

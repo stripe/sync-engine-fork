@@ -197,8 +197,8 @@ export function createStripeSource(
         yield {
           type: 'control' as const,
           control: {
-            control_type: 'connector_config' as const,
-            config: updates as Record<string, unknown>,
+            control_type: 'source_config' as const,
+            source_config: updates as Record<string, unknown>,
           },
         }
       }

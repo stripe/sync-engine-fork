@@ -13,7 +13,7 @@ import {
   SyncOutput,
   SyncState,
   RecordMessage,
-  StateMessage,
+  SourceStateMessage,
   collectFirst,
   split,
   merge,
@@ -422,7 +422,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
         messages,
         enforceCatalog(filteredCatalog),
         log,
-        filterType('record', 'state')
+        filterType('record', 'source_state')
       )
       const destOutput = connector.write(
         { config: destConfig, catalog: filteredCatalog },
@@ -448,8 +448,8 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
 
       // Split: data + eof → destination path, source signals → caller
       // Eof from pipeline_read is excluded from source signals (pipeline_sync adds its own)
-      const isDataOrEof = (msg: Message): msg is RecordMessage | StateMessage =>
-        msg.type === 'record' || msg.type === 'state' || msg.type === 'eof'
+      const isDataOrEof = (msg: Message): msg is RecordMessage | SourceStateMessage =>
+        msg.type === 'record' || msg.type === 'source_state' || msg.type === 'eof'
       const [dataStream, sourceSignals] = split(readOutput, isDataOrEof)
 
       // Set up destination inline — we need control of the stream split
@@ -462,7 +462,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
         dataStream,
         enforceCatalog(filteredCatalog),
         log,
-        filterType('record', 'state')
+        filterType('record', 'source_state')
       )
       const destOutput = destConnector.write(
         { config: destConfig, catalog: filteredCatalog },

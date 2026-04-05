@@ -47,7 +47,7 @@ function compactGoogleSheetsMessages(messages: Message[]): Message[] {
       continue
     }
 
-    if (message.type === 'state') {
+    if (message.type === 'source_state') {
       flushPending()
       compacted.push(message)
     }
@@ -162,11 +162,11 @@ export function createWriteGoogleSheetsFromQueueActivity(context: ActivitiesCont
       const error = collectError(raw)
       if (error) {
         errors.push(error)
-      } else if (raw.type === 'state') {
-        if (raw.state.state_type === 'global') {
-          Object.assign(state.global, raw.state.data as Record<string, unknown>)
+      } else if (raw.type === 'source_state') {
+        if (raw.source_state.state_type === 'global') {
+          Object.assign(state.global, raw.source_state.data as Record<string, unknown>)
         } else {
-          state.streams[raw.state.stream] = raw.state.data
+          state.streams[raw.source_state.stream] = raw.source_state.data
         }
       } else if (raw.type === 'log') {
         const meta = parseGoogleSheetsMetaLog(raw.log.message)

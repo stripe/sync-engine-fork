@@ -118,13 +118,13 @@ export const ConnectorSpecification = z
     config: z
       .record(z.string(), z.unknown())
       .describe("JSON Schema for the connector's configuration object."),
-    stream_state: z
+    source_state_stream: z
       .record(z.string(), z.unknown())
       .optional()
       .describe(
         'JSON Schema for per-stream state (cursor/checkpoint shape). See also SyncState.global for sync-wide cursors.'
       ),
-    input: z
+    source_input: z
       .record(z.string(), z.unknown())
       .optional()
       .describe('JSON Schema for the read() input parameter (e.g. a webhook event).'),
@@ -211,14 +211,20 @@ export const ConnectionStatusPayload = z
 export type ConnectionStatusPayload = z.infer<typeof ConnectionStatusPayload>
 
 export const ControlPayload = z
-  .object({
-    control_type: z
-      .enum(['connector_config'])
-      .describe('What kind of control action the connector is requesting.'),
-    config: z
-      .record(z.string(), z.unknown())
-      .describe('Config fields to merge into the active connector configuration.'),
-  })
+  .discriminatedUnion('control_type', [
+    z.object({
+      control_type: z.literal('source_config'),
+      source_config: z
+        .record(z.string(), z.unknown())
+        .describe('Config fields to merge into the active source configuration.'),
+    }),
+    z.object({
+      control_type: z.literal('destination_config'),
+      destination_config: z
+        .record(z.string(), z.unknown())
+        .describe('Config fields to merge into the active destination configuration.'),
+    }),
+  ])
   .describe('Control signal from a connector to the orchestrator.')
 export type ControlPayload = z.infer<typeof ControlPayload>
 
@@ -302,11 +308,11 @@ export const RecordMessage = MessageBase.extend({
 }).meta({ id: 'RecordMessage' })
 export type RecordMessage = z.infer<typeof RecordMessage>
 
-export const StateMessage = MessageBase.extend({
-  type: z.literal('state'),
-  state: StatePayload,
-}).meta({ id: 'StateMessage' })
-export type StateMessage = z.infer<typeof StateMessage>
+export const SourceStateMessage = MessageBase.extend({
+  type: z.literal('source_state'),
+  source_state: StatePayload,
+}).meta({ id: 'SourceStateMessage' })
+export type SourceStateMessage = z.infer<typeof SourceStateMessage>
 
 export const CatalogMessage = MessageBase.extend({
   type: z.literal('catalog'),
@@ -388,18 +394,24 @@ export interface SyncParams {
 // MARK: - Message unions
 
 /** The subset of messages the destination receives on stdin. */
-export const DestinationInput = z.discriminatedUnion('type', [RecordMessage, StateMessage])
+export const DestinationInput = z.discriminatedUnion('type', [RecordMessage, SourceStateMessage])
 export type DestinationInput = z.infer<typeof DestinationInput>
 
 /** Messages the destination yields back to the orchestrator (one per NDJSON line). */
 export const DestinationOutput = z
-  .discriminatedUnion('type', [StateMessage, TraceMessage, LogMessage, EofMessage])
+  .discriminatedUnion('type', [SourceStateMessage, TraceMessage, LogMessage, EofMessage])
   .meta({ id: 'DestinationOutput' })
 export type DestinationOutput = z.infer<typeof DestinationOutput>
 
 /** Output of pipeline_sync(): destination output plus source signals (controls, logs, traces). */
 export const SyncOutput = z
-  .discriminatedUnion('type', [StateMessage, TraceMessage, LogMessage, EofMessage, ControlMessage])
+  .discriminatedUnion('type', [
+    SourceStateMessage,
+    TraceMessage,
+    LogMessage,
+    EofMessage,
+    ControlMessage,
+  ])
   .meta({ id: 'SyncOutput' })
 export type SyncOutput = z.infer<typeof SyncOutput>
 
@@ -407,7 +419,7 @@ export type SyncOutput = z.infer<typeof SyncOutput>
 export const Message = z
   .discriminatedUnion('type', [
     RecordMessage,
-    StateMessage,
+    SourceStateMessage,
     CatalogMessage,
     LogMessage,
     TraceMessage,
@@ -520,7 +532,7 @@ export interface Source<
  *
  * TConfig is the connector's configuration type, inferred from its Zod spec.
  *
- * The destination only receives RecordMessage and StateMessage on stdin — the
+ * The destination only receives RecordMessage and SourceStateMessage on stdin — the
  * orchestrator filters out other message types before they reach the destination.
  */
 export interface Destination<TConfig extends Record<string, unknown> = Record<string, unknown>> {

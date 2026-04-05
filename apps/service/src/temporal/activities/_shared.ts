@@ -131,13 +131,15 @@ export async function drainMessages(stream: AsyncIterable<Message>): Promise<{
   errors: RunResult['errors']
   state: SyncState
   records: Message[]
-  controls: Array<Record<string, unknown>>
+  sourceConfigs: Array<Record<string, unknown>>
+  destConfigs: Array<Record<string, unknown>>
   eof?: { reason: string }
 }> {
   const errors: RunResult['errors'] = []
   const state: SyncState = { streams: {}, global: {} }
   const records: Message[] = []
-  const controls: Array<Record<string, unknown>> = []
+  const sourceConfigs: Array<Record<string, unknown>> = []
+  const destConfigs: Array<Record<string, unknown>> = []
   let eof: { reason: string } | undefined
   let count = 0
 
@@ -146,18 +148,20 @@ export async function drainMessages(stream: AsyncIterable<Message>): Promise<{
     if (message.type === 'eof') {
       eof = { reason: message.eof.reason }
     } else if (message.type === 'control') {
-      if (message.control.control_type === 'connector_config') {
-        controls.push(message.control.config)
+      if (message.control.control_type === 'source_config') {
+        sourceConfigs.push(message.control.source_config!)
+      } else if (message.control.control_type === 'destination_config') {
+        destConfigs.push(message.control.destination_config!)
       }
     } else {
       const error = collectError(message)
       if (error) {
         errors.push(error)
-      } else if (message.type === 'state') {
-        if (message.state.state_type === 'global') {
-          Object.assign(state.global, message.state.data as Record<string, unknown>)
+      } else if (message.type === 'source_state') {
+        if (message.source_state.state_type === 'global') {
+          Object.assign(state.global, message.source_state.data as Record<string, unknown>)
         } else {
-          state.streams[message.state.stream] = message.state.data
+          state.streams[message.source_state.stream] = message.source_state.data
         }
       } else if (message.type === 'record') {
         records.push(message)
@@ -167,5 +171,5 @@ export async function drainMessages(stream: AsyncIterable<Message>): Promise<{
   }
   if (count % 50 !== 0) heartbeat({ messages: count })
 
-  return { errors, state, records, controls, eof }
+  return { errors, state, records, sourceConfigs, destConfigs, eof }
 }

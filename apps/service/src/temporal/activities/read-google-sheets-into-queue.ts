@@ -55,11 +55,11 @@ export function createReadGoogleSheetsIntoQueueActivity(context: ActivitiesConte
         errors.push(error)
       } else if (raw.type === 'record') {
         queued.push(withRowKey(raw, catalog))
-      } else if (raw.type === 'state') {
-        if (raw.state.state_type === 'global') {
-          Object.assign(state.global, raw.state.data as Record<string, unknown>)
+      } else if (raw.type === 'source_state') {
+        if (raw.source_state.state_type === 'global') {
+          Object.assign(state.global, raw.source_state.data as Record<string, unknown>)
         } else {
-          state.streams[raw.state.stream] = raw.state.data
+          state.streams[raw.source_state.stream] = raw.source_state.data
         }
         queued.push(raw)
       }

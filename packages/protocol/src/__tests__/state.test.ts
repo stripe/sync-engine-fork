@@ -83,23 +83,23 @@ describe('StatePayload backward compat', () => {
 })
 
 describe('stateMsg helper', () => {
-  it('creates stream state message (old format — no state_type)', () => {
+  it('creates stream source_state message (old format — no state_type)', () => {
     const msg = stateMsg({ stream: 'orders', data: { cursor: 1 } })
-    expect(msg.type).toBe('state')
-    expect(msg.state.state_type).toBe('stream')
-    if (msg.state.state_type === 'stream') {
-      expect(msg.state.stream).toBe('orders')
+    expect(msg.type).toBe('source_state')
+    expect(msg.source_state.state_type).toBe('stream')
+    if (msg.source_state.state_type === 'stream') {
+      expect(msg.source_state.stream).toBe('orders')
     }
   })
 
-  it('creates global state message', () => {
+  it('creates global source_state message', () => {
     const msg = stateMsg({
       state_type: 'global',
       data: { events_cursor: 'evt_1' },
     })
-    expect(msg.type).toBe('state')
-    expect(msg.state.state_type).toBe('global')
-    expect(msg.state.data).toEqual({ events_cursor: 'evt_1' })
+    expect(msg.type).toBe('source_state')
+    expect(msg.source_state.state_type).toBe('global')
+    expect(msg.source_state.data).toEqual({ events_cursor: 'evt_1' })
   })
 })
 
