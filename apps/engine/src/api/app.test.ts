@@ -135,17 +135,17 @@ describe('GET /openapi.json', () => {
     const spec = (await res.json()) as any
     const schemaNames = Object.keys(spec.components?.schemas ?? {})
 
-    expect(schemaNames).toContain('SourceTestConfig')
-    expect(schemaNames).toContain('DestinationTestConfig')
-    expect(schemaNames).toContain('SourceConfig')
-    expect(schemaNames).toContain('DestinationConfig')
-    expect(schemaNames).toContain('PipelineConfig')
+    expect(schemaNames).toContain('SourceTest')
+    expect(schemaNames).toContain('DestinationTest')
+    expect(schemaNames).toContain('Source')
+    expect(schemaNames).toContain('Destination')
+    expect(schemaNames).toContain('Pipeline')
 
-    // SourceConfig is a discriminated union with inline variants
-    const sourceConfig = spec.components.schemas.SourceConfig
-    expect(sourceConfig.oneOf).toHaveLength(1)
-    expect(sourceConfig.oneOf[0].properties.type.const).toBe('test')
-    expect(sourceConfig.oneOf[0].properties.test.$ref).toContain('SourceTestConfig')
+    // Source is a discriminated union with inline variants
+    const source = spec.components.schemas.Source
+    expect(source.oneOf).toHaveLength(1)
+    expect(source.oneOf[0].properties.type.const).toBe('test')
+    expect(source.oneOf[0].properties.test.$ref).toContain('SourceTest')
   })
 
   it('defines NDJSON message schemas with discriminated unions', async () => {

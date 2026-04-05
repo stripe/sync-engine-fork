@@ -33,4 +33,5 @@ export {
   createConnectorSchemas,
   connectorSchemaName,
   connectorInputSchemaName,
+  connectorUnionId,
 } from './createSchemas.js'

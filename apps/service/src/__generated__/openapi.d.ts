@@ -116,12 +116,12 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        SourceConfig: {
+        Source: {
             /** @constant */
             type: "stripe";
-            stripe: components["schemas"]["SourceStripeConfig"];
+            stripe: components["schemas"]["SourceStripe"];
         };
-        SourceStripeConfig: {
+        SourceStripe: {
             /** @description Stripe API key (sk_test_... or sk_live_...) */
             api_key: string;
             /** @description Stripe account ID (resolved from API if omitted) */
@@ -157,16 +157,16 @@ export interface components {
             /** @description Number of time-range segments for parallel backfill (default: 200) */
             backfill_concurrency?: number;
         };
-        DestinationConfig: {
+        Destination: {
             /** @constant */
             type: "postgres";
-            postgres: components["schemas"]["DestinationPostgresConfig"];
+            postgres: components["schemas"]["DestinationPostgres"];
         } | {
             /** @constant */
             type: "google-sheets";
-            "google-sheets": components["schemas"]["DestinationGoogleSheetsConfig"];
+            "google-sheets": components["schemas"]["DestinationGoogleSheets"];
         };
-        DestinationPostgresConfig: {
+        DestinationPostgres: {
             /** @description Postgres connection string (alias for connection_string) */
             url?: string;
             /** @description Postgres connection string */
@@ -201,7 +201,7 @@ export interface components {
             /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
             ssl_ca_pem?: string;
         };
-        DestinationGoogleSheetsConfig: {
+        DestinationGoogleSheets: {
             /** @description Google OAuth2 client ID (env: GOOGLE_CLIENT_ID) */
             client_id?: string;
             /** @description Google OAuth2 client secret (env: GOOGLE_CLIENT_SECRET) */
@@ -274,8 +274,8 @@ export interface operations {
                         data: {
                             /** @description Unique pipeline identifier (e.g. pipe_abc123). */
                             id: string;
-                            source: components["schemas"]["SourceConfig"];
-                            destination: components["schemas"]["DestinationConfig"];
+                            source: components["schemas"]["Source"];
+                            destination: components["schemas"]["Destination"];
                             /** @description Selected streams to sync. All streams synced if omitted. */
                             streams?: {
                                 /** @description Stream (table) name to sync. */
@@ -314,8 +314,8 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": {
-                    source: components["schemas"]["SourceConfig"];
-                    destination: components["schemas"]["DestinationConfig"];
+                    source: components["schemas"]["Source"];
+                    destination: components["schemas"]["Destination"];
                     /** @description Selected streams to sync. All streams synced if omitted. */
                     streams?: {
                         /** @description Stream (table) name to sync. */
@@ -341,8 +341,8 @@ export interface operations {
                     "application/json": {
                         /** @description Unique pipeline identifier (e.g. pipe_abc123). */
                         id: string;
-                        source: components["schemas"]["SourceConfig"];
-                        destination: components["schemas"]["DestinationConfig"];
+                        source: components["schemas"]["Source"];
+                        destination: components["schemas"]["Destination"];
                         /** @description Selected streams to sync. All streams synced if omitted. */
                         streams?: {
                             /** @description Stream (table) name to sync. */
@@ -391,8 +391,8 @@ export interface operations {
                     "application/json": {
                         /** @description Unique pipeline identifier (e.g. pipe_abc123). */
                         id: string;
-                        source: components["schemas"]["SourceConfig"];
-                        destination: components["schemas"]["DestinationConfig"];
+                        source: components["schemas"]["Source"];
+                        destination: components["schemas"]["Destination"];
                         /** @description Selected streams to sync. All streams synced if omitted. */
                         streams?: {
                             /** @description Stream (table) name to sync. */
@@ -490,8 +490,8 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": {
-                    source?: components["schemas"]["SourceConfig"];
-                    destination?: components["schemas"]["DestinationConfig"];
+                    source?: components["schemas"]["Source"];
+                    destination?: components["schemas"]["Destination"];
                     /** @description Selected streams to sync. All streams synced if omitted. */
                     streams?: {
                         /** @description Stream (table) name to sync. */
@@ -517,8 +517,8 @@ export interface operations {
                     "application/json": {
                         /** @description Unique pipeline identifier (e.g. pipe_abc123). */
                         id: string;
-                        source: components["schemas"]["SourceConfig"];
-                        destination: components["schemas"]["DestinationConfig"];
+                        source: components["schemas"]["Source"];
+                        destination: components["schemas"]["Destination"];
                         /** @description Selected streams to sync. All streams synced if omitted. */
                         streams?: {
                             /** @description Stream (table) name to sync. */
@@ -587,8 +587,8 @@ export interface operations {
                     "application/json": {
                         /** @description Unique pipeline identifier (e.g. pipe_abc123). */
                         id: string;
-                        source: components["schemas"]["SourceConfig"];
-                        destination: components["schemas"]["DestinationConfig"];
+                        source: components["schemas"]["Source"];
+                        destination: components["schemas"]["Destination"];
                         /** @description Selected streams to sync. All streams synced if omitted. */
                         streams?: {
                             /** @description Stream (table) name to sync. */
@@ -646,8 +646,8 @@ export interface operations {
                     "application/json": {
                         /** @description Unique pipeline identifier (e.g. pipe_abc123). */
                         id: string;
-                        source: components["schemas"]["SourceConfig"];
-                        destination: components["schemas"]["DestinationConfig"];
+                        source: components["schemas"]["Source"];
+                        destination: components["schemas"]["Destination"];
                         /** @description Selected streams to sync. All streams synced if omitted. */
                         streams?: {
                             /** @description Stream (table) name to sync. */

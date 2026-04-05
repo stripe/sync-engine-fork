@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { ConnectorResolver } from '@stripe/sync-engine'
-import { connectorSchemaName } from '@stripe/sync-engine'
+import { connectorSchemaName, connectorUnionId } from '@stripe/sync-engine'
 
 // MARK: - Static schemas (independent of connector set)
 
@@ -52,7 +52,7 @@ export function createSchemas(resolver: ConnectorResolver) {
     sourceVariants.length > 0
       ? z
           .discriminatedUnion('type', sourceVariants as [any, any, ...any[]])
-          .meta({ id: 'SourceConfig' })
+          .meta({ id: connectorUnionId('Source') })
       : z.object({ type: z.string() }).catchall(z.unknown())
 
   // Build destination config discriminated union
@@ -69,7 +69,7 @@ export function createSchemas(resolver: ConnectorResolver) {
     destVariants.length > 0
       ? z
           .discriminatedUnion('type', destVariants as [any, any, ...any[]])
-          .meta({ id: 'DestinationConfig' })
+          .meta({ id: connectorUnionId('Destination') })
       : z.object({ type: z.string() }).catchall(z.unknown())
 
   // Composed schemas

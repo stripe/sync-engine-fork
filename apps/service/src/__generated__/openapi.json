@@ -62,10 +62,10 @@
                             "description": "Unique pipeline identifier (e.g. pipe_abc123)."
                           },
                           "source": {
-                            "$ref": "#/components/schemas/SourceConfig"
+                            "$ref": "#/components/schemas/Source"
                           },
                           "destination": {
-                            "$ref": "#/components/schemas/DestinationConfig"
+                            "$ref": "#/components/schemas/Destination"
                           },
                           "streams": {
                             "description": "Selected streams to sync. All streams synced if omitted.",
@@ -159,10 +159,10 @@
                 "type": "object",
                 "properties": {
                   "source": {
-                    "$ref": "#/components/schemas/SourceConfig"
+                    "$ref": "#/components/schemas/Source"
                   },
                   "destination": {
-                    "$ref": "#/components/schemas/DestinationConfig"
+                    "$ref": "#/components/schemas/Destination"
                   },
                   "streams": {
                     "description": "Selected streams to sync. All streams synced if omitted.",
@@ -216,10 +216,10 @@
                       "description": "Unique pipeline identifier (e.g. pipe_abc123)."
                     },
                     "source": {
-                      "$ref": "#/components/schemas/SourceConfig"
+                      "$ref": "#/components/schemas/Source"
                     },
                     "destination": {
-                      "$ref": "#/components/schemas/DestinationConfig"
+                      "$ref": "#/components/schemas/Destination"
                     },
                     "streams": {
                       "description": "Selected streams to sync. All streams synced if omitted.",
@@ -314,10 +314,10 @@
                       "description": "Unique pipeline identifier (e.g. pipe_abc123)."
                     },
                     "source": {
-                      "$ref": "#/components/schemas/SourceConfig"
+                      "$ref": "#/components/schemas/Source"
                     },
                     "destination": {
-                      "$ref": "#/components/schemas/DestinationConfig"
+                      "$ref": "#/components/schemas/Destination"
                     },
                     "streams": {
                       "description": "Selected streams to sync. All streams synced if omitted.",
@@ -428,10 +428,10 @@
                 "type": "object",
                 "properties": {
                   "source": {
-                    "$ref": "#/components/schemas/SourceConfig"
+                    "$ref": "#/components/schemas/Source"
                   },
                   "destination": {
-                    "$ref": "#/components/schemas/DestinationConfig"
+                    "$ref": "#/components/schemas/Destination"
                   },
                   "streams": {
                     "description": "Selected streams to sync. All streams synced if omitted.",
@@ -481,10 +481,10 @@
                       "description": "Unique pipeline identifier (e.g. pipe_abc123)."
                     },
                     "source": {
-                      "$ref": "#/components/schemas/SourceConfig"
+                      "$ref": "#/components/schemas/Source"
                     },
                     "destination": {
-                      "$ref": "#/components/schemas/DestinationConfig"
+                      "$ref": "#/components/schemas/Destination"
                     },
                     "streams": {
                       "description": "Selected streams to sync. All streams synced if omitted.",
@@ -698,10 +698,10 @@
                       "description": "Unique pipeline identifier (e.g. pipe_abc123)."
                     },
                     "source": {
-                      "$ref": "#/components/schemas/SourceConfig"
+                      "$ref": "#/components/schemas/Source"
                     },
                     "destination": {
-                      "$ref": "#/components/schemas/DestinationConfig"
+                      "$ref": "#/components/schemas/Destination"
                     },
                     "streams": {
                       "description": "Selected streams to sync. All streams synced if omitted.",
@@ -820,10 +820,10 @@
                       "description": "Unique pipeline identifier (e.g. pipe_abc123)."
                     },
                     "source": {
-                      "$ref": "#/components/schemas/SourceConfig"
+                      "$ref": "#/components/schemas/Source"
                     },
                     "destination": {
-                      "$ref": "#/components/schemas/DestinationConfig"
+                      "$ref": "#/components/schemas/Destination"
                     },
                     "streams": {
                       "description": "Selected streams to sync. All streams synced if omitted.",
@@ -948,7 +948,7 @@
   },
   "components": {
     "schemas": {
-      "SourceConfig": {
+      "Source": {
         "oneOf": [
           {
             "type": "object",
@@ -958,7 +958,7 @@
                 "const": "stripe"
               },
               "stripe": {
-                "$ref": "#/components/schemas/SourceStripeConfig"
+                "$ref": "#/components/schemas/SourceStripe"
               }
             },
             "required": [
@@ -972,7 +972,7 @@
           "propertyName": "type"
         }
       },
-      "SourceStripeConfig": {
+      "SourceStripe": {
         "type": "object",
         "properties": {
           "api_key": {
@@ -1050,7 +1050,7 @@
         ],
         "additionalProperties": false
       },
-      "DestinationConfig": {
+      "Destination": {
         "oneOf": [
           {
             "type": "object",
@@ -1060,7 +1060,7 @@
                 "const": "postgres"
               },
               "postgres": {
-                "$ref": "#/components/schemas/DestinationPostgresConfig"
+                "$ref": "#/components/schemas/DestinationPostgres"
               }
             },
             "required": [
@@ -1076,7 +1076,7 @@
                 "const": "google-sheets"
               },
               "google-sheets": {
-                "$ref": "#/components/schemas/DestinationGoogleSheetsConfig"
+                "$ref": "#/components/schemas/DestinationGoogleSheets"
               }
             },
             "required": [
@@ -1090,7 +1090,7 @@
           "propertyName": "type"
         }
       },
-      "DestinationPostgresConfig": {
+      "DestinationPostgres": {
         "type": "object",
         "properties": {
           "url": {
@@ -1159,7 +1159,7 @@
         ],
         "additionalProperties": false
       },
-      "DestinationGoogleSheetsConfig": {
+      "DestinationGoogleSheets": {
         "type": "object",
         "properties": {
           "client_id": {

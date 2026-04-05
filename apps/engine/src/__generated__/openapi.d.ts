@@ -526,12 +526,12 @@ export interface components {
             /** @description Description of the event (for example, `invoice.created` or `charge.refunded`). */
             type: string;
         };
-        SourceConfig: {
+        Source: {
             /** @constant */
             type: "stripe";
-            stripe: components["schemas"]["SourceStripeConfig"];
+            stripe: components["schemas"]["SourceStripe"];
         };
-        SourceStripeConfig: {
+        SourceStripe: {
             /** @description Stripe API key (sk_test_... or sk_live_...) */
             api_key: string;
             /** @description Stripe account ID (resolved from API if omitted) */
@@ -567,16 +567,16 @@ export interface components {
             /** @description Number of time-range segments for parallel backfill (default: 200) */
             backfill_concurrency?: number;
         };
-        DestinationConfig: {
+        Destination: {
             /** @constant */
             type: "postgres";
-            postgres: components["schemas"]["DestinationPostgresConfig"];
+            postgres: components["schemas"]["DestinationPostgres"];
         } | {
             /** @constant */
             type: "google-sheets";
-            "google-sheets": components["schemas"]["DestinationGoogleSheetsConfig"];
+            "google-sheets": components["schemas"]["DestinationGoogleSheets"];
         };
-        DestinationPostgresConfig: {
+        DestinationPostgres: {
             /** @description Postgres connection string (alias for connection_string) */
             url?: string;
             /** @description Postgres connection string */
@@ -611,7 +611,7 @@ export interface components {
             /** @description PEM-encoded CA certificate for SSL verification (required for verify-ca / verify-full with a private CA) */
             ssl_ca_pem?: string;
         };
-        DestinationGoogleSheetsConfig: {
+        DestinationGoogleSheets: {
             /** @description Google OAuth2 client ID (env: GOOGLE_CLIENT_ID) */
             client_id?: string;
             /** @description Google OAuth2 client secret (env: GOOGLE_CLIENT_SECRET) */
@@ -645,9 +645,9 @@ export interface components {
             type: "stripe";
             stripe: components["schemas"]["SourceStripeInput"];
         };
-        PipelineConfig: {
-            source: components["schemas"]["SourceConfig"];
-            destination: components["schemas"]["DestinationConfig"];
+        Pipeline: {
+            source: components["schemas"]["Source"];
+            destination: components["schemas"]["Destination"];
             streams?: {
                 /** @description Stream (table) name to sync. */
                 name: string;

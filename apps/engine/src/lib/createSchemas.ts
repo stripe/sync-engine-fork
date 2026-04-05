@@ -14,14 +14,19 @@ function toPascal(name: string): string {
     .join('')
 }
 
-/** Payload-only schema name, e.g. SourceStripeConfig, DestinationPostgresConfig */
+/** OAS schema name, e.g. SourceStripe, DestinationPostgres */
 export function connectorSchemaName(name: string, role: 'Source' | 'Destination'): string {
-  return `${role}${toPascal(name)}Config`
+  return `${role}${toPascal(name)}`
 }
 
 /** Input payload schema name, e.g. SourceStripeInput */
 export function connectorInputSchemaName(name: string): string {
   return `Source${toPascal(name)}Input`
+}
+
+/** Union schema ID for a connector role, e.g. 'Source' → 'Source' */
+export function connectorUnionId(role: 'Source' | 'Destination'): typeof role {
+  return role
 }
 
 // ── Schema factory ───────────────────────────────────────────────
@@ -47,7 +52,7 @@ const StreamConfig = z.object({
  * Schemas are used for both runtime validation (via Zod transform+pipe in route headers)
  * and OAS 3.1 spec generation (zod-openapi auto-registers `.meta({ id })` as named components).
  *
- * Individual config schemas (e.g. `SourceStripeConfig`) contain only the raw connector
+ * Individual config schemas (e.g. `SourceStripe`) contain only the raw connector
  * payload — the `{ type, [connectorName]: payload }` envelope is defined at the union level.
  */
 export function createConnectorSchemas(resolver: ConnectorResolver) {
@@ -65,7 +70,7 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
     sourceVariants.length > 0
       ? z
           .discriminatedUnion('type', sourceVariants as [any, any, ...any[]])
-          .meta({ id: 'SourceConfig' })
+          .meta({ id: connectorUnionId('Source') })
       : z.object({ type: z.string() }).catchall(z.unknown())
 
   // Destination config discriminated union
@@ -82,7 +87,7 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
     destVariants.length > 0
       ? z
           .discriminatedUnion('type', destVariants as [any, any, ...any[]])
-          .meta({ id: 'DestinationConfig' })
+          .meta({ id: connectorUnionId('Destination') })
       : z.object({ type: z.string() }).catchall(z.unknown())
 
   // Source input discriminated union (only sources with rawInputJsonSchema)
@@ -110,7 +115,7 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
       destination: DestinationConfig,
       streams: z.array(StreamConfig).optional(),
     })
-    .meta({ id: 'PipelineConfig' })
+    .meta({ id: 'Pipeline' })
 
   return { SourceConfig, DestinationConfig, SourceInput, PipelineConfig }
 }
