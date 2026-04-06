@@ -7,7 +7,7 @@ import { SourceInputMessage } from '@stripe/sync-protocol'
 
 export type RowIndex = Record<string, Record<string, number>>
 
-export const stripeEventSignal = defineSignal<[SourceInputMessage]>('stripe_event')
+export const sourceInputSignal = defineSignal<[SourceInputMessage]>('source_input')
 /** Carries the new desired_status value — workflow updates its local state directly. */
 export const desiredStatusSignal = defineSignal<[DesiredStatus]>('desired_status')
 
@@ -16,7 +16,7 @@ export const { setup, teardown } = proxyActivities<SyncActivities>({
   retry: retryPolicy,
 })
 
-export const { syncImmediate } = proxyActivities<SyncActivities>({
+export const { pipelineSync } = proxyActivities<SyncActivities>({
   startToCloseTimeout: '10m',
   heartbeatTimeout: '2m',
   retry: retryPolicy,

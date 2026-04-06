@@ -1,6 +1,6 @@
 import { condition, continueAsNew, setHandler } from '@temporalio/workflow'
 
-import { desiredStatusSignal, syncImmediate, updatePipelineStatus } from './_shared.js'
+import { desiredStatusSignal, pipelineSync, updatePipelineStatus } from './_shared.js'
 import type { SourceState as SyncState } from '@stripe/sync-protocol'
 import { CONTINUE_AS_NEW_THRESHOLD } from '../../lib/utils.js'
 
@@ -49,7 +49,7 @@ export async function backfillPipelineWorkflow(
       continue
     }
 
-    const result = await syncImmediate(pipelineId, {
+    const result = await pipelineSync(pipelineId, {
       state: syncState,
       state_limit: 100,
       time_limit: 10,

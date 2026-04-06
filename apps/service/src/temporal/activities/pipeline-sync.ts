@@ -2,8 +2,8 @@ import type { SourceInputMessage, SourceReadOptions } from '@stripe/sync-engine'
 import type { ActivitiesContext } from './_shared.js'
 import { asIterable, drainMessages, type RunResult } from './_shared.js'
 
-export function createSyncImmediateActivity(context: ActivitiesContext) {
-  return async function syncImmediate(
+export function createPipelineSyncActivity(context: ActivitiesContext) {
+  return async function pipelineSync(
     pipelineId: string,
     opts?: SourceReadOptions & { input?: SourceInputMessage[] }
   ): Promise<RunResult & { eof?: { reason: string } }> {

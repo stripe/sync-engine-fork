@@ -9,10 +9,10 @@ export const DesiredStatus = z
   .describe('User-controlled lifecycle state.')
 export type DesiredStatus = z.infer<typeof DesiredStatus>
 
-export const WorkflowStatus = z
+export const PipelineStatus = z
   .enum(['setup', 'backfill', 'ready', 'paused', 'teardown', 'error'])
   .describe('Workflow-controlled execution state.')
-export type WorkflowStatus = z.infer<typeof WorkflowStatus>
+export type PipelineStatus = z.infer<typeof PipelineStatus>
 
 /**
  * Derive user-facing status from the two independent fields.
@@ -112,7 +112,7 @@ export function createSchemas(resolver: ConnectorResolver) {
     desired_status: DesiredStatus.default('active').describe(
       'User-controlled lifecycle state. Set via PATCH to pause, resume, or delete.'
     ),
-    status: WorkflowStatus.default('setup').describe(
+    status: PipelineStatus.default('setup').describe(
       'Workflow-controlled execution state. Updated by the Temporal workflow.'
     ),
   })

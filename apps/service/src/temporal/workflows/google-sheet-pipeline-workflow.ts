@@ -11,7 +11,7 @@ import {
   readGoogleSheetsIntoQueue,
   RowIndex,
   setup,
-  stripeEventSignal,
+  sourceInputSignal,
   teardown,
   updatePipelineStatus,
   writeGoogleSheetsFromQueue,
@@ -49,7 +49,7 @@ export async function googleSheetPipelineWorkflow(
   let readComplete = opts?.readComplete ?? false
   let pendingWrites = opts?.pendingWrites ?? false
 
-  setHandler(stripeEventSignal, (event: SourceInputMessage) => {
+  setHandler(sourceInputSignal, (event: SourceInputMessage) => {
     inputQueue.push(event)
   })
   setHandler(desiredStatusSignal, (status: string) => {

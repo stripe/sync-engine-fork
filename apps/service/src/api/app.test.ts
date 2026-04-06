@@ -132,7 +132,7 @@ function stubActivities(): SyncActivities {
   return {
     discoverCatalog: async () => ({ streams: [] }),
     setup: async () => ({}),
-    syncImmediate: async () => noErrors,
+    pipelineSync: async () => noErrors,
     readGoogleSheetsIntoQueue: async () => ({ count: 0, state: emptyState }),
     writeGoogleSheetsFromQueue: async () => ({
       errors: [],

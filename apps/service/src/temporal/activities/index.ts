@@ -3,7 +3,7 @@ import { createUpdatePipelineStatusActivity } from './update-pipeline-status.js'
 import { createDiscoverCatalogActivity } from './discover-catalog.js'
 import { createReadGoogleSheetsIntoQueueActivity } from './read-google-sheets-into-queue.js'
 import { createSetupActivity } from './setup.js'
-import { createSyncImmediateActivity } from './sync-immediate.js'
+import { createPipelineSyncActivity } from './pipeline-sync.js'
 import { createTeardownActivity } from './teardown.js'
 import { createWriteGoogleSheetsFromQueueActivity } from './write-google-sheets-from-queue.js'
 import type { PipelineStore } from '../../lib/stores.js'
@@ -20,7 +20,7 @@ export function createActivities(opts: {
   return {
     discoverCatalog: createDiscoverCatalogActivity(context),
     setup: createSetupActivity(context),
-    syncImmediate: createSyncImmediateActivity(context),
+    pipelineSync: createPipelineSyncActivity(context),
     readGoogleSheetsIntoQueue: createReadGoogleSheetsIntoQueueActivity(context),
     writeGoogleSheetsFromQueue: createWriteGoogleSheetsFromQueueActivity(context),
     teardown: createTeardownActivity(context),
