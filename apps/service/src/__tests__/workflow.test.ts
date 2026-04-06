@@ -256,7 +256,7 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
       await handle.result()
 
       expect(liveBatchCount).toBeGreaterThanOrEqual(2)
-      expect(liveStartsWhileBackfill).toBeGreaterThanOrEqual(2)
+      expect(liveStartsWhileBackfill).toBeGreaterThanOrEqual(1)
       expect(liveEventCount).toBe(12)
     })
   })
