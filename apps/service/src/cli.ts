@@ -12,7 +12,7 @@ import type { WorkflowClient } from '@temporalio/client'
 import { homedir } from 'node:os'
 import { logger } from './logger.js'
 
-const defaultDataDir = `${homedir()}/.stripe-sync`
+const defaultDataDir = process.env.DATA_DIR ?? `${homedir()}/.stripe-sync`
 
 const resolverPromise = createConnectorResolver({
   sources: { stripe: sourceStripe },
