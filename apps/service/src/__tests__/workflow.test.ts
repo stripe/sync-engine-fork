@@ -334,6 +334,54 @@ describe('pipelineWorkflow (unit — stubbed activities)', () => {
     })
   })
 
+  it('queues live events while paused and drains them after resume', async () => {
+    const syncCalls: { input?: SourceInput[] }[] = []
+
+    const worker = await Worker.create({
+      connection: testEnv.nativeConnection,
+      taskQueue: 'test-queue-3c',
+      workflowsPath,
+      activities: stubActivities({
+        pipelineSync: async (_pipelineId: string, opts?) => {
+          syncCalls.push({ input: opts?.input ?? undefined })
+          await new Promise((r) => setTimeout(r, 50))
+          return noErrors
+        },
+      }),
+    })
+
+    await worker.runUntil(async () => {
+      const handle = await testEnv.client.workflow.start('pipelineWorkflow', {
+        args: [testPipelineId],
+        workflowId: 'test-sync-3c',
+        taskQueue: 'test-queue-3c',
+      })
+
+      await new Promise((r) => setTimeout(r, 200))
+      await handle.signal('desired_status', 'paused')
+      await new Promise((r) => setTimeout(r, 200))
+
+      await signalSourceInput(handle, {
+        id: 'evt_paused',
+        type: 'customer.updated',
+      })
+
+      await new Promise((r) => setTimeout(r, 300))
+      expect(syncCalls.filter((c) => c.input).length).toBe(0)
+
+      await handle.signal('desired_status', 'active')
+      await new Promise((r) => setTimeout(r, 400))
+      await signalDelete(handle)
+      await handle.result()
+
+      const liveCalls = syncCalls.filter((c) => c.input)
+      expect(liveCalls).toHaveLength(1)
+      expect(liveCalls[0].input).toEqual([
+        expect.objectContaining({ id: 'evt_paused', type: 'customer.updated' }),
+      ])
+    })
+  })
+
   it('triggers teardown on delete', async () => {
     let teardownCalled = false
 
