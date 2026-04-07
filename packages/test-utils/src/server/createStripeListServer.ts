@@ -9,6 +9,8 @@ import { startDockerPostgres18, type DockerPostgres18Handle } from '../postgres/
 import type {
   StripeListServerOptions,
   StripeListServer,
+  StripeListServerAuthOptions,
+  StripeListServerFailureRule,
   PageResult,
   V1PageQuery,
   V2PageQuery,
@@ -75,6 +77,7 @@ export async function createStripeListServer(
   }
 
   const fakeAccount = makeFakeAccount(options.accountCreated ?? Math.floor(Date.now() / 1000))
+  const failureStates = (options.failures ?? []).map(() => ({ matches: 0, failures: 0 }))
 
   // ── Build Hono app ────────────────────────────────────────────
 
@@ -84,6 +87,19 @@ export async function createStripeListServer(
     await next()
     logRequest(c.req.method, c.req.path, c.res.status)
   })
+
+  for (const prefix of ['/v1/*', '/v2/*'] as const) {
+    app.use(prefix, async (c, next) => {
+      const intercepted = maybeInterceptStripeApiRequest(
+        c,
+        options.auth,
+        options.failures ?? [],
+        failureStates
+      )
+      if (intercepted) return intercepted
+      await next()
+    })
+  }
 
   app.get('/health', (c) =>
     c.json({
@@ -478,4 +494,115 @@ function redactConnectionString(connectionString: string): string {
   } catch {
     return connectionString
   }
+}
+
+function maybeInterceptStripeApiRequest(
+  c: Context,
+  auth: StripeListServerAuthOptions | undefined,
+  failures: StripeListServerFailureRule[],
+  failureStates: Array<{ matches: number; failures: number }>
+): Response | undefined {
+  const authFailure = maybeHandleAuthFailure(c, auth)
+  if (authFailure) return authFailure
+
+  return maybeHandleInjectedFailure(c, failures, failureStates)
+}
+
+function maybeHandleAuthFailure(
+  c: Context,
+  auth: StripeListServerAuthOptions | undefined
+): Response | undefined {
+  if (!auth) return undefined
+  const protectedPaths = auth.protectedPaths ?? ['/v1/*', '/v2/*']
+  if (!pathMatchesAny(c.req.path, protectedPaths)) return undefined
+
+  const bearerToken = extractBearerToken(c.req.header('authorization'))
+  if (bearerToken === auth.expectedBearerToken) return undefined
+
+  return c.json(
+    {
+      error: {
+        type: 'invalid_request_error',
+        message:
+          auth.errorMessage ??
+          (bearerToken ? `Invalid API Key provided: ${bearerToken}` : 'Invalid API Key provided'),
+      },
+    },
+    401
+  )
+}
+
+function maybeHandleInjectedFailure(
+  c: Context,
+  failures: StripeListServerFailureRule[],
+  failureStates: Array<{ matches: number; failures: number }>
+): Response | undefined {
+  for (const [index, rule] of failures.entries()) {
+    if (!matchesFailureRule(c.req.method, c.req.path, rule)) continue
+
+    const state = failureStates[index]!
+    state.matches += 1
+
+    const after = rule.after ?? 0
+    const times = rule.times ?? Number.POSITIVE_INFINITY
+    if (state.matches <= after || state.failures >= times) continue
+
+    state.failures += 1
+    return new Response(JSON.stringify(buildFailureBody(rule, c.req.method, c.req.path)), {
+      status: rule.status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  return undefined
+}
+
+function matchesFailureRule(
+  method: string,
+  path: string,
+  rule: StripeListServerFailureRule
+): boolean {
+  const expectedMethod = (rule.method ?? 'GET').toUpperCase()
+  if (method.toUpperCase() !== expectedMethod) return false
+  return matchesPathPattern(path, rule.path)
+}
+
+function buildFailureBody(
+  rule: StripeListServerFailureRule,
+  method: string,
+  path: string
+): Record<string, unknown> {
+  if (rule.body) return rule.body
+  if (rule.stripeError) {
+    return {
+      error: {
+        type: rule.stripeError.type ?? 'api_error',
+        message: rule.stripeError.message,
+        ...(rule.stripeError.code ? { code: rule.stripeError.code } : {}),
+      },
+    }
+  }
+  return {
+    error: {
+      type: 'api_error',
+      message: `Injected failure for ${method.toUpperCase()} ${path}`,
+    },
+  }
+}
+
+function pathMatchesAny(path: string, patterns: string[]): boolean {
+  return patterns.some((pattern) => matchesPathPattern(path, pattern))
+}
+
+function matchesPathPattern(path: string, pattern: string): boolean {
+  if (pattern.endsWith('*')) {
+    return path.startsWith(pattern.slice(0, -1))
+  }
+  return path === pattern
+}
+
+function extractBearerToken(header: string | undefined): string | null {
+  if (!header) return null
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim())
+  return match?.[1] ?? null
 }
