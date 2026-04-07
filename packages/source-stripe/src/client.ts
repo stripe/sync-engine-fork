@@ -7,6 +7,7 @@ import {
   type StripeApiList,
   type StripeWebhookEndpoint,
 } from '@stripe/sync-openapi'
+import { withHttpRetry } from '@stripe/sync-openapi/retry'
 import { stripeEventSchema, type StripeEvent } from './spec.js'
 import { fetchWithProxy, parsePositiveInteger, type TransportEnv } from './transport.js'
 
@@ -53,60 +54,68 @@ export function makeClient(config: StripeClientConfig, env: TransportEnv = proce
     path: string,
     params?: Record<string, unknown>
   ): Promise<unknown> {
-    const url = new URL(path, baseUrl)
+    const execute = async (): Promise<unknown> => {
+      const url = new URL(path, baseUrl)
 
-    let body: string | undefined
-    if (method === 'GET' && params) {
-      appendSearchParams(url.searchParams, params)
-    } else if (params) {
-      body = encodeFormData(params)
-    }
+      let body: string | undefined
+      if (method === 'GET' && params) {
+        appendSearchParams(url.searchParams, params)
+      } else if (params) {
+        body = encodeFormData(params)
+      }
 
-    if (logRequests) {
-      console.error({
-        msg: 'Stripe API request started',
-        method,
-        path,
-        apiVersion: config.api_version,
-      })
-    }
+      if (logRequests) {
+        console.error({
+          msg: 'Stripe API request started',
+          method,
+          path,
+          apiVersion: config.api_version,
+        })
+      }
 
-    const start = Date.now()
-    const response = await fetchWithProxy(
-      url.toString(),
-      {
-        method,
-        headers,
-        body,
-        signal: AbortSignal.timeout(timeoutMs),
-      },
-      env
-    )
-
-    const json = (await response.json()) as unknown
-
-    if (logRequests) {
-      console.error({
-        msg: 'Stripe API request completed',
-        method,
-        path,
-        status: response.status,
-        elapsed: Date.now() - start,
-        requestId: response.headers.get('request-id'),
-        apiVersion: config.api_version,
-      })
-    }
-
-    if (!response.ok) {
-      const parsed = StripeApiErrorSchema.safeParse(json)
-      throw new StripeRequestError(
-        response.status,
-        parsed.success ? parsed.data.error : undefined,
-        response.headers.get('request-id') ?? undefined
+      const start = Date.now()
+      const response = await fetchWithProxy(
+        url.toString(),
+        {
+          method,
+          headers,
+          body,
+          signal: AbortSignal.timeout(timeoutMs),
+        },
+        env
       )
+
+      const json = (await response.json()) as unknown
+
+      if (logRequests) {
+        console.error({
+          msg: 'Stripe API request completed',
+          method,
+          path,
+          status: response.status,
+          elapsed: Date.now() - start,
+          requestId: response.headers.get('request-id'),
+          apiVersion: config.api_version,
+        })
+      }
+
+      if (!response.ok) {
+        const parsed = StripeApiErrorSchema.safeParse(json)
+        throw new StripeRequestError(
+          response.status,
+          parsed.success ? parsed.data.error : undefined,
+          response.headers.get('request-id') ?? undefined
+        )
+      }
+
+      return json
     }
 
-    return json
+    if (method === 'GET') {
+      return withHttpRetry(execute)
+    }
+
+    return execute()
   }
 
   return {

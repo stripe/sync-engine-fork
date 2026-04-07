@@ -22,6 +22,8 @@ export type {
   RetrieveFn,
   ListParams,
 } from './listFnResolver.js'
+export { withHttpRetry, isRetryableHttpError, getHttpErrorStatus } from './retry.js'
+export type { HttpRetryOptions } from './retry.js'
 export { parsedTableToJsonSchema } from './jsonSchemaConverter.js'
 export {
   StripeAccountSchema,

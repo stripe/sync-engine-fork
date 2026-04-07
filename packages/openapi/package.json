@@ -8,6 +8,11 @@
       "bun": "./index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./retry": {
+      "bun": "./retry.ts",
+      "types": "./dist/retry.d.ts",
+      "import": "./dist/retry.js"
     }
   },
   "scripts": {

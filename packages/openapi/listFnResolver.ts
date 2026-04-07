@@ -1,5 +1,6 @@
 import type { OpenApiSchemaObject, OpenApiSpec } from './types.js'
 import { OPENAPI_RESOURCE_TABLE_ALIASES } from './runtimeMappings.js'
+import { withHttpRetry } from './retry.js'
 
 const SCHEMA_REF_PREFIX = '#/components/schemas/'
 
@@ -211,6 +212,51 @@ function authHeaders(apiKey: string): Record<string, string> {
   return { Authorization: `Bearer ${apiKey}` }
 }
 
+class StripeApiRequestError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly body: unknown,
+    method: string,
+    path: string
+  ) {
+    super(extractErrorMessage(body, status, method, path))
+    this.name = 'StripeApiRequestError'
+  }
+}
+
+function extractErrorMessage(body: unknown, status: number, method: string, path: string): string {
+  if (
+    body &&
+    typeof body === 'object' &&
+    'error' in body &&
+    body.error &&
+    typeof body.error === 'object' &&
+    'message' in body.error &&
+    typeof body.error.message === 'string'
+  ) {
+    return body.error.message
+  }
+
+  return `Stripe API request failed (${status}) for ${method.toUpperCase()} ${path}`
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  const text = await response.text()
+  if (!text) return null
+
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return text
+  }
+}
+
+function assertOk(response: Response, body: unknown, method: string, path: string): void {
+  if (!response.ok) {
+    throw new StripeApiRequestError(response.status, body, method, path)
+  }
+}
+
 /**
  * Build a callable list function that hits the Stripe HTTP API directly.
  * Supports both v1 (has_more pagination) and v2 (next_page_url pagination).
@@ -225,7 +271,8 @@ export function buildListFn(
   const base = baseUrl ?? DEFAULT_STRIPE_API_BASE
 
   if (isV2Path(apiPath)) {
-    return async (params) => {
+    return async (params) =>
+      withHttpRetry(async () => {
       const qs = new URLSearchParams()
       qs.set('limit', String(Math.min(params.limit ?? 20, 20)))
       if (params.starting_after) qs.set('page', params.starting_after)
@@ -234,16 +281,18 @@ export function buildListFn(
       if (apiVersion) headers['Stripe-Version'] = apiVersion
 
       const response = await fetch(`${base}${apiPath}?${qs}`, { headers })
-      const body = (await response.json()) as {
+      const parsed = (await readJson(response)) as {
         data: unknown[]
         next_page_url?: string | null
       }
-      const pageCursor = extractPageToken(body.next_page_url)
-      return { data: body.data ?? [], has_more: !!body.next_page_url, pageCursor }
-    }
+      assertOk(response, parsed, 'GET', apiPath)
+      const pageCursor = extractPageToken(parsed.next_page_url)
+      return { data: parsed.data ?? [], has_more: !!parsed.next_page_url, pageCursor }
+      })
   }
 
-  return async (params) => {
+  return async (params) =>
+    withHttpRetry(async () => {
     const qs = new URLSearchParams()
     if (params.limit != null) qs.set('limit', String(params.limit))
     if (params.starting_after) qs.set('starting_after', params.starting_after)
@@ -257,9 +306,10 @@ export function buildListFn(
     const response = await fetch(`${base}${apiPath}?${qs}`, {
       headers: authHeaders(apiKey),
     })
-    const body = (await response.json()) as { data: unknown[]; has_more: boolean }
+    const body = (await readJson(response)) as { data: unknown[]; has_more: boolean }
+    assertOk(response, body, 'GET', apiPath)
     return { data: body.data ?? [], has_more: body.has_more }
-  }
+    })
 }
 
 /**
@@ -275,21 +325,27 @@ export function buildRetrieveFn(
   const base = baseUrl ?? DEFAULT_STRIPE_API_BASE
 
   if (isV2Path(apiPath)) {
-    return async (id) => {
+    return async (id) =>
+      withHttpRetry(async () => {
       const headers = authHeaders(apiKey)
       if (apiVersion) headers['Stripe-Version'] = apiVersion
 
       const response = await fetch(`${base}${apiPath}/${id}`, { headers })
-      return await response.json()
-    }
+      const body = await readJson(response)
+      assertOk(response, body, 'GET', `${apiPath}/${id}`)
+      return body
+      })
   }
 
-  return async (id) => {
+  return async (id) =>
+    withHttpRetry(async () => {
     const response = await fetch(`${base}${apiPath}/${id}`, {
       headers: authHeaders(apiKey),
     })
-    return await response.json()
-  }
+    const body = await readJson(response)
+    assertOk(response, body, 'GET', `${apiPath}/${id}`)
+    return body
+    })
 }
 
 function extractPageToken(nextPageUrl: string | null | undefined): string | undefined {

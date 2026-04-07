@@ -341,7 +341,7 @@ describe('Stripe failure handling via Docker engine', () => {
     expect(state.streams.products).toMatchObject({ status: 'complete' })
   }, 120_000)
 
-  it('persists partial rows and pending state when a later pagination request fails', async () => {
+  it('retries a later transient pagination failure and completes the stream', async () => {
     const destSchema = uniqueSchema('sync_partial_failure')
     await seedCustomers(generateCustomers(150, 'cus_partial_'))
 
@@ -366,20 +366,8 @@ describe('Stripe failure handling via Docker engine', () => {
       sourceOverrides: { backfill_concurrency: 1 },
     })
 
-    const customerError = getErrorTrace(messages, 'customers')
-    expect(customerError).toBeDefined()
-    expect(customerError).toMatchObject({
-      type: 'trace',
-      trace: {
-        trace_type: 'error',
-        error: {
-          failure_type: 'system_error',
-          stream: 'customers',
-          message: expect.stringContaining('Injected page 2 failure'),
-        },
-      },
-    })
-    expect(await countRows(destSchema, 'customers')).toBe(100)
-    expect(state.streams.customers).toMatchObject({ status: 'pending' })
+    expect(getErrorTrace(messages, 'customers')).toBeUndefined()
+    expect(await countRows(destSchema, 'customers')).toBe(150)
+    expect(state.streams.customers).toMatchObject({ status: 'complete' })
   }, 120_000)
 })

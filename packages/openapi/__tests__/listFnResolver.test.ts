@@ -1,6 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildListFn, buildRetrieveFn, discoverListEndpoints } from '../listFnResolver'
 import { minimalStripeOpenApiSpec } from './fixtures/minimalSpec'
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe('discoverListEndpoints', () => {
   it('maps table names to their API paths', () => {
@@ -116,5 +120,78 @@ describe('discoverListEndpoints', () => {
       expect.stringContaining('http://localhost:12111'),
       expect.anything()
     )
+  })
+
+  it('retries transient list failures and eventually succeeds', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: { type: 'api_error', message: 'Temporary outage' },
+          }),
+          { status: 500 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ id: 'cus_123' }], has_more: false }), { status: 200 })
+      )
+    const list = buildListFn('sk_test_fake', '/v1/customers', fetchMock)
+
+    const pending = list({ limit: 1 })
+    await vi.runAllTimersAsync()
+
+    await expect(pending).resolves.toEqual({ data: [{ id: 'cus_123' }], has_more: false })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('throws the Stripe error message for non-2xx list responses', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: { type: 'invalid_request_error', message: 'Invalid API Key provided: sk_test_bad' },
+          }),
+          { status: 401 }
+        )
+    )
+    const list = buildListFn('sk_test_bad', '/v1/customers', fetchMock)
+
+    await expect(list({ limit: 1 })).rejects.toThrow('Invalid API Key provided: sk_test_bad')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('throws for v2 non-2xx list responses', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: { type: 'api_error', message: 'Injected page failure' },
+          }),
+          { status: 500 }
+        )
+    )
+    const list = buildListFn('sk_test_fake', '/v2/core/accounts', fetchMock)
+
+    const pending = expect(list({ limit: 1 })).rejects.toThrow('Injected page failure')
+    await vi.runAllTimersAsync()
+    await pending
+  })
+
+  it('throws the Stripe error message for non-2xx retrieve responses', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: { type: 'invalid_request_error', message: "No such customer: 'cus_missing'" },
+          }),
+          { status: 404 }
+        )
+    )
+    const retrieve = buildRetrieveFn('sk_test_fake', '/v1/customers', fetchMock)
+
+    await expect(retrieve('cus_missing')).rejects.toThrow("No such customer: 'cus_missing'")
   })
 })
