@@ -7,7 +7,9 @@ import {
   ensureSchema,
   startDockerPostgres18,
   type DockerPostgres18Handle,
+  type SeedCustomersForListServerOptions,
   type StripeListServer,
+  type StripeListServerOptions,
 } from '@stripe/sync-test-utils'
 
 export const SERVICE_URL = process.env.SERVICE_URL ?? 'http://localhost:4020'
@@ -28,6 +30,17 @@ export function utc(date: string): number {
 
 export const RANGE_START = utc('2021-04-03')
 export const RANGE_END = utc('2026-04-02')
+
+export type StartServiceHarnessOptions = {
+  customerCount?: number
+  seedBatchSize?: number
+  seedCustomers?: Partial<
+    Omit<SeedCustomersForListServerOptions, 'count' | 'batchSize' | 'createdRange'>
+  >
+  listServer?: Partial<
+    Omit<StripeListServerOptions, 'postgresUrl' | 'host' | 'port' | 'seedCustomers'>
+  >
+}
 
 export async function pollUntil(
   fn: () => Promise<boolean>,
@@ -89,8 +102,10 @@ export async function ensureServiceStack(): Promise<void> {
   if (SKIP_SETUP) {
     console.log('\n  SKIP_SETUP=1 — ensuring stripe-mock is up')
     await ensureStripeMock()
-  } else {
+  } else if (!(await isServiceHealthy())) {
     await ensureDockerStack()
+  } else {
+    await ensureStripeMock()
   }
   await pollUntil(isServiceHealthy, { timeout: 60_000 })
 }
@@ -112,6 +127,38 @@ function pool(connectionString: string): pg.Pool {
   const next = new pg.Pool({ connectionString })
   next.on('error', () => {})
   return next
+}
+
+function dockerOutput(command: string): string {
+  return execSync(command, { cwd: REPO_ROOT, encoding: 'utf8' }).trim()
+}
+
+export function composeContainerId(serviceName: string): string {
+  const containerId = dockerOutput(`${COMPOSE_CMD} ps -q ${serviceName}`)
+  if (!containerId) {
+    throw new Error(`No running container found for compose service "${serviceName}"`)
+  }
+  return containerId
+}
+
+export function pauseDockerContainer(containerId: string): void {
+  execSync(`docker pause ${containerId}`, { cwd: REPO_ROOT, stdio: 'pipe' })
+}
+
+export function unpauseDockerContainer(containerId: string): void {
+  execSync(`docker unpause ${containerId}`, { cwd: REPO_ROOT, stdio: 'pipe' })
+}
+
+export function pauseComposeService(serviceName: string): string {
+  const containerId = composeContainerId(serviceName)
+  pauseDockerContainer(containerId)
+  return containerId
+}
+
+export function unpauseComposeService(serviceName: string): string {
+  const containerId = composeContainerId(serviceName)
+  unpauseDockerContainer(containerId)
+  return containerId
 }
 
 async function fetchObjectTemplate(
@@ -141,21 +188,28 @@ export type ServiceHarness = {
   close: () => Promise<void>
 }
 
-export async function startServiceHarness(): Promise<ServiceHarness> {
+export async function startServiceHarness(
+  options: StartServiceHarnessOptions = {}
+): Promise<ServiceHarness> {
   await ensureServiceStack()
 
-  const [sourceDocker, destDocker] = await Promise.all([startDockerPostgres18(), startDockerPostgres18()])
+  const [sourceDocker, destDocker] = await Promise.all([
+    startDockerPostgres18(),
+    startDockerPostgres18(),
+  ])
   const destPool = pool(destDocker.connectionString)
   const testServer = await createStripeListServer({
+    ...options.listServer,
     postgresUrl: sourceDocker.connectionString,
     host: '0.0.0.0',
     port: 0,
-    accountCreated: RANGE_START,
+    accountCreated: options.listServer?.accountCreated ?? RANGE_START,
     seedCustomers: {
       stripeMockUrl: STRIPE_MOCK_URL,
-      count: CUSTOMER_COUNT,
-      batchSize: SEED_BATCH,
+      count: options.customerCount ?? CUSTOMER_COUNT,
+      batchSize: options.seedBatchSize ?? SEED_BATCH,
       createdRange: { startUnix: RANGE_START, endUnix: RANGE_END },
+      ...options.seedCustomers,
     },
   })
   const expectedIds = testServer.seededCustomerIds ?? []
