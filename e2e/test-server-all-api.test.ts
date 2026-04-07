@@ -17,16 +17,12 @@ import { createConnectorResolver, createEngine, type PipelineConfig } from '@str
 import { SUPPORTED_API_VERSIONS, resolveOpenApiSpec } from '@stripe/sync-openapi'
 import destinationPostgres from '@stripe/sync-destination-postgres'
 import sourceStripe, { type StripeStreamState } from '@stripe/sync-source-stripe'
+import { ensureStripeMock, STRIPE_MOCK_URL, utc } from './test-server-harness.js'
 
-const STRIPE_MOCK_URL = process.env.STRIPE_MOCK_URL ?? 'http://localhost:12111'
 const SOURCE_SCHEMA = 'stripe'
 const SEED_BATCH = 12000
 const OBJECTS_PER_STREAM = 1200
 const RATE_LIMIT = 10000
-
-function utc(date: string): number {
-  return Math.floor(new Date(date + 'T00:00:00Z').getTime() / 1000)
-}
 
 const RANGE_START = utc('2025-01-01')
 const RANGE_END = utc('2026-01-01')
@@ -43,23 +39,6 @@ let githubToken: string | null | undefined
 type StreamSeed = {
   tableName: string
   objectIds: string[]
-}
-
-async function ensureStripeMock(): Promise<void> {
-  execSync('docker compose up -d stripe-mock', {
-    cwd: new URL('..', import.meta.url).pathname,
-    stdio: 'pipe',
-  })
-  for (let i = 0; i < 30; i++) {
-    try {
-      const res = await fetch(`${STRIPE_MOCK_URL}/v1/customers`, {
-        headers: { Authorization: 'Bearer sk_test_fake' },
-      })
-      if (res.ok) return
-    } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }
-  throw new Error('stripe-mock did not become ready')
 }
 
 async function fetchTemplates(endpoint: string): Promise<Record<string, unknown>[]> {
