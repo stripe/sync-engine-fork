@@ -760,7 +760,7 @@ jobs:
         run: pnpm install --frozen-lockfile && pnpm build
 
       - name: CDN e2e tests
-        run: pnpm --filter @stripe/sync-e2e run test -- openapi-cdn.test.ts
+        run: pnpm --filter @stripe/sync-e2e exec vitest run openapi-cdn.test.ts
         env:
           STRIPE_SPEC_CDN_BASE_URL: ${{ needs.docs.outputs.deployment_url }}/stripe-api-specs
 
