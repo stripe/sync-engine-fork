@@ -19,7 +19,7 @@ export async function startDockerPostgres18(): Promise<DockerPostgres18Handle> {
   try {
     containerId = execSync(
       [
-        'docker run -d -p 0:5432',
+        'docker run -d --rm -p 0:5432',
         '-e POSTGRES_PASSWORD=postgres',
         '-e POSTGRES_DB=postgres',
         'postgres:18',
@@ -54,11 +54,26 @@ export async function startDockerPostgres18(): Promise<DockerPostgres18Handle> {
   const connectionString = `postgresql://postgres:postgres@localhost:${hostPort}/postgres`
   await waitForPostgres(connectionString)
 
+  let stopped = false
+  const cleanupOnExit = () => {
+    if (stopped) return
+    stopped = true
+    try {
+      execSync(`docker rm -fv ${containerId}`, { stdio: 'ignore' })
+    } catch {}
+  }
+  process.once('exit', cleanupOnExit)
+
   return {
     containerId,
     hostPort,
     connectionString,
-    stop: () => stopContainer(containerId),
+    stop: async () => {
+      if (stopped) return
+      stopped = true
+      process.off('exit', cleanupOnExit)
+      await stopContainer(containerId)
+    },
   }
 }
 
@@ -81,7 +96,7 @@ async function waitForPostgres(connectionString: string): Promise<void> {
 
 function stopContainer(containerId: string): Promise<void> {
   return new Promise((resolve) => {
-    exec(`docker rm -f ${containerId}`, () => resolve())
+    exec(`docker rm -fv ${containerId}`, () => resolve())
   })
 }
 

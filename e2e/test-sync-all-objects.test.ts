@@ -26,6 +26,7 @@ const STRIPE_MOCK_URL = 'http://localhost:12111'
 const OBJECTS_PER_STREAM = 10_000
 const SEED_BATCH = 1000
 const RATE_LIMIT = 1_000
+const KEEP_TEST_DBS = process.env.KEEP_TEST_DBS === '1'
 
 // ---------------------------------------------------------------------------
 // State
@@ -183,9 +184,15 @@ describe('test-server all objects', () => {
 
   afterAll(async () => {
     await testServer?.close().catch(() => {})
-    // Leave DB running for debugging — connection strings are printed in beforeAll
-    console.log(`  Source PG still running: ${sourceDocker?.connectionString}`)
-    console.log(`  Dest PG still running:   ${destDocker?.connectionString}`)
+    await sourcePool?.end().catch(() => {})
+    await destPool?.end().catch(() => {})
+    if (KEEP_TEST_DBS) {
+      console.log(`  Source PG still running: ${sourceDocker?.connectionString}`)
+      console.log(`  Dest PG still running:   ${destDocker?.connectionString}`)
+      return
+    }
+    await destDocker?.stop()
+    await sourceDocker?.stop()
   }, 60_000)
 
   // ---------------------------------------------------------------------------

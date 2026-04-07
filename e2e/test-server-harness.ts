@@ -72,6 +72,15 @@ async function isEngineHealthy(): Promise<boolean> {
   }
 }
 
+function pruneDockerBuildCache(): void {
+  try {
+    execSync('docker builder prune -f --keep-storage 2GB', {
+      cwd: REPO_ROOT,
+      stdio: 'pipe',
+    })
+  } catch {}
+}
+
 async function ensureDockerStack(): Promise<void> {
   console.log('\n  Building packages...')
   execSync('pnpm build', { cwd: REPO_ROOT, stdio: 'inherit' })
@@ -80,6 +89,7 @@ async function ensureDockerStack(): Promise<void> {
     cwd: REPO_ROOT,
     stdio: 'inherit',
   })
+  pruneDockerBuildCache()
   console.log('  Waiting for service health...')
   await pollUntil(isServiceHealthy, { timeout: 180_000 })
 }
@@ -102,10 +112,8 @@ export async function ensureServiceStack(): Promise<void> {
   if (SKIP_SETUP) {
     console.log('\n  SKIP_SETUP=1 — ensuring stripe-mock is up')
     await ensureStripeMock()
-  } else if (!(await isServiceHealthy())) {
-    await ensureDockerStack()
   } else {
-    await ensureStripeMock()
+    await ensureDockerStack()
   }
   await pollUntil(isServiceHealthy, { timeout: 60_000 })
 }
@@ -114,10 +122,8 @@ export async function ensureEngineStack(): Promise<void> {
   if (SKIP_SETUP) {
     console.log('\n  SKIP_SETUP=1 — ensuring stripe-mock is up')
     await ensureStripeMock()
-  } else if (!(await isEngineHealthy())) {
-    await ensureDockerStack()
   } else {
-    await ensureStripeMock()
+    await ensureDockerStack()
   }
 
   await pollUntil(isEngineHealthy, { timeout: 60_000 })
