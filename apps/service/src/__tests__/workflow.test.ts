@@ -14,7 +14,9 @@ const workflowsPath = path.resolve(process.cwd(), 'dist/temporal/workflows/index
 const emptyState = { streams: {}, global: {} }
 const noErrors: RunResult = { errors: [], state: emptyState }
 const permanentSyncError: RunResult = {
-  errors: [{ message: 'permanent sync failure', failure_type: 'system_error', stream: 'customers' }],
+  errors: [
+    { message: 'permanent sync failure', failure_type: 'system_error', stream: 'customers' },
+  ],
   state: emptyState,
 }
 

@@ -68,10 +68,9 @@ describe('makeClient', () => {
         )
       )
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ id: 'acct_test', object: 'account', created: 123 }),
-          { status: 200 }
-        )
+        new Response(JSON.stringify({ id: 'acct_test', object: 'account', created: 123 }), {
+          status: 200,
+        })
       )
     globalThis.fetch = fetchMock
 
@@ -87,7 +86,10 @@ describe('makeClient', () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          error: { type: 'invalid_request_error', message: 'Invalid API Key provided: sk_test_bad' },
+          error: {
+            type: 'invalid_request_error',
+            message: 'Invalid API Key provided: sk_test_bad',
+          },
         }),
         { status: 401 }
       )

@@ -273,42 +273,42 @@ export function buildListFn(
   if (isV2Path(apiPath)) {
     return async (params) =>
       withHttpRetry(async () => {
-      const qs = new URLSearchParams()
-      qs.set('limit', String(Math.min(params.limit ?? 20, 20)))
-      if (params.starting_after) qs.set('page', params.starting_after)
+        const qs = new URLSearchParams()
+        qs.set('limit', String(Math.min(params.limit ?? 20, 20)))
+        if (params.starting_after) qs.set('page', params.starting_after)
 
-      const headers = authHeaders(apiKey)
-      if (apiVersion) headers['Stripe-Version'] = apiVersion
+        const headers = authHeaders(apiKey)
+        if (apiVersion) headers['Stripe-Version'] = apiVersion
 
-      const response = await fetch(`${base}${apiPath}?${qs}`, { headers })
-      const parsed = (await readJson(response)) as {
-        data: unknown[]
-        next_page_url?: string | null
-      }
-      assertOk(response, parsed, 'GET', apiPath)
-      const pageCursor = extractPageToken(parsed.next_page_url)
-      return { data: parsed.data ?? [], has_more: !!parsed.next_page_url, pageCursor }
+        const response = await fetch(`${base}${apiPath}?${qs}`, { headers })
+        const parsed = (await readJson(response)) as {
+          data: unknown[]
+          next_page_url?: string | null
+        }
+        assertOk(response, parsed, 'GET', apiPath)
+        const pageCursor = extractPageToken(parsed.next_page_url)
+        return { data: parsed.data ?? [], has_more: !!parsed.next_page_url, pageCursor }
       })
   }
 
   return async (params) =>
     withHttpRetry(async () => {
-    const qs = new URLSearchParams()
-    if (params.limit != null) qs.set('limit', String(params.limit))
-    if (params.starting_after) qs.set('starting_after', params.starting_after)
-    if (params.ending_before) qs.set('ending_before', params.ending_before)
-    if (params.created) {
-      for (const [op, val] of Object.entries(params.created)) {
-        if (val != null) qs.set(`created[${op}]`, String(val))
+      const qs = new URLSearchParams()
+      if (params.limit != null) qs.set('limit', String(params.limit))
+      if (params.starting_after) qs.set('starting_after', params.starting_after)
+      if (params.ending_before) qs.set('ending_before', params.ending_before)
+      if (params.created) {
+        for (const [op, val] of Object.entries(params.created)) {
+          if (val != null) qs.set(`created[${op}]`, String(val))
+        }
       }
-    }
 
-    const response = await fetch(`${base}${apiPath}?${qs}`, {
-      headers: authHeaders(apiKey),
-    })
-    const body = (await readJson(response)) as { data: unknown[]; has_more: boolean }
-    assertOk(response, body, 'GET', apiPath)
-    return { data: body.data ?? [], has_more: body.has_more }
+      const response = await fetch(`${base}${apiPath}?${qs}`, {
+        headers: authHeaders(apiKey),
+      })
+      const body = (await readJson(response)) as { data: unknown[]; has_more: boolean }
+      assertOk(response, body, 'GET', apiPath)
+      return { data: body.data ?? [], has_more: body.has_more }
     })
 }
 
@@ -327,24 +327,24 @@ export function buildRetrieveFn(
   if (isV2Path(apiPath)) {
     return async (id) =>
       withHttpRetry(async () => {
-      const headers = authHeaders(apiKey)
-      if (apiVersion) headers['Stripe-Version'] = apiVersion
+        const headers = authHeaders(apiKey)
+        if (apiVersion) headers['Stripe-Version'] = apiVersion
 
-      const response = await fetch(`${base}${apiPath}/${id}`, { headers })
-      const body = await readJson(response)
-      assertOk(response, body, 'GET', `${apiPath}/${id}`)
-      return body
+        const response = await fetch(`${base}${apiPath}/${id}`, { headers })
+        const body = await readJson(response)
+        assertOk(response, body, 'GET', `${apiPath}/${id}`)
+        return body
       })
   }
 
   return async (id) =>
     withHttpRetry(async () => {
-    const response = await fetch(`${base}${apiPath}/${id}`, {
-      headers: authHeaders(apiKey),
-    })
-    const body = await readJson(response)
-    assertOk(response, body, 'GET', `${apiPath}/${id}`)
-    return body
+      const response = await fetch(`${base}${apiPath}/${id}`, {
+        headers: authHeaders(apiKey),
+      })
+      const body = await readJson(response)
+      assertOk(response, body, 'GET', `${apiPath}/${id}`)
+      return body
     })
 }
 

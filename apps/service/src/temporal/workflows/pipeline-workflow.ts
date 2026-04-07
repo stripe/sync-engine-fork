@@ -82,7 +82,9 @@ export async function pipelineWorkflow(
    * no longer active or because the workflow should roll over into continue-as-new.
    */
   function runInterrupted() {
-    return desiredStatus !== 'active' || operationCount >= CONTINUE_AS_NEW_THRESHOLD || !!state.errored
+    return (
+      desiredStatus !== 'active' || operationCount >= CONTINUE_AS_NEW_THRESHOLD || !!state.errored
+    )
   }
 
   async function markPermanentError(): Promise<void> {

@@ -75,7 +75,9 @@ export function isRetryableHttpError(err: unknown): boolean {
   }
 
   const message = err.message.toLowerCase()
-  return message.includes('fetch failed') || message.includes('network') || message.includes('timeout')
+  return (
+    message.includes('fetch failed') || message.includes('network') || message.includes('timeout')
+  )
 }
 
 function sleep(ms: number): Promise<void> {

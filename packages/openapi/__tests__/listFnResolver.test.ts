@@ -135,7 +135,9 @@ describe('discoverListEndpoints', () => {
         )
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ data: [{ id: 'cus_123' }], has_more: false }), { status: 200 })
+        new Response(JSON.stringify({ data: [{ id: 'cus_123' }], has_more: false }), {
+          status: 200,
+        })
       )
     const list = buildListFn('sk_test_fake', '/v1/customers', fetchMock)
 
@@ -151,7 +153,10 @@ describe('discoverListEndpoints', () => {
       async () =>
         new Response(
           JSON.stringify({
-            error: { type: 'invalid_request_error', message: 'Invalid API Key provided: sk_test_bad' },
+            error: {
+              type: 'invalid_request_error',
+              message: 'Invalid API Key provided: sk_test_bad',
+            },
           }),
           { status: 401 }
         )
