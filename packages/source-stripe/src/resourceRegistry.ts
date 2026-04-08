@@ -14,6 +14,11 @@ import { fetchWithProxy } from './transport.js'
 const apiFetch: typeof globalThis.fetch = (input, init) =>
   fetchWithProxy(input as URL | string, init ?? {})
 
+/**
+ * Wrap a raw list function so only params the endpoint actually supports are forwarded.
+ * Some Stripe endpoints (e.g. reporting_report_types) don't accept `limit` or
+ * `starting_after`; sending them causes 400 errors.
+ */
 function buildSpecAwareListFn(
   baseListFn: ListFn,
   options: {

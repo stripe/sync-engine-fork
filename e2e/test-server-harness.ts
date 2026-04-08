@@ -2,19 +2,24 @@ import { execSync } from 'node:child_process'
 import path from 'node:path'
 import pg from 'pg'
 import {
+  applyCreatedTimestampRange,
   createStripeListServer,
   ensureObjectTable,
   ensureSchema,
   startDockerPostgres18,
+  upsertObjects,
   type DockerPostgres18Handle,
-  type SeedCustomersForListServerOptions,
   type StripeListServer,
   type StripeListServerOptions,
 } from '@stripe/sync-test-utils'
+import {
+  BUNDLED_API_VERSION,
+  generateObjectsFromSchema,
+  resolveOpenApiSpec,
+} from '@stripe/sync-openapi'
 
 export const SERVICE_URL = process.env.SERVICE_URL ?? 'http://localhost:4020'
 export const ENGINE_URL = process.env.ENGINE_URL ?? 'http://localhost:4010'
-export const STRIPE_MOCK_URL = process.env.STRIPE_MOCK_URL ?? 'http://localhost:12111'
 export const CONTAINER_HOST = process.env.CONTAINER_HOST ?? 'host.docker.internal'
 export const SKIP_SETUP = process.env.SKIP_SETUP === '1'
 export const REPO_ROOT = path.resolve(import.meta.dirname, '..')
@@ -34,12 +39,7 @@ export const RANGE_END = utc('2026-04-02')
 export type StartServiceHarnessOptions = {
   customerCount?: number
   seedBatchSize?: number
-  seedCustomers?: Partial<
-    Omit<SeedCustomersForListServerOptions, 'count' | 'batchSize' | 'createdRange'>
-  >
-  listServer?: Partial<
-    Omit<StripeListServerOptions, 'postgresUrl' | 'host' | 'port' | 'seedCustomers'>
-  >
+  listServer?: Partial<Omit<StripeListServerOptions, 'postgresUrl' | 'host' | 'port'>>
 }
 
 export async function pollUntil(
@@ -72,60 +72,29 @@ async function isEngineHealthy(): Promise<boolean> {
   }
 }
 
-function pruneDockerBuildCache(): void {
-  try {
-    execSync('docker builder prune -f --keep-storage 2GB', {
-      cwd: REPO_ROOT,
-      stdio: 'pipe',
-    })
-  } catch {}
-}
-
 async function ensureDockerStack(): Promise<void> {
   console.log('\n  Building packages...')
   execSync('pnpm build', { cwd: REPO_ROOT, stdio: 'inherit' })
   console.log('  Starting Docker stack...')
-  execSync(`${COMPOSE_CMD} up --build -d stripe-mock temporal engine service worker`, {
+  execSync(`${COMPOSE_CMD} up --build -d temporal engine service worker`, {
     cwd: REPO_ROOT,
     stdio: 'inherit',
   })
-  pruneDockerBuildCache()
   console.log('  Waiting for service health...')
   await pollUntil(isServiceHealthy, { timeout: 180_000 })
 }
 
-export async function ensureStripeMock(): Promise<void> {
-  execSync('docker compose up -d stripe-mock', { cwd: REPO_ROOT, stdio: 'pipe' })
-  for (let i = 0; i < 60; i++) {
-    try {
-      const res = await fetch(`${STRIPE_MOCK_URL}/v1/customers`, {
-        headers: { Authorization: 'Bearer sk_test_fake' },
-      })
-      if (res.ok) return
-    } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-  }
-  throw new Error('stripe-mock did not become ready')
-}
-
 export async function ensureServiceStack(): Promise<void> {
-  if (SKIP_SETUP) {
-    console.log('\n  SKIP_SETUP=1 — ensuring stripe-mock is up')
-    await ensureStripeMock()
-  } else {
+  if (!SKIP_SETUP) {
     await ensureDockerStack()
   }
   await pollUntil(isServiceHealthy, { timeout: 60_000 })
 }
 
 export async function ensureEngineStack(): Promise<void> {
-  if (SKIP_SETUP) {
-    console.log('\n  SKIP_SETUP=1 — ensuring stripe-mock is up')
-    await ensureStripeMock()
-  } else {
+  if (!SKIP_SETUP) {
     await ensureDockerStack()
   }
-
   await pollUntil(isEngineHealthy, { timeout: 60_000 })
 }
 
@@ -167,20 +136,16 @@ export function unpauseComposeService(serviceName: string): string {
   return containerId
 }
 
-async function fetchObjectTemplate(
-  endpoint: string,
-  body?: string
-): Promise<Record<string, unknown>> {
-  const res = await fetch(`${STRIPE_MOCK_URL}${endpoint}`, {
-    method: 'POST',
-    headers: {
-      Authorization: 'Bearer sk_test_fake',
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    ...(body != null ? { body } : {}),
-  })
-  if (!res.ok) throw new Error(`stripe-mock POST ${endpoint} failed: ${res.status}`)
-  return (await res.json()) as Record<string, unknown>
+async function loadBundledSpec() {
+  return (await resolveOpenApiSpec({ apiVersion: BUNDLED_API_VERSION }, fetch)).spec
+}
+
+function generateTemplate(
+  spec: import('@stripe/sync-openapi').OpenApiSpec,
+  schemaName: string,
+  tableName?: string
+): Record<string, unknown> {
+  return generateObjectsFromSchema(spec, schemaName, 1, { tableName })[0]
 }
 
 export type ServiceHarness = {
@@ -199,26 +164,40 @@ export async function startServiceHarness(
 ): Promise<ServiceHarness> {
   await ensureServiceStack()
 
-  const [sourceDocker, destDocker] = await Promise.all([
+  const [sourceDocker, destDocker, spec] = await Promise.all([
     startDockerPostgres18(),
     startDockerPostgres18(),
+    loadBundledSpec(),
   ])
+  const sourcePool = pool(sourceDocker.connectionString)
   const destPool = pool(destDocker.connectionString)
+
+  await ensureSchema(sourcePool, SOURCE_SCHEMA)
+  await ensureObjectTable(sourcePool, SOURCE_SCHEMA, 'customers')
+
+  const count = options.customerCount ?? CUSTOMER_COUNT
+  const batchSize = options.seedBatchSize ?? SEED_BATCH
+  const template = generateTemplate(spec, 'customer', 'customers')
+  const objects = applyCreatedTimestampRange(
+    Array.from({ length: count }, (_, i) => ({
+      ...template,
+      id: `cus_test_${String(i).padStart(5, '0')}`,
+      created: 0,
+    })),
+    { startUnix: RANGE_START, endUnix: RANGE_END }
+  )
+  for (let i = 0; i < objects.length; i += batchSize) {
+    await upsertObjects(sourcePool, SOURCE_SCHEMA, 'customers', objects.slice(i, i + batchSize))
+  }
+  const expectedIds = objects.map((o) => o.id as string)
+
   const testServer = await createStripeListServer({
     ...options.listServer,
     postgresUrl: sourceDocker.connectionString,
     host: '0.0.0.0',
     port: 0,
     accountCreated: options.listServer?.accountCreated ?? RANGE_START,
-    seedCustomers: {
-      stripeMockUrl: STRIPE_MOCK_URL,
-      count: options.customerCount ?? CUSTOMER_COUNT,
-      batchSize: options.seedBatchSize ?? SEED_BATCH,
-      createdRange: { startUnix: RANGE_START, endUnix: RANGE_END },
-      ...options.seedCustomers,
-    },
   })
-  const expectedIds = testServer.seededCustomerIds ?? []
 
   console.log(`  Source PG:       ${sourceDocker.connectionString}`)
   console.log(`  Dest PG:         ${destDocker.connectionString}`)
@@ -236,6 +215,7 @@ export async function startServiceHarness(
     destPgContainerUrl: () => destDocker.connectionString.replace('localhost', CONTAINER_HOST),
     close: async () => {
       await testServer.close().catch(() => {})
+      await sourcePool.end().catch(() => {})
       await destPool.end().catch(() => {})
       await destDocker.stop()
       await sourceDocker.stop()
@@ -260,12 +240,13 @@ export type EngineHarness = {
 export async function startEngineHarness(): Promise<EngineHarness> {
   await ensureEngineStack()
 
-  const [sourceDocker, destDocker, customerTemplate, productTemplate] = await Promise.all([
+  const [sourceDocker, destDocker, spec] = await Promise.all([
     startDockerPostgres18(),
     startDockerPostgres18(),
-    fetchObjectTemplate('/v1/customers'),
-    fetchObjectTemplate('/v1/products', 'name=Test+Product'),
+    loadBundledSpec(),
   ])
+  const customerTemplate = generateTemplate(spec, 'customer', 'customers')
+  const productTemplate = generateTemplate(spec, 'product', 'products')
 
   const sourcePool = pool(sourceDocker.connectionString)
   const destPool = pool(destDocker.connectionString)

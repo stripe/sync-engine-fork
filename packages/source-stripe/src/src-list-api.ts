@@ -310,6 +310,7 @@ async function* sequentialBackfillStream(opts: {
     if (drainQueue) yield* drainQueue()
 
     const params: Record<string, unknown> = {}
+    // `!== false` treats undefined as "supports pagination" for backward compat.
     if (
       resourceConfig.supportsForwardPagination !== false &&
       resourceConfig.supportsLimit !== false

@@ -20,7 +20,7 @@ import {
 } from '@stripe/sync-openapi'
 import destinationPostgres from '@stripe/sync-destination-postgres'
 import sourceStripe, { type StripeStreamState } from '@stripe/sync-source-stripe'
-import { ensureStripeMock, STRIPE_MOCK_URL, utc } from './test-server-harness.js'
+import { utc } from './test-server-harness.js'
 
 const SOURCE_SCHEMA = 'stripe'
 const OBJECTS_PER_STREAM = 1200
@@ -34,30 +34,12 @@ let destDocker: DockerPostgres18Handle
 let testServer: StripeListServer
 let sourcePool: pg.Pool
 let destPool: pg.Pool
-let customerTemplate: Record<string, unknown>
 const specPathByVersion = new Map<string, string>()
 let githubToken: string | null | undefined
 
 type StreamSeed = {
   tableName: string
   objectIds: string[]
-}
-
-async function fetchTemplates(endpoint: string): Promise<Record<string, unknown>[]> {
-  const res = await fetch(`${STRIPE_MOCK_URL}${endpoint}`, {
-    headers: { Authorization: 'Bearer sk_test_fake' },
-  })
-  if (!res.ok) return []
-
-  const body = (await res.json()) as { data?: unknown[] }
-  if (!Array.isArray(body.data)) return []
-
-  return body.data.filter(
-    (item): item is Record<string, unknown> =>
-      item != null &&
-      typeof item === 'object' &&
-      typeof (item as Record<string, unknown>).id === 'string'
-  )
 }
 
 const INSERT_BATCH = 1000
@@ -93,15 +75,6 @@ async function replaceTableObjects(
     throw err
   } finally {
     client.release()
-  }
-}
-
-function makeCustomer(id: string, created: number): Record<string, unknown> {
-  return {
-    ...customerTemplate,
-    id,
-    object: 'customer',
-    created,
   }
 }
 
@@ -321,21 +294,10 @@ function ms(since: number): string {
 
 describe('test-server API', () => {
   beforeAll(async () => {
-    await ensureStripeMock()
-    const [src, dest, customerTemplates] = await Promise.all([
-      startDockerPostgres18(),
-      startDockerPostgres18(),
-      fetchTemplates('/v1/customers'),
-    ])
+    const [src, dest] = await Promise.all([startDockerPostgres18(), startDockerPostgres18()])
 
     sourceDocker = src
     destDocker = dest
-    customerTemplate = customerTemplates[0] ?? {
-      object: 'customer',
-      livemode: false,
-      metadata: {},
-      created: RANGE_START,
-    }
 
     sourcePool = new pg.Pool({ connectionString: sourceDocker.connectionString })
     destPool = new pg.Pool({ connectionString: destDocker.connectionString })
@@ -361,7 +323,9 @@ describe('test-server API', () => {
   }, 60_000)
 
   it('retrieve returns object by ID, 404 for missing', async () => {
-    await replaceTableObjects('customers', [makeCustomer('cus_ret_1', RANGE_START + 100)])
+    await replaceTableObjects('customers', [
+      { id: 'cus_ret_1', object: 'customer', created: RANGE_START + 100 },
+    ])
 
     const okRes = await fetch(`${testServer.url}/v1/customers/cus_ret_1`, {
       headers: { Authorization: 'Bearer sk_test_fake' },

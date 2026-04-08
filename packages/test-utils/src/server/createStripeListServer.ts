@@ -21,8 +21,6 @@ import type {
   V1PageQuery,
   V2PageQuery,
 } from './types.js'
-import { seedCustomersForStripeListServer } from './seedCustomers.js'
-
 export type { StripeListServerOptions, StripeListServer } from './types.js'
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -73,16 +71,6 @@ export async function createStripeListServer(
 
   const pool = new pg.Pool({ connectionString })
   await ensureSchema(pool, schema)
-
-  let seededCustomerIds: string[] | undefined
-  if (options.seedCustomers) {
-    seededCustomerIds = await seedCustomersForStripeListServer(
-      pool,
-      schema,
-      options.seedCustomers,
-      fetchImpl
-    )
-  }
 
   const fakeAccount = makeFakeAccount(options.accountCreated ?? Math.floor(Date.now() / 1000))
   const failureStates = (options.failures ?? []).map(() => ({ matches: 0, failures: 0 }))
@@ -236,7 +224,6 @@ export async function createStripeListServer(
     postgresUrl: connectionString,
     postgresMode,
     close,
-    ...(seededCustomerIds != null ? { seededCustomerIds } : {}),
   }
 }
 

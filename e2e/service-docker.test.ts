@@ -58,15 +58,6 @@ async function isServiceHealthy(): Promise<boolean> {
   }
 }
 
-function pruneDockerBuildCache(): void {
-  try {
-    execSync('docker builder prune -f --keep-storage 2GB', {
-      cwd: REPO_ROOT,
-      stdio: 'pipe',
-    })
-  } catch {}
-}
-
 // ---------------------------------------------------------------------------
 // Suite
 // ---------------------------------------------------------------------------
@@ -99,7 +90,6 @@ describeWithEnv(
           cwd: REPO_ROOT,
           stdio: 'pipe',
         })
-        pruneDockerBuildCache()
 
         // 3. Wait for service HTTP API to be ready
         console.log('  Waiting for service health...')
