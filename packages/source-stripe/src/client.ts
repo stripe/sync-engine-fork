@@ -2,7 +2,7 @@ import {
   StripeAccountSchema,
   StripeWebhookEndpointSchema,
   StripeApiListSchema,
-  StripeApiErrorSchema,
+  StripeApiRequestError,
   type StripeAccount,
   type StripeApiList,
   type StripeWebhookEndpoint,
@@ -21,16 +21,7 @@ export { getProxyUrl as getStripeProxyUrl } from './transport.js'
 
 const DEFAULT_STRIPE_API_BASE = 'https://api.stripe.com'
 
-export class StripeRequestError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly stripeError?: { type: string; message: string; code?: string },
-    public readonly requestId?: string
-  ) {
-    super(stripeError?.message ?? `Stripe API error: ${status}`)
-    this.name = 'StripeRequestError'
-  }
-}
+export { StripeApiRequestError as StripeRequestError }
 
 export type StripeClient = ReturnType<typeof makeClient>
 
@@ -99,12 +90,7 @@ export function makeClient(config: StripeClientConfig, env: TransportEnv = proce
     }
 
     if (!response.ok) {
-      const parsed = StripeApiErrorSchema.safeParse(json)
-      throw new StripeRequestError(
-        response.status,
-        parsed.success ? parsed.data.error : undefined,
-        response.headers.get('request-id') ?? undefined
-      )
+      throw new StripeApiRequestError(response.status, json, method, path)
     }
 
     return json

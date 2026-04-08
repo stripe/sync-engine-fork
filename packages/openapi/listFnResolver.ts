@@ -221,7 +221,7 @@ function authHeaders(apiKey: string): Record<string, string> {
   return { Authorization: `Bearer ${apiKey}` }
 }
 
-class StripeApiRequestError extends Error {
+export class StripeApiRequestError extends Error {
   constructor(
     public readonly status: number,
     public readonly body: unknown,

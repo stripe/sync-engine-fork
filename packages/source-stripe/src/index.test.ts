@@ -624,10 +624,12 @@ describe('StripeSource', () => {
 
       const mockClient = {
         getAccount: vi.fn().mockRejectedValueOnce(
-          new StripeRequestError(401, {
-            type: 'invalid_request_error',
-            message: 'Invalid API Key provided: sk_test_bad',
-          })
+          new StripeRequestError(
+            401,
+            { error: { type: 'invalid_request_error', message: 'Invalid API Key provided: sk_test_bad' } },
+            'GET',
+            '/v1/account'
+          )
         ),
       } as unknown as StripeClient
 
@@ -667,10 +669,12 @@ describe('StripeSource', () => {
 
     it('emits TraceMessage error for Invalid API Key on sequential streams', async () => {
       const listFn = vi.fn().mockRejectedValueOnce(
-        new StripeRequestError(401, {
-          type: 'invalid_request_error',
-          message: 'Invalid API Key provided: sk_test_bad',
-        })
+        new StripeRequestError(
+          401,
+          { error: { type: 'invalid_request_error', message: 'Invalid API Key provided: sk_test_bad' } },
+          'GET',
+          '/v1/tax_ids'
+        )
       )
 
       const registry: Record<string, ResourceConfig> = {

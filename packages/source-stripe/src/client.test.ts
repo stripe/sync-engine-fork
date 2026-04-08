@@ -43,15 +43,14 @@ describe('makeClient', () => {
     ).toThrow('STRIPE_REQUEST_TIMEOUT_MS must be a positive integer')
   })
 
-  it('StripeRequestError includes status and stripe error details', () => {
+  it('StripeRequestError includes status and error message from body', () => {
     const err = new StripeRequestError(
       401,
-      { type: 'invalid_request_error', message: 'Invalid API Key' },
-      'req_123'
+      { error: { type: 'invalid_request_error', message: 'Invalid API Key' } },
+      'GET',
+      '/v1/account'
     )
     expect(err.status).toBe(401)
-    expect(err.stripeError?.type).toBe('invalid_request_error')
-    expect(err.requestId).toBe('req_123')
     expect(err.message).toBe('Invalid API Key')
   })
 

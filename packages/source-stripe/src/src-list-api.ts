@@ -3,7 +3,8 @@ import { toRecordMessage, stateMsg } from '@stripe/sync-protocol'
 import type { ResourceConfig } from './types.js'
 import type { SegmentState, BackfillState } from './index.js'
 import type { RateLimiter } from './rate-limiter.js'
-import { StripeRequestError, type StripeClient } from './client.js'
+import { StripeApiRequestError } from '@stripe/sync-openapi'
+import type { StripeClient } from './client.js'
 
 const SKIPPABLE_ERROR_PATTERNS = [
   'only available in testmode',
@@ -508,7 +509,7 @@ export async function* listApiBackfill(opts: {
       })
       const isRateLimit = err instanceof Error && err.message.includes('Rate limit')
       const isAuthError =
-        err instanceof StripeRequestError && (err.status === 401 || err.status === 403)
+        err instanceof StripeApiRequestError && (err.status === 401 || err.status === 403)
       yield {
         type: 'trace',
         trace: {
