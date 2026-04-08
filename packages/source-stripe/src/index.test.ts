@@ -660,7 +660,7 @@ describe('StripeSource', () => {
           error: { failure_type: string; message: string; stream?: string }
         }
       ).error
-      expect(traceError.failure_type).toBe('system_error')
+      expect(traceError.failure_type).toBe('auth_error')
       expect(traceError.message).toContain('Invalid API Key')
       expect(traceError.stream).toBe('customers')
     })
@@ -696,7 +696,7 @@ describe('StripeSource', () => {
           error: { failure_type: string; message: string; stream?: string }
         }
       ).error
-      expect(traceError.failure_type).toBe('system_error')
+      expect(traceError.failure_type).toBe('auth_error')
       expect(traceError.message).toContain('Invalid API Key')
       expect(traceError.stream).toBe('tax_ids')
     })

@@ -282,7 +282,7 @@ describe('Stripe failure handling via Docker engine', () => {
       trace: {
         trace_type: 'error',
         error: {
-          failure_type: 'system_error',
+          failure_type: 'auth_error',
           stream: 'customers',
           message: expect.stringContaining('Invalid API Key'),
         },
@@ -330,7 +330,7 @@ describe('Stripe failure handling via Docker engine', () => {
       trace: {
         trace_type: 'error',
         error: {
-          failure_type: 'system_error',
+          failure_type: 'auth_error',
           stream: 'customers',
           message: expect.stringContaining('Invalid API Key'),
         },
