@@ -5,24 +5,26 @@ import {
   applyCreatedTimestampRange,
   createStripeListServer,
   ensureObjectTable,
-  generateStubObjects,
   quoteIdentifier,
   resolveEndpointSet,
   startDockerPostgres18,
-  upsertObjects,
   type DockerPostgres18Handle,
   type StripeListServer,
 } from '@stripe/sync-test-utils'
 import { createConnectorResolver, createEngine, type PipelineConfig } from '@stripe/sync-engine'
-import { SUPPORTED_API_VERSIONS, resolveOpenApiSpec } from '@stripe/sync-openapi'
+import {
+  SUPPORTED_API_VERSIONS,
+  resolveOpenApiSpec,
+  findSchemaNameByResourceId,
+  generateObjectsFromSchema,
+} from '@stripe/sync-openapi'
 import destinationPostgres from '@stripe/sync-destination-postgres'
 import sourceStripe, { type StripeStreamState } from '@stripe/sync-source-stripe'
 import { ensureStripeMock, STRIPE_MOCK_URL, utc } from './test-server-harness.js'
 
 const SOURCE_SCHEMA = 'stripe'
-const SEED_BATCH = 12000
 const OBJECTS_PER_STREAM = 1200
-const RATE_LIMIT = 10000
+const RATE_LIMIT = 100000
 
 const RANGE_START = utc('2025-01-01')
 const RANGE_END = utc('2026-01-01')
@@ -58,17 +60,39 @@ async function fetchTemplates(endpoint: string): Promise<Record<string, unknown>
   )
 }
 
+const INSERT_BATCH = 1000
+
 async function replaceTableObjects(
   tableName: string,
   objects: Record<string, unknown>[]
 ): Promise<void> {
   await ensureObjectTable(sourcePool, SOURCE_SCHEMA, tableName)
-  await sourcePool.query(
-    `TRUNCATE TABLE ${quoteIdentifier(SOURCE_SCHEMA)}.${quoteIdentifier(tableName)}`
-  )
+  const q = quoteIdentifier
+  const table = `${q(SOURCE_SCHEMA)}.${q(tableName)}`
 
-  for (let i = 0; i < objects.length; i += SEED_BATCH) {
-    await upsertObjects(sourcePool, SOURCE_SCHEMA, tableName, objects.slice(i, i + SEED_BATCH))
+  const client = await sourcePool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query(`TRUNCATE TABLE ${table}`)
+    for (let i = 0; i < objects.length; i += INSERT_BATCH) {
+      const batch = objects.slice(i, i + INSERT_BATCH)
+      const values: string[] = []
+      const placeholders: string[] = []
+      for (const obj of batch) {
+        values.push(JSON.stringify(obj))
+        placeholders.push(`($${values.length}::jsonb)`)
+      }
+      await client.query(
+        `INSERT INTO ${table} ("_raw_data") VALUES ${placeholders.join(',')}`,
+        values
+      )
+    }
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
   }
 }
 
@@ -143,13 +167,14 @@ async function syncAllEndpointsForVersion(apiVersion: string): Promise<void> {
   const sortedEndpoints = [...endpointSet.endpoints.values()].sort((a, b) =>
     a.tableName.localeCompare(b.tableName)
   )
+
   const seededStreams: StreamSeed[] = []
   const destSchema = schemaForVersion(apiVersion)
   const versionTestServer = await createStripeListServer({
     postgresUrl: sourceDocker.connectionString,
     host: '127.0.0.1',
     port: 0,
-    accountCreated: 0,
+    accountCreated: RANGE_START,
     logRequests: false,
     validateQueryParams: true,
     apiVersion,
@@ -162,17 +187,31 @@ async function syncAllEndpointsForVersion(apiVersion: string): Promise<void> {
   )
 
   try {
-    for (const endpoint of sortedEndpoints) {
-      const objects = applyCreatedTimestampRange(
-        generateStubObjects(endpoint, OBJECTS_PER_STREAM),
-        createdRange
-      )
+    const seedable = sortedEndpoints.filter(
+      (ep) => findSchemaNameByResourceId(endpointSet.spec, ep.resourceId) != null
+    )
 
-      await replaceTableObjects(endpoint.tableName, objects)
-      seededStreams.push({
-        tableName: endpoint.tableName,
-        objectIds: objects.map((object: Record<string, unknown>) => object.id as string),
-      })
+    const SEED_CONCURRENCY = 8
+    for (let i = 0; i < seedable.length; i += SEED_CONCURRENCY) {
+      const batch = seedable.slice(i, i + SEED_CONCURRENCY)
+      await Promise.all(
+        batch.map(async (endpoint) => {
+          const schemaName = findSchemaNameByResourceId(endpointSet.spec, endpoint.resourceId)!
+          const objects = applyCreatedTimestampRange(
+            generateObjectsFromSchema(endpointSet.spec, schemaName, OBJECTS_PER_STREAM, {
+              tableName: endpoint.tableName,
+            }),
+            createdRange
+          )
+
+          await replaceTableObjects(endpoint.tableName, objects)
+
+          seededStreams.push({
+            tableName: endpoint.tableName,
+            objectIds: objects.map((object: Record<string, unknown>) => object.id as string),
+          })
+        })
+      )
     }
 
     const pipeline: PipelineConfig = {
@@ -183,7 +222,7 @@ async function syncAllEndpointsForVersion(apiVersion: string): Promise<void> {
           api_version: endpointSet.apiVersion,
           base_url: versionTestServer.url,
           rate_limit: RATE_LIMIT,
-          backfill_concurrency: 5,
+          backfill_concurrency: 12,
         },
       },
       destination: {
@@ -205,17 +244,23 @@ async function syncAllEndpointsForVersion(apiVersion: string): Promise<void> {
       destinations: { postgres: destinationPostgres },
     })
     const engine = await createEngine(resolver)
+
     const finalState: Record<string, unknown> = {}
 
     for await (const setupMsg of engine.pipeline_setup(pipeline)) {
       void setupMsg
     }
 
+    const syncStart = performance.now()
+    console.error(
+      `  [${apiVersion}] pipeline: running pipeline_sync (${seededStreams.length} streams)`
+    )
     for await (const msg of engine.pipeline_sync(pipeline)) {
       if (msg.type === 'source_state' && msg.source_state.state_type === 'stream') {
         finalState[msg.source_state.stream] = msg.source_state.data
       }
     }
+    console.error(`  [${apiVersion}] pipeline: sync done in ${ms(syncStart)}`)
 
     const failures: string[] = []
     const syncedCounts: string[] = []
@@ -258,9 +303,9 @@ async function syncAllEndpointsForVersion(apiVersion: string): Promise<void> {
       }
     }
 
-    console.log(
-      `\n  [${apiVersion}] ${seededStreams.length} streams:\n${syncedCounts.join('\n')}\n`
-    )
+    // console.log(
+    //   `\n  [${apiVersion}] ${seededStreams.length} streams:\n${syncedCounts.join('\n')}\n`
+    // )
 
     expect(failures, failures.join('\n')).toHaveLength(0)
   } finally {
@@ -269,10 +314,14 @@ async function syncAllEndpointsForVersion(apiVersion: string): Promise<void> {
   }
 }
 
+function ms(since: number): string {
+  const elapsed = performance.now() - since
+  return elapsed < 1000 ? `${elapsed.toFixed(0)}ms` : `${(elapsed / 1000).toFixed(1)}s`
+}
+
 describe('test-server API', () => {
   beforeAll(async () => {
     await ensureStripeMock()
-
     const [src, dest, customerTemplates] = await Promise.all([
       startDockerPostgres18(),
       startDockerPostgres18(),

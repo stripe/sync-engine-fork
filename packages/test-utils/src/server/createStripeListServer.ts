@@ -92,12 +92,24 @@ export async function createStripeListServer(
 
   const app = new Hono()
 
-  if (logRequests) {
-    app.use('*', async (c, next) => {
-      await next()
+  const perPath = new Map<string, { count: number; totalMs: number; maxMs: number }>()
+
+  app.use('*', async (c, next) => {
+    const start = performance.now()
+    await next()
+    const elapsed = performance.now() - start
+    const stats = perPath.get(c.req.path)
+    if (stats) {
+      stats.count++
+      stats.totalMs += elapsed
+      if (elapsed > stats.maxMs) stats.maxMs = elapsed
+    } else {
+      perPath.set(c.req.path, { count: 1, totalMs: elapsed, maxMs: elapsed })
+    }
+    if (logRequests) {
       logRequest(c.req.method, c.req.path, c.res.status)
-    })
-  }
+    }
+  })
 
   for (const prefix of ['/v1/*', '/v2/*'] as const) {
     app.use(prefix, async (c, next) => {
@@ -187,6 +199,21 @@ export async function createStripeListServer(
   const close = async (): Promise<void> => {
     if (closed) return
     closed = true
+    if (perPath.size > 0) {
+      const totalReqs = [...perPath.values()].reduce((a, b) => a + b.count, 0)
+      const totalMs = [...perPath.values()].reduce((a, b) => a + b.totalMs, 0)
+      const sorted = [...perPath.entries()].sort((a, b) => b[1].totalMs - a[1].totalMs)
+      process.stderr.write(
+        `[test-server] ${totalReqs} reqs across ${perPath.size} endpoints, total_time=${(totalMs / 1000).toFixed(1)}s\n`
+      )
+      for (const [p, s] of sorted) {
+        const avg = (s.totalMs / s.count).toFixed(1)
+        const total = (s.totalMs / 1000).toFixed(1)
+        process.stderr.write(
+          `  ${total.padStart(6)}s total ${s.count.toString().padStart(5)} reqs ${avg.padStart(6)}ms avg ${s.maxMs.toFixed(0).padStart(5)}ms max  ${p}\n`
+        )
+      }
+    }
     if (nodeServer) {
       await new Promise<void>((resolve) => {
         nodeServer!.close(() => resolve())
@@ -353,21 +380,9 @@ async function handleRetrieve(
 // Postgres queries — paginated reads from seeded tables
 // ---------------------------------------------------------------------------
 
-async function resolveCursorCreated(
-  pool: pg.Pool,
-  schema: string,
-  tableName: string,
-  cursorId: string
-): Promise<number | undefined> {
-  const result = await pool.query<{ created: string }>(
-    `SELECT created FROM ${quoteIdentifier(schema)}.${quoteIdentifier(tableName)} WHERE id = $1`,
-    [cursorId]
-  )
-  return result.rows.length > 0 ? Number(result.rows[0].created) : undefined
-}
-
 /**
  * V1: created DESC, id DESC; tuple cursors for starting_after / ending_before.
+ * Cursor lookups are inlined as subqueries to avoid extra round trips.
  */
 async function queryPageV1(
   pool: pg.Pool,
@@ -379,18 +394,19 @@ async function queryPageV1(
   const values: unknown[] = []
   let idx = 0
   const useEndingBefore = !opts.afterId && !!opts.beforeId
+  const table = `${quoteIdentifier(schema)}.${quoteIdentifier(tableName)}`
 
   if (opts.afterId) {
-    const cursorCreated = await resolveCursorCreated(pool, schema, tableName, opts.afterId)
-    if (cursorCreated == null) return { data: [], hasMore: false }
-    conditions.push(`(created, id) < ($${++idx}::bigint, $${++idx})`)
-    values.push(cursorCreated, opts.afterId)
+    conditions.push(
+      `(created, id) < ((SELECT created FROM ${table} WHERE id = $${++idx}), $${idx})`
+    )
+    values.push(opts.afterId)
   }
   if (opts.beforeId) {
-    const cursorCreated = await resolveCursorCreated(pool, schema, tableName, opts.beforeId)
-    if (cursorCreated == null) return { data: [], hasMore: false }
-    conditions.push(`(created, id) > ($${++idx}::bigint, $${++idx})`)
-    values.push(cursorCreated, opts.beforeId)
+    conditions.push(
+      `(created, id) > ((SELECT created FROM ${table} WHERE id = $${++idx}), $${idx})`
+    )
+    values.push(opts.beforeId)
   }
   if (opts.createdGt != null) {
     conditions.push(`created > $${++idx}`)
@@ -415,7 +431,6 @@ async function queryPageV1(
 
   const orderDir = useEndingBefore ? 'ASC' : 'DESC'
   const orderClause = `ORDER BY created ${orderDir}, id ${orderDir}`
-  const table = `${quoteIdentifier(schema)}.${quoteIdentifier(tableName)}`
 
   const rows = await safeQuery(
     pool,

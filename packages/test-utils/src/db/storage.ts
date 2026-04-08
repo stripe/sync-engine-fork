@@ -54,6 +54,11 @@ export async function ensureObjectTable(
       PRIMARY KEY ("id")
     )
   `)
+  // The fake Stripe server paginates v1 list endpoints by created/id.
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS ${q(`${tableName}_created_id_idx`)}
+    ON ${q(schema)}.${q(tableName)} ("created" DESC, "id" DESC)
+  `)
 }
 
 export async function upsertObjects(

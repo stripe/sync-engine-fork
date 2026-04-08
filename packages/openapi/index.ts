@@ -26,6 +26,11 @@ export { withHttpRetry, isRetryableHttpError, getHttpErrorStatus } from './retry
 export type { HttpRetryOptions } from './retry.js'
 export { parsedTableToJsonSchema } from './jsonSchemaConverter.js'
 export {
+  generateObjectsFromSchema,
+  findSchemaNameByResourceId,
+} from './objectGenerator.js'
+export type { GenerateObjectsOptions } from './objectGenerator.js'
+export {
   StripeAccountSchema,
   StripeWebhookEndpointSchema,
   StripeApiListSchema,
