@@ -912,6 +912,32 @@ describe('POST /internal/query', () => {
     expect(mockEnd).toHaveBeenCalledTimes(1)
   })
 
+  it('does not force SSL when sslmode is absent from connection string', async () => {
+    let capturedConfig: pg.PoolConfig | undefined
+    vi.spyOn(pg, 'Pool').mockImplementation((config) => {
+      capturedConfig = config as pg.PoolConfig
+      return {
+        query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
+        end: vi.fn(),
+      } as unknown as pg.Pool
+    })
+
+    const app = await createApp(resolver)
+    await app.request('/internal/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        connection_string: 'postgres://user:pass@localhost:5432/db',
+        sql: 'SELECT 1',
+      }),
+    })
+
+    // sslConfigFromConnectionString returns false when no sslmode param —
+    // we must NOT override that to { rejectUnauthorized: false } because
+    // it would break connections to Postgres instances without SSL.
+    expect(capturedConfig?.ssl).toBe(false)
+  })
+
   it('returns 400 when required fields are missing', async () => {
     const app = await createApp(resolver)
     const res = await app.request('/internal/query', {

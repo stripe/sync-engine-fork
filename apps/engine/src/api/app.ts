@@ -643,8 +643,7 @@ export async function createApp(resolver: ConnectorResolver) {
     const pool = new pg.Pool(
       withPgConnectProxy({
         connectionString: stripSslParams(connection_string),
-        // Default to sslmode=require config if sslmode is missing
-        ssl: ssl === false ? { rejectUnauthorized: false } : ssl,
+        ssl,
       })
     )
     try {
