@@ -33,6 +33,7 @@ export interface PipelineWorkflowOpts {
   sourceState?: SourceState
   inputQueue?: SourceInputMessage[]
   state?: PipelineWorkflowState
+  errorRecoveryRequested?: boolean
 }
 
 export async function pipelineWorkflow(
@@ -44,7 +45,7 @@ export async function pipelineWorkflow(
   let desiredStatus: DesiredStatus = opts?.desiredStatus ?? 'active'
   let sourceState: SourceState = opts?.sourceState ?? { streams: {}, global: {} }
   let state: PipelineWorkflowState = { ...opts?.state }
-  let desiredStatusSignalCount = 0
+  let errorRecoveryRequested = opts?.errorRecoveryRequested ?? false
 
   // Transient workflow-local state.
   let operationCount = 0
@@ -54,7 +55,9 @@ export async function pipelineWorkflow(
   })
   setHandler(desiredStatusSignal, (status: DesiredStatus) => {
     desiredStatus = status
-    desiredStatusSignalCount++
+    if (state.errored && status === 'active') {
+      errorRecoveryRequested = true
+    }
   })
 
   // MARK: - State
@@ -88,14 +91,14 @@ export async function pipelineWorkflow(
   }
 
   async function markPermanentError(): Promise<void> {
-    await setState({ errored: true, phase: 'backfilling' })
+    await setState({ errored: true })
   }
 
   async function waitForErrorRecovery(): Promise<void> {
-    const signalCount = desiredStatusSignalCount
-    await condition(() => desiredStatus === 'deleted' || desiredStatusSignalCount > signalCount)
+    await condition(() => desiredStatus === 'deleted' || errorRecoveryRequested)
+    errorRecoveryRequested = false
     if (desiredStatus === 'active') {
-      await setState({ errored: false, phase: 'backfilling' })
+      await setState({ errored: false })
     }
   }
 
@@ -193,6 +196,7 @@ export async function pipelineWorkflow(
         sourceState,
         inputQueue,
         state,
+        errorRecoveryRequested,
       })
     }
   }
