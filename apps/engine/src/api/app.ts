@@ -609,6 +609,7 @@ export async function createApp(resolver: ConnectorResolver) {
     method: 'post',
     path: '/internal/query',
     tags: ['Internal'],
+    hide: true,
     summary: 'Run a SQL query against a Postgres connection',
     requestBody: {
       required: true,
