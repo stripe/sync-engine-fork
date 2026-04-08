@@ -1,5 +1,5 @@
 import pino, { type Logger, type LoggerOptions } from 'pino'
-import { REDACT_CENSOR, REDACT_PATHS } from './redaction.js'
+import { REDACT_CENSOR, REDACT_PATHS, SECRET_PATTERNS, scrubSecrets } from './redaction.js'
 
 export type { Logger }
 
@@ -12,6 +12,19 @@ export type CreateLoggerOptions = {
   pretty?: boolean
   /** Pino destination — defaults to stdout (fd 1) */
   destination?: pino.DestinationStream | number
+}
+
+function errSerializer(err: Error): Record<string, unknown> {
+  const obj: Record<string, unknown> = {
+    type: err.constructor?.name ?? 'Error',
+    message: scrubSecrets(err.message),
+    ...(err.stack ? { stack: scrubSecrets(err.stack) } : {}),
+  }
+  for (const key of Object.keys(err)) {
+    if (key === 'message' || key === 'stack' || key === 'type') continue
+    obj[key] = (err as unknown as Record<string, unknown>)[key]
+  }
+  return obj
 }
 
 /**
@@ -30,7 +43,16 @@ export function createLogger(opts: CreateLoggerOptions = {}): Logger {
       paths: redactPaths,
       censor: REDACT_CENSOR,
     },
+    serializers: { err: errSerializer },
     ...(opts.name ? { name: opts.name } : {}),
+  }
+
+  if (pretty && typeof opts.destination === 'number') {
+    options.transport = {
+      target: 'pino-pretty',
+      options: { destination: opts.destination },
+    }
+    return pino(options)
   }
 
   if (pretty) {
@@ -52,7 +74,8 @@ const STDERR_FD = 2
 /**
  * Create a logger that writes structured JSON to stderr.
  * Designed for subprocess connectors where stdout is the NDJSON data stream.
+ * Pretty-printing is always disabled to avoid corrupting the NDJSON stream on stdout.
  */
 export function createConnectorLogger(name: string): Logger {
-  return createLogger({ name, destination: STDERR_FD })
+  return createLogger({ name, destination: STDERR_FD, pretty: false })
 }
