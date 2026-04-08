@@ -150,18 +150,14 @@ const destination = {
         END;
         $$;
       `)
-      const total = catalog.streams.length
-      const logs: { index: number; name: string; ms: number }[] = []
       await Promise.all(
-        catalog.streams.map(async (cs, i) => {
-          const start = Date.now()
+        catalog.streams.map(async (cs) => {
           if (cs.stream.json_schema) {
-            await pool.query(buildCreateTableDDL(
-              config.schema,
-              cs.stream.name,
-              cs.stream.json_schema,
-              { system_columns: cs.system_columns }
-            ))
+            await pool.query(
+              buildCreateTableDDL(config.schema, cs.stream.name, cs.stream.json_schema, {
+                system_columns: cs.system_columns,
+              })
+            )
           } else {
             await pool.query(sql`
               CREATE TABLE IF NOT EXISTS "${config.schema}"."${cs.stream.name}" (
@@ -173,13 +169,8 @@ const destination = {
               )
             `)
           }
-          logs.push({ index: i, name: cs.stream.name, ms: Date.now() - start })
         })
       )
-      logs.sort((a, b) => a.index - b.index)
-      for (const l of logs) {
-        yield logMsg(`[${l.index + 1}/${total}] Table "${l.name}" ready (${l.ms}ms)`)
-      }
     } finally {
       await pool.end()
     }
