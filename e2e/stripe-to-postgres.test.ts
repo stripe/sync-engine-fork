@@ -8,6 +8,7 @@ import type { ConnectorResolver } from '@stripe/sync-engine'
 import type { SourceStateMessage, DestinationOutput } from '@stripe/sync-protocol'
 import { drain } from '@stripe/sync-protocol'
 import { describeWithEnv } from './test-helpers.js'
+import { BUNDLED_API_VERSION } from '@stripe/sync-openapi'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -64,6 +65,7 @@ describeWithEnv('stripe → postgres e2e', ['STRIPE_API_KEY'], ({ STRIPE_API_KEY
         type: 'stripe',
         stripe: {
           api_key: STRIPE_API_KEY,
+          api_version: BUNDLED_API_VERSION,
           backfill_limit: BACKFILL_LIMIT,
           backfill_concurrency: 1,
           ...(opts.websocket && { websocket: true }),
