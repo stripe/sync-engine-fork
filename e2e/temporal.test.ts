@@ -13,6 +13,7 @@ import { google } from 'googleapis'
 import path from 'node:path'
 import net from 'node:net'
 import source from '@stripe/sync-source-stripe'
+import { BUNDLED_API_VERSION } from '@stripe/sync-openapi'
 import pgDestination from '@stripe/sync-destination-postgres'
 import sheetsDestination from '@stripe/sync-destination-google-sheets'
 import { readSheet } from '@stripe/sync-destination-google-sheets'
@@ -192,7 +193,10 @@ describe.skip('temporal e2e: stripe → postgres', () => {
     const pipelineId = `pipe_e2e_${Date.now()}`
     const pipeline = {
       id: pipelineId,
-      source: { type: 'stripe', stripe: { api_key: STRIPE_API_KEY, backfill_limit: 5 } },
+      source: {
+        type: 'stripe',
+        stripe: { api_key: STRIPE_API_KEY, api_version: BUNDLED_API_VERSION, backfill_limit: 5 },
+      },
       destination: { type: 'postgres', postgres: { connection_string: POSTGRES_URL, schema } },
       streams: [{ name: 'products' }],
     }
@@ -341,7 +345,10 @@ describe.skip('temporal e2e: stripe → google_sheets', () => {
     const pipelineId = `pipe_sheets_${Date.now()}`
     const pipeline = {
       id: pipelineId,
-      source: { type: 'stripe', stripe: { api_key: STRIPE_API_KEY, backfill_limit: 3 } },
+      source: {
+        type: 'stripe',
+        stripe: { api_key: STRIPE_API_KEY, api_version: BUNDLED_API_VERSION, backfill_limit: 3 },
+      },
       destination: {
         type: 'google_sheets',
         google_sheets: {

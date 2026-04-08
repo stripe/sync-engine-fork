@@ -2,6 +2,7 @@ import { execSync } from 'child_process'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import source from '@stripe/sync-source-stripe'
+import { BUNDLED_API_VERSION } from '@stripe/sync-openapi'
 import destination from '@stripe/sync-destination-postgres'
 import { createEngine, collectFirst } from '../lib/index.js'
 import type { ConnectorResolver, Message, DestinationOutput } from '../lib/index.js'
@@ -94,7 +95,14 @@ function makeResolver(): ConnectorResolver {
 
 function makePipeline(overrides: { streams?: Array<{ name: string }> } = {}) {
   return {
-    source: { type: 'stripe', stripe: { api_key: 'sk_test_fake', base_url: STRIPE_MOCK_URL } },
+    source: {
+      type: 'stripe',
+      stripe: {
+        api_key: 'sk_test_fake',
+        api_version: BUNDLED_API_VERSION,
+        base_url: STRIPE_MOCK_URL,
+      },
+    },
     destination: {
       type: 'postgres',
       postgres: { connection_string: connectionString, schema: SCHEMA },
@@ -120,7 +128,11 @@ beforeAll(async () => {
   const catalogMsg = await collectFirst(
     engine.source_discover({
       type: 'stripe',
-      stripe: { api_key: 'sk_test_fake', base_url: STRIPE_MOCK_URL },
+      stripe: {
+        api_key: 'sk_test_fake',
+        api_version: BUNDLED_API_VERSION,
+        base_url: STRIPE_MOCK_URL,
+      },
     }),
     'catalog'
   )
