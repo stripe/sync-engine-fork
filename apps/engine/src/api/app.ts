@@ -139,11 +139,27 @@ export async function createApp(resolver: ConnectorResolver) {
       logger.debug({ requestId, method: c.req.method, path: c.req.path, headers }, 'request headers')
     }
     logger.info({ requestId, method: c.req.method, path: c.req.path }, 'request start')
+    if (dangerouslyVerbose) {
+      const curlParts = [`curl -X ${c.req.method} '${c.req.url}'`]
+      c.req.raw.headers.forEach((value, key) => { curlParts.push(`  -H '${key}: ${value}'`) })
+      if (hasBody(c)) {
+        const cl = c.req.header('Content-Length')
+        if (cl && Number(cl) < 100_000) {
+          try {
+            const body = await c.req.raw.clone().text()
+            curlParts.push(`  -d '${body.replace(/'/g, "'\\''")}'`)
+          } catch { /* skip */ }
+        } else {
+          curlParts.push('  --data-binary @-')
+        }
+      }
+      logger.debug(curlParts.join(' \\\n'))
+    }
     await next()
     let error: string | undefined
     if (c.res.status >= 400) {
       try {
-        const body = await c.res.clone().json<{ error: unknown }>()
+        const body = (await c.res.clone().json()) as { error: unknown }
         error = typeof body.error === 'string' ? body.error : JSON.stringify(body.error)
       } catch {
         // non-JSON error body, skip
