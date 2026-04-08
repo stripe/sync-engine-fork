@@ -73,10 +73,6 @@ async function isEngineHealthy(): Promise<boolean> {
 }
 
 async function ensureDockerStack(): Promise<void> {
-  if (process.env.SKIP_BUILD !== '1') {
-    console.log('\n  Building packages...')
-    execSync('pnpm build', { cwd: REPO_ROOT, stdio: 'inherit' })
-  }
   console.log('  Starting Docker stack...')
   execSync(`${COMPOSE_CMD} up --build -d temporal engine service worker`, {
     cwd: REPO_ROOT,

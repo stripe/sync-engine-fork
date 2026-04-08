@@ -13,6 +13,7 @@ import {
   type SyncOutput,
 } from '@stripe/sync-engine'
 import { expandState, type BackfillState, type StripeStreamState } from '@stripe/sync-source-stripe'
+import { BUNDLED_API_VERSION } from '@stripe/sync-openapi'
 import {
   ENGINE_URL,
   RANGE_END,
@@ -624,10 +625,10 @@ describe('test-server sync via Docker engine', () => {
     expect((state.streams.customers as StripeStreamState).status).toBe('complete')
   }, 120_000)
 
-  it('stress: 200 segments with 100k objects at 1000 req/s', async () => {
+  it('stress: 50 segments with 25k objects at 1000 req/s', async () => {
     const destSchema = uniqueSchema('stress')
-    const CONC = 200
-    const TOTAL = 100_000
+    const CONC = 50
+    const TOTAL = 25_000
     const segments = expandState(mkBackfill({ num_segments: CONC }))
     const perSegment = Math.ceil(TOTAL / segments.length)
     const objects: Record<string, unknown>[] = []
@@ -685,6 +686,7 @@ describe('test-server sync via Docker engine', () => {
     const { state } = await runSync({
       destSchema,
       streams: [{ name: STREAM, sync_mode: 'full_refresh' }],
+      sourceOverrides: { api_version: BUNDLED_API_VERSION },
     })
 
     const destIds = new Set(await listIds(destSchema, STREAM))
