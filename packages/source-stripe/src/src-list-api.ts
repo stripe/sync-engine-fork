@@ -1,10 +1,13 @@
 import type { Message, TraceMessage } from '@stripe/sync-protocol'
 import { toRecordMessage, stateMsg } from '@stripe/sync-protocol'
+import { createConnectorLogger } from '@stripe/sync-logger'
 import type { ResourceConfig } from './types.js'
 import type { SegmentState, BackfillState } from './index.js'
 import type { RateLimiter } from './rate-limiter.js'
 import { StripeApiRequestError } from '@stripe/sync-openapi'
 import type { StripeClient } from './client.js'
+
+const logger = createConnectorLogger('source-stripe')
 
 const SKIPPABLE_ERROR_PATTERNS = [
   'only available in testmode',
@@ -502,11 +505,10 @@ export async function* listApiBackfill(opts: {
         } satisfies TraceMessage
         continue
       }
-      console.error({
-        msg: 'Stripe list page failed',
-        stream: stream.name,
-        error: err instanceof Error ? err.message : String(err),
-      })
+      logger.error(
+        { stream: stream.name, error: err instanceof Error ? err.message : String(err) },
+        'Stripe list page failed'
+      )
       const isRateLimit = err instanceof Error && err.message.includes('Rate limit')
       const isAuthError =
         err instanceof StripeApiRequestError && (err.status === 401 || err.status === 403)

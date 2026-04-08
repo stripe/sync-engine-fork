@@ -23,6 +23,7 @@
     "src"
   ],
   "dependencies": {
+    "@stripe/sync-logger": "workspace:*",
     "@stripe/sync-protocol": "workspace:*",
     "@stripe/sync-engine": "workspace:*",
     "@stripe/sync-source-stripe": "workspace:*",

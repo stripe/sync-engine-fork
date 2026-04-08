@@ -15,7 +15,10 @@ import sourceStripe, {
   DEFAULT_SYNC_OBJECTS,
 } from '@stripe/sync-source-stripe'
 import destinationPostgres, { type Config as DestConfig } from '@stripe/sync-destination-postgres'
+import { createLogger } from '@stripe/sync-logger'
 import pg from 'npm:pg@8'
+
+const logger = createLogger({ name: 'stripe-sync' })
 
 // ---------------------------------------------------------------------------
 // Helpers (inlined — edge functions must be self-contained)
@@ -97,7 +100,7 @@ Deno.serve(async (req) => {
         const skipUntil = Number(skipRows[0].decrypted_secret)
         const remaining = Math.round((skipUntil - Date.now()) / 1000)
         if (skipUntil > Date.now()) {
-          console.log(`Skipping — skip_until is ${remaining}s in the future`)
+          logger.info({ remainingSeconds: remaining }, 'Skipping — skip_until in the future')
           await pool.end()
           return jsonResponse({
             skipped: true,
@@ -108,7 +111,7 @@ Deno.serve(async (req) => {
         await pool.query(`DELETE FROM vault.secrets WHERE name = 'stripe_sync_skip_until'`)
       }
     } catch (err) {
-      console.warn('Could not read skip_until from vault:', err)
+      logger.warn('Could not read skip_until from vault')
     }
 
     const stateStore = createScopedPgStateStore(pool, schemaName, 'default')
@@ -131,11 +134,12 @@ Deno.serve(async (req) => {
               skipUntilMs,
             ])
           } catch (err) {
-            console.warn('Could not write skip_until to vault:', err)
+            logger.warn('Could not write skip_until to vault')
           }
           const remainingSec = Math.round(SYNC_INTERVAL - elapsed)
-          console.log(
-            `Skipping — all streams complete ${Math.round(elapsed)}s ago, next sync in ${remainingSec}s`
+          logger.info(
+            { elapsedSeconds: Math.round(elapsed), nextSyncSeconds: remainingSec },
+            'Skipping — all streams complete, next sync scheduled'
           )
           await pool.end()
           return jsonResponse({
@@ -207,8 +211,9 @@ Deno.serve(async (req) => {
 
     const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1)
     await pool.end()
-    console.log(
-      `Sync pass done — ${records} rows, ${checkpoints} checkpoints, ${elapsed}s elapsed (${stopReason})`
+    logger.info(
+      { records, checkpoints, elapsedSeconds: Number(elapsed), stopReason },
+      'Sync pass done'
     )
 
     return jsonResponse({
@@ -220,7 +225,7 @@ Deno.serve(async (req) => {
     })
   } catch (error: unknown) {
     const err = error as Error
-    console.error('Sync error:', error)
+    logger.error({ error: err.message }, 'Sync error')
     try {
       await pool.end()
     } catch {}

@@ -12,6 +12,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "lint": "eslint src/",
     "test": "vitest run"
   },
   "dependencies": {

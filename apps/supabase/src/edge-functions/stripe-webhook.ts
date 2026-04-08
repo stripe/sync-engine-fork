@@ -9,6 +9,9 @@ import sourceStripe, {
   DEFAULT_SYNC_OBJECTS,
 } from '@stripe/sync-source-stripe'
 import destinationPostgres, { type Config as DestConfig } from '@stripe/sync-destination-postgres'
+import { createLogger } from '@stripe/sync-logger'
+
+const logger = createLogger({ name: 'stripe-webhook' })
 
 // ---------------------------------------------------------------------------
 // Helpers (inlined — edge functions must be self-contained)
@@ -80,7 +83,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ received: true })
   } catch (error: unknown) {
     const err = error as Error & { type?: string }
-    console.error('Webhook processing error:', error)
+    logger.error({ error: err.message, type: err.type }, 'Webhook processing error')
     const isSignatureError =
       err.message?.includes('signature') || err.type === 'StripeSignatureVerificationError'
     const status = isSignatureError ? 400 : 500

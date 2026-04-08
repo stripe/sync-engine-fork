@@ -1,7 +1,10 @@
 import { SupabaseManagementAPI } from 'supabase-management-js'
+import { createLogger } from '@stripe/sync-logger'
 import { setupFunctionCode, webhookFunctionCode, syncFunctionCode } from './edge-function-code.js'
 import pkg from '../package.json' with { type: 'json' }
 import { parseSchemaComment, StripeSchemaComment } from './schemaComment.js'
+
+const logger = createLogger({ name: 'supabase' })
 
 export interface DeployClientOptions {
   accessToken: string
@@ -484,7 +487,7 @@ export class SupabaseSetupClient {
           await this.invokeFunction('stripe-worker', 'POST', this.workerSecret)
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error)
-          console.warn(`Failed to invoke stripe-worker: ${errorMessage}`)
+          logger.warn({ error: errorMessage }, 'Failed to invoke stripe-worker')
         }
       }
     } catch (error) {

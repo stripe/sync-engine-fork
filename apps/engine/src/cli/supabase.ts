@@ -1,5 +1,6 @@
 import { defineCommand } from 'citty'
 import { install, uninstall, getCurrentVersion } from '@stripe/sync-integration-supabase'
+import { logger } from '../logger.js'
 
 const installCmd = defineCommand({
   meta: {
@@ -67,8 +68,7 @@ const installCmd = defineCommand({
 
     const version = args.packageVersion || getCurrentVersion()
 
-    console.log(`Installing Stripe sync to Supabase project ${project}...`)
-    console.log(`  Edge function version: ${version}`)
+    logger.info({ project, version }, 'Installing Stripe sync to Supabase project')
 
     await install({
       supabaseAccessToken: token,
@@ -82,7 +82,7 @@ const installCmd = defineCommand({
       supabaseManagementUrl: managementUrl,
     })
 
-    console.log('Installation complete.')
+    logger.info('Installation complete')
   },
 })
 
@@ -118,7 +118,7 @@ const uninstallCmd = defineCommand({
       throw new Error('Missing --project or SUPABASE_PROJECT_REF env')
     }
 
-    console.log(`Uninstalling Stripe sync from Supabase project ${project}...`)
+    logger.info({ project }, 'Uninstalling Stripe sync from Supabase project')
 
     await uninstall({
       supabaseAccessToken: token,
@@ -126,7 +126,7 @@ const uninstallCmd = defineCommand({
       supabaseManagementUrl: managementUrl,
     })
 
-    console.log('Uninstall complete.')
+    logger.info('Uninstall complete')
   },
 })
 

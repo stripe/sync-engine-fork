@@ -32,7 +32,8 @@
   "scripts": {
     "build": "tsc",
     "x:watch": "sh -c 'if command -v bun > /dev/null 2>&1; then bun --watch \"$@\"; else tsx --watch --conditions bun \"$@\"; fi' --",
-    "dev": "LOG_LEVEL=debug LOG_PRETTY=true DANGEROUSLY_VERBOSE_LOGGING=true pnpm x:watch src/api/index.ts",
+    "dev": "PORT=4010 LOG_PRETTY=true pnpm x:watch src/api/index.ts",
+    "lint": "eslint src/",
     "test": "vitest run",
     "generate:types": "openapi-typescript src/__generated__/openapi.json -o src/__generated__/openapi.d.ts"
   },
@@ -47,6 +48,7 @@
     "@stripe/sync-destination-postgres": "workspace:*",
     "@stripe/sync-hono-zod-openapi": "workspace:*",
     "@stripe/sync-integration-supabase": "workspace:*",
+    "@stripe/sync-logger": "workspace:*",
     "@stripe/sync-protocol": "workspace:*",
     "@stripe/sync-source-stripe": "workspace:*",
     "@stripe/sync-state-postgres": "workspace:*",

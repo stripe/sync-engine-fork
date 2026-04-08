@@ -43,6 +43,7 @@ for the full dependency graph.
 | `packages/destination-postgres`      | Postgres destination connector                            | `protocol`, `util-postgres`              |
 | `packages/destination-google-sheets` | Google Sheets destination connector                       | `protocol`                               |
 | `packages/state-postgres`            | Postgres state store + migrations                         | `util-postgres`                          |
+| `packages/logger`                    | Shared structured logger with PII redaction               | `pino`                                   |
 | `packages/util-postgres`             | Shared Postgres utilities (upsert, rate limiter)          | standalone                               |
 | `packages/ts-cli`                    | Generic TypeScript module CLI runner                      | standalone                               |
 | `apps/engine`                        | Sync engine library + stateless CLI + HTTP API            | `protocol`, connectors, `state-postgres` |
@@ -75,7 +76,8 @@ See [docs/architecture/principles.md](docs/architecture/principles.md) for the c
 ## Conventions
 
 - All serializable inputs/outputs (Zod schemas, JSON wire format) must use **snake_case** field names.
-- Source connectors must use `console.error` for logging (stdout is the NDJSON stream).
+- **All logging must use `@stripe/sync-logger`** — raw `console.*` is banned in source code (enforced by ESLint `no-console: error`). Apps use `createLogger()`, subprocess connectors use `createConnectorLogger()` (writes to stderr).
+- **Never log secrets or synced data** — the shared logger redacts `api_key`, `secret`, `token`, `password`, `connection_string`, `data`, and related fields. Do not log record payloads, API keys, or connection strings even in test output.
 - Generated OpenAPI specs live in each package's `src/__generated__/openapi.json`. Run `./scripts/generate-openapi.sh` and commit the output before pushing when schemas change. Never edit generated files by hand.
 - Non-trivial PRs should be accompanied by a plan artifact in `docs/plans/YYYY-MM-DD-<slug>.md`. Save it before or alongside the first implementation commit.
 

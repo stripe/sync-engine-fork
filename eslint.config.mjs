@@ -23,6 +23,22 @@ export default [
     rules: {
       '@typescript-eslint/ban-ts-comment': 'off',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      'no-console': 'error',
+    },
+  },
+  {
+    files: [
+      '**/*.test.ts',
+      '**/__tests__/**',
+      'e2e/**',
+      'scripts/**',
+      'docs/**',
+      '**/scripts/**',
+      'apps/visualizer/**',
+      'apps/dashboard/**',
+    ],
+    rules: {
+      'no-console': 'warn',
     },
   },
 ]

@@ -12,6 +12,7 @@
   },
   "scripts": {
     "build": "tsc && cp -r oas dist/",
+    "lint": "eslint src/",
     "test": "vitest --passWithNoTests"
   },
   "files": [

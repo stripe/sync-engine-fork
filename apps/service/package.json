@@ -19,6 +19,7 @@
     "x:watch": "sh -c 'if command -v bun > /dev/null 2>&1; then bun --watch \"$@\"; else tsx --watch --conditions bun \"$@\"; fi' --",
     "dev:serve": "pnpm x:watch src/bin/sync-service.ts serve --temporal-address localhost:7233 --port 4020",
     "dev:worker": "pnpm x:watch src/bin/sync-service.ts worker --temporal-address localhost:7233",
+    "lint": "eslint src/",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "generate:types": "openapi-typescript src/__generated__/openapi.json -o src/__generated__/openapi.d.ts"
@@ -34,6 +35,7 @@
     "@stripe/sync-destination-postgres": "workspace:*",
     "@stripe/sync-engine": "workspace:*",
     "@stripe/sync-hono-zod-openapi": "workspace:*",
+    "@stripe/sync-logger": "workspace:*",
     "@stripe/sync-protocol": "workspace:*",
     "@stripe/sync-source-stripe": "workspace:*",
     "@stripe/sync-ts-cli": "workspace:*",

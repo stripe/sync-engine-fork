@@ -20,6 +20,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "lint": "eslint src/",
     "test": "vitest"
   },
   "files": [
@@ -27,6 +28,7 @@
     "src"
   ],
   "dependencies": {
+    "@stripe/sync-logger": "workspace:*",
     "@stripe/sync-openapi": "workspace:*",
     "@stripe/sync-protocol": "workspace:*",
     "https-proxy-agent": "^7.0.6",

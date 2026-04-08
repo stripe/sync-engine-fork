@@ -7,8 +7,11 @@
  */
 
 import { runMigrationsFromContent, migrations } from '@stripe/sync-state-postgres'
+import { createLogger } from '@stripe/sync-logger'
 import Stripe from 'npm:stripe'
 import pg from 'npm:pg@8'
+
+const logger = createLogger({ name: 'stripe-setup' })
 
 // ---------------------------------------------------------------------------
 // Helpers (inlined — edge functions must be self-contained)
@@ -131,7 +134,7 @@ async function deleteSecret(
 
   if (!response.ok && response.status !== 404) {
     const text = await response.text()
-    console.warn(`Failed to delete secret ${secretName}: ${response.status} ${text}`)
+    logger.warn({ secretName, status: response.status }, `Failed to delete secret`)
   }
 }
 
@@ -191,7 +194,7 @@ async function handleSetupPost(req: Request): Promise<Response> {
     try {
       await pool.query(`DELETE FROM vault.secrets WHERE name = 'stripe_sync_skip_until'`)
     } catch (err) {
-      console.warn('Could not delete skip_until vault secret:', err)
+      logger.warn('Could not delete skip_until vault secret')
     }
 
     // Clear stale sync state so the new install starts fresh
@@ -215,9 +218,12 @@ async function handleSetupPost(req: Request): Promise<Response> {
     for (const old of managedWebhooks.filter((wh) => wh.url !== webhookUrl)) {
       try {
         await stripe.webhookEndpoints.del(old.id)
-        console.log(`Deleted legacy webhook ${old.id} (${old.url})`)
+        logger.info({ webhookId: old.id }, 'Deleted legacy webhook')
       } catch (err) {
-        console.warn(`Could not delete legacy webhook ${old.id}:`, err)
+        logger.warn(
+          { webhookId: old.id, error: err instanceof Error ? err.message : String(err) },
+          'Could not delete legacy webhook'
+        )
       }
     }
 
@@ -257,13 +263,13 @@ async function handleSetupPost(req: Request): Promise<Response> {
     })
   } catch (error: unknown) {
     const err = error as Error
-    console.error('Setup error:', error)
+    logger.error({ error: err.message }, 'Setup error')
     if (pool) {
       try {
         await pool.query('SELECT pg_advisory_unlock_all()')
         await pool.end()
       } catch (cleanupErr) {
-        console.warn('Cleanup failed:', cleanupErr)
+        logger.warn('Cleanup failed')
       }
     }
     return jsonResponse({ success: false, error: err.message }, 500)
@@ -308,7 +314,7 @@ async function handleSetupGet(_req: Request): Promise<Response> {
         `)
         syncStatus = syncResult.rows
       } catch (err) {
-        console.warn('sync_runs query failed (may not exist yet):', err)
+        logger.warn('sync_runs query failed (may not exist yet)')
       }
     }
 
@@ -330,7 +336,7 @@ async function handleSetupGet(_req: Request): Promise<Response> {
     )
   } catch (error: unknown) {
     const err = error as Error
-    console.error('Status query error:', error)
+    logger.error({ error: err.message }, 'Status query error')
     return jsonResponse(
       {
         error: err.message,
@@ -378,14 +384,20 @@ async function handleSetupDelete(req: Request): Promise<Response> {
         if (wh.metadata?.managed_by === 'stripe-sync') {
           try {
             await stripe.webhookEndpoints.del(wh.id)
-            console.log(`Deleted webhook: ${wh.id}`)
+            logger.info({ webhookId: wh.id }, 'Deleted webhook')
           } catch (err) {
-            console.warn(`Could not delete webhook ${wh.id}:`, err)
+            logger.warn(
+              { webhookId: wh.id, error: err instanceof Error ? err.message : String(err) },
+              'Could not delete webhook'
+            )
           }
         }
       }
     } catch (err) {
-      console.warn(`Could not get webhooks:`, err)
+      logger.warn(
+        { error: err instanceof Error ? err.message : String(err) },
+        'Could not get webhooks'
+      )
     }
 
     // Unschedule pg_cron jobs
@@ -402,7 +414,7 @@ async function handleSetupDelete(req: Request): Promise<Response> {
         END $$;
       `)
     } catch (err) {
-      console.warn('Could not unschedule pg_cron job:', err)
+      logger.warn('Could not unschedule pg_cron job')
     }
 
     // Delete vault secrets
@@ -412,7 +424,7 @@ async function handleSetupDelete(req: Request): Promise<Response> {
         WHERE name IN ('stripe_sync_worker_secret', 'stripe_sigma_worker_secret')
       `)
     } catch (err) {
-      console.warn('Could not delete vault secret:', err)
+      logger.warn('Could not delete vault secret')
     }
 
     // Drop Sigma self-trigger function if present
@@ -420,7 +432,7 @@ async function handleSetupDelete(req: Request): Promise<Response> {
       const dropSchema = syncTablesSchemaName.replace(/"/g, '""')
       await pool.query(`DROP FUNCTION IF EXISTS "${dropSchema}".trigger_sigma_worker()`)
     } catch (err) {
-      console.warn('Could not drop sigma trigger function:', err)
+      logger.warn('Could not drop sigma trigger function')
     }
 
     // Terminate connections holding locks on schema
@@ -434,7 +446,7 @@ async function handleSetupDelete(req: Request): Promise<Response> {
         [syncTablesSchemaName]
       )
     } catch (err) {
-      console.warn('Could not terminate connections:', err)
+      logger.warn('Could not terminate connections')
     }
 
     // Drop schema(s) with retry
@@ -476,7 +488,7 @@ async function handleSetupDelete(req: Request): Promise<Response> {
       try {
         await deleteSecret(projectRef, secretName, accessToken)
       } catch (err) {
-        console.warn(`Could not delete ${secretName} secret:`, err)
+        logger.warn({ secretName }, 'Could not delete secret')
       }
     }
 
@@ -492,19 +504,19 @@ async function handleSetupDelete(req: Request): Promise<Response> {
       try {
         await deleteEdgeFunction(projectRef, slug, accessToken)
       } catch (err) {
-        console.warn(`Could not delete ${slug} function:`, err)
+        logger.warn({ slug }, 'Could not delete edge function')
       }
     }
 
     return jsonResponse({ success: true, message: 'Uninstall complete' })
   } catch (error: unknown) {
     const err = error as Error
-    console.error('Uninstall error:', error)
+    logger.error({ error: err.message }, 'Uninstall error')
     if (pool) {
       try {
         await pool.end()
       } catch (cleanupErr) {
-        console.warn('Cleanup failed:', cleanupErr)
+        logger.warn('Cleanup failed')
       }
     }
     return jsonResponse({ success: false, error: err.message }, 500)

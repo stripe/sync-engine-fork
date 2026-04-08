@@ -17,6 +17,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "lint": "eslint src/",
     "test": "vitest --passWithNoTests"
   },
   "dependencies": {

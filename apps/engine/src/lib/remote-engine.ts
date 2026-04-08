@@ -99,7 +99,8 @@ export function createRemoteEngine(engineUrl: string): Engine {
     })
     if (!response.ok) {
       const text = await response.text().catch(() => '')
-      throw new Error(`Engine ${path} failed (${response.status}): ${text}`)
+      const safeText = text.length > 200 ? text.slice(0, 200) + '...' : text
+      throw new Error(`Engine ${path} failed (${response.status}): ${safeText}`)
     }
     return response
   }

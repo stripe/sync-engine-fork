@@ -8,8 +8,11 @@ import {
   type StripeWebhookEndpoint,
 } from '@stripe/sync-openapi'
 import { withHttpRetry } from './retry.js'
+import { createConnectorLogger } from '@stripe/sync-logger'
 import { stripeEventSchema, type StripeEvent } from './spec.js'
 import { fetchWithProxy, parsePositiveInteger, type TransportEnv } from './transport.js'
+
+const logger = createConnectorLogger('source-stripe')
 
 export type StripeClientConfig = {
   api_key: string
@@ -55,12 +58,7 @@ export function makeClient(config: StripeClientConfig, env: TransportEnv = proce
     }
 
     if (logRequests) {
-      console.error({
-        msg: 'Stripe API request started',
-        method,
-        path,
-        apiVersion: config.api_version,
-      })
+      logger.info({ method, path, apiVersion: config.api_version }, 'Stripe API request started')
     }
 
     const start = Date.now()
@@ -78,15 +76,17 @@ export function makeClient(config: StripeClientConfig, env: TransportEnv = proce
     const json = (await response.json()) as unknown
 
     if (logRequests) {
-      console.error({
-        msg: 'Stripe API request completed',
-        method,
-        path,
-        status: response.status,
-        elapsed: Date.now() - start,
-        requestId: response.headers.get('request-id'),
-        apiVersion: config.api_version,
-      })
+      logger.info(
+        {
+          method,
+          path,
+          status: response.status,
+          elapsed: Date.now() - start,
+          requestId: response.headers.get('request-id'),
+          apiVersion: config.api_version,
+        },
+        'Stripe API request completed'
+      )
     }
 
     if (!response.ok) {
