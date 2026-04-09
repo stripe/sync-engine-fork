@@ -189,25 +189,16 @@ const destination = {
     }
   },
 
-  async *write({ config, catalog }, $stdin) {
+  async *write({ config, catalog: _catalog }, $stdin) {
     const pool = withQueryLogging(createPool(await buildPoolConfig(config)))
     const batchSize = config.batch_size
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const streamBuffers = new Map<string, Record<string, any>[]>()
 
-    const streamKeyColumns = new Map<string, string[]>()
-    for (const cs of catalog.streams) {
-      streamKeyColumns.set(
-        cs.stream.name,
-        cs.stream.primary_key.map((pk) => pk[0])
-      )
-    }
-
     const flushStream = async (streamName: string) => {
       const buffer = streamBuffers.get(streamName)
       if (!buffer || buffer.length === 0) return
-      const keyColumns = streamKeyColumns.get(streamName) ?? ['id']
-      await upsertMany(pool, config.schema, streamName, buffer, keyColumns)
+      await upsertMany(pool, config.schema, streamName, buffer)
       streamBuffers.set(streamName, [])
     }
 

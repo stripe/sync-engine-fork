@@ -8,10 +8,10 @@ export function catalogFromRegistry(registry: Record<string, ResourceConfig>): C
   const streams: Stream[] = Object.entries(registry)
     .filter(([, cfg]) => cfg.sync !== false)
     .sort(([, a], [, b]) => a.order - b.order)
-    .map(([, cfg]) => ({
+    .map(([name, cfg]) => ({
       name: cfg.tableName,
       primary_key: [['id'], ['_account_id']],
-      metadata: {},
+      metadata: { resource_name: name },
     }))
 
   return { streams }
@@ -31,12 +31,12 @@ export function catalogFromOpenApi(
   const streams: Stream[] = Object.entries(registry)
     .filter(([, cfg]) => cfg.sync !== false)
     .sort(([, a], [, b]) => a.order - b.order)
-    .map(([, cfg]) => {
+    .map(([name, cfg]) => {
       const table = tableMap.get(cfg.tableName)
       const stream: Stream = {
         name: cfg.tableName,
         primary_key: [['id'], ['_account_id']],
-        metadata: {},
+        metadata: { resource_name: name },
       }
 
       if (table) {
