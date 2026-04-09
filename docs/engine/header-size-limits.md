@@ -57,3 +57,12 @@ Set `maxHeaderSize: 50 MB` on the Node.js HTTP server to accommodate large conne
 This is a conservative ceiling — typical headers remain small. The Google Sheets connector
 may later move to sheet-based lookup, but the raised limit unblocks all connectors that
 carry state in headers without requiring a protocol change.
+
+## Future: `destination_state` message type
+
+Currently only sources emit state (`source_state`). If we introduce a `destination_state`
+message type, destinations could persist their own state (e.g., row mappings) through the
+engine's state store — the same way sources do today. This would let the Google Sheets
+connector store its row map without carrying it in the header or re-reading the sheet on
+every batch. The engine would checkpoint `destination_state` alongside `source_state`,
+and pass it back to the destination on the next sync via cursor input.
