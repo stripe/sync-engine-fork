@@ -230,9 +230,12 @@ export function fetchWithProxy(
   return fetch(input, fetchInit).then((res) => {
     const resClone = res.clone()
     console.error(`[http] ← ${method} ${String(input)} ${res.status} (${Date.now() - start}ms)`)
-    resClone.text().then((body) => {
-      console.error(`[http] ← body: ${body.slice(0, 4096)}`)
-    }).catch(() => {})
+    resClone
+      .text()
+      .then((body) => {
+        console.error(`[http] ← body: ${body.slice(0, 4096)}`)
+      })
+      .catch(() => {})
     return res
   })
 }

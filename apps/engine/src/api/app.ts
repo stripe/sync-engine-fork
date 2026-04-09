@@ -120,7 +120,9 @@ function clientDisconnectSignal(c: { env: any; req: { raw: Request } }): AbortSi
   // 1. Node.js ServerResponse 'close' event (works under node and tsx via @hono/node-server)
   // 2. Node.js IncomingMessage 'close' event (backup)
   // 3. Request.signal abort (works under Bun)
-  const abort = () => { if (!ac.signal.aborted) ac.abort() }
+  const abort = () => {
+    if (!ac.signal.aborted) ac.abort()
+  }
   c.env?.outgoing?.on?.('close', abort)
   c.env?.incoming?.on?.('close', abort)
   c.req.raw.signal?.addEventListener?.('abort', abort, { once: true })

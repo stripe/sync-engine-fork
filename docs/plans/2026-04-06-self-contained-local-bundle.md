@@ -100,14 +100,14 @@ restart-on-crash, log routing, and boot integration out of the box.
 
 ### What the OS provides for free
 
-| Capability | launchd (macOS) | systemd (Linux) |
-|---|---|---|
-| Restart on crash | `KeepAlive: true` | `Restart=always` |
-| Restart throttle | `ThrottleInterval: 10` | `RestartSec=5` |
-| Log routing | `StandardOutPath` / `StandardErrorPath` | `journalctl --user-unit` |
-| Start on login | `RunAtLoad: true` | `WantedBy=default.target` |
-| Dependency ordering | Sequential bootstrap | `After=` / `Requires=` |
-| Process cleanup | Automatic (no orphan zombies) | Automatic (cgroup) |
+| Capability          | launchd (macOS)                         | systemd (Linux)           |
+| ------------------- | --------------------------------------- | ------------------------- |
+| Restart on crash    | `KeepAlive: true`                       | `Restart=always`          |
+| Restart throttle    | `ThrottleInterval: 10`                  | `RestartSec=5`            |
+| Log routing         | `StandardOutPath` / `StandardErrorPath` | `journalctl --user-unit`  |
+| Start on login      | `RunAtLoad: true`                       | `WantedBy=default.target` |
+| Dependency ordering | Sequential bootstrap                    | `After=` / `Requires=`    |
+| Process cleanup     | Automatic (no orphan zombies)           | Automatic (cgroup)        |
 
 ### Service definitions
 
@@ -157,12 +157,12 @@ The custom code is thin — it generates config files and calls OS commands:
 
 ```typescript
 interface ServiceDef {
-  name: string                    // e.g. 'temporal', 'api', 'worker', 'dashboard'
-  script: string                  // path to the entry point JS file
-  args: string[]                  // CLI args
-  env: Record<string, string>     // environment variables (ports, addresses)
-  dependsOn?: string[]            // health-check these before starting
-  healthCheck?: string            // URL to poll for readiness
+  name: string // e.g. 'temporal', 'api', 'worker', 'dashboard'
+  script: string // path to the entry point JS file
+  args: string[] // CLI args
+  env: Record<string, string> // environment variables (ports, addresses)
+  dependsOn?: string[] // health-check these before starting
+  healthCheck?: string // URL to poll for readiness
 }
 
 // macOS: generate plist XML via string template, write to ~/Library/LaunchAgents/,
@@ -236,6 +236,7 @@ stripe-sync start
 ```
 
 The package includes:
+
 - Compiled JS (service API, worker, engine, dashboard static assets)
 - `@temporalio/worker` + platform-specific `@temporalio/core-bridge-*` (auto-resolved by npm)
 - `@temporalio/testing` for embedded Temporal server (downloads CLI binary on first run)

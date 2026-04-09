@@ -14,7 +14,7 @@ const SKIPPABLE_ERROR_PATTERNS = [
   'Missing required param',
 ]
 
-const DEFAULT_BACKFILL_CONCURRENCY = 200
+const DEFAULT_BACKFILL_CONCURRENCY = 1 // Used to be 200, but for now default to just 1 to make it easier to reason about. Chane back when ready.
 
 // MARK: - Compact state (generative — O(concurrency) not O(total segments))
 
