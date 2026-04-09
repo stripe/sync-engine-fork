@@ -381,6 +381,7 @@ export async function* listApiBackfill(opts: {
   } = opts
 
   let accountCreated: number | null = null
+  const failedStreams: string[] = []
 
   for (const configuredStream of catalog.streams) {
     const stream = configuredStream.stream
@@ -494,11 +495,6 @@ export async function* listApiBackfill(opts: {
         } satisfies TraceMessage
         continue
       }
-      console.error({
-        msg: 'Stripe list page failed',
-        stream: stream.name,
-        error: err instanceof Error ? err.message : String(err),
-      })
       const isRateLimit = err instanceof Error && err.message.includes('Rate limit')
       yield {
         type: 'trace',
@@ -512,6 +508,12 @@ export async function* listApiBackfill(opts: {
           },
         },
       } satisfies TraceMessage
+      failedStreams.push(stream.name)
     }
+  }
+
+  if (failedStreams.length > 0) {
+    const msg = `${failedStreams.length} stream(s) failed: ${failedStreams.join(', ')}`
+    console.error({ msg, failedStreams })
   }
 }

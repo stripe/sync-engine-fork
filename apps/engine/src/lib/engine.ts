@@ -140,13 +140,22 @@ async function* withLoggedStream<T>(
 ): AsyncIterable<T> {
   const startedAt = Date.now()
   let itemCount = 0
+  let errorCount = 0
   logger.info(context, `${label} started`)
   try {
     for await (const item of iter) {
       itemCount++
+      const msg = item as { type?: string; trace?: { trace_type?: string; error?: unknown } }
+      if (msg.type === 'trace' && msg.trace?.trace_type === 'error') {
+        errorCount++
+        logger.error({ ...context, traceError: msg.trace.error }, `${label} stream error`)
+      }
       yield item
     }
-    logger.info({ ...context, itemCount, durationMs: Date.now() - startedAt }, `${label} completed`)
+    logger.info(
+      { ...context, itemCount, errorCount, durationMs: Date.now() - startedAt },
+      `${label} completed`
+    )
   } catch (error) {
     logger.error(
       { ...context, itemCount, durationMs: Date.now() - startedAt, err: error },

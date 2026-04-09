@@ -8,8 +8,8 @@ export const configSchema = z.object({
   livemode: z.boolean().optional().describe('Whether this is a live mode sync'),
   api_version: z
     .enum(SUPPORTED_API_VERSIONS)
-    .optional()
-    .describe(`Stripe API version (default: ${BUNDLED_API_VERSION})`),
+    .default(BUNDLED_API_VERSION)
+    .describe('Stripe API version'),
   base_url: z
     .string()
     .url()

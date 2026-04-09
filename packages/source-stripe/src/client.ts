@@ -9,6 +9,7 @@ import {
 } from '@stripe/sync-openapi'
 import { stripeEventSchema, type StripeEvent } from './spec.js'
 import { fetchWithProxy, parsePositiveInteger, type TransportEnv } from './transport.js'
+import { hashApiKey } from './utils/hashApiKey.js'
 
 export type StripeClientConfig = {
   api_key: string
@@ -33,6 +34,13 @@ export class StripeRequestError extends Error {
 
 export type StripeClient = ReturnType<typeof makeClient>
 
+export function describeApiKey(apiKey: string) {
+  return {
+    apiKeyPrefix: apiKey.slice(0, 7),
+    apiKeyFingerprint: hashApiKey(apiKey).slice(0, 12),
+  }
+}
+
 export function makeClient(config: StripeClientConfig, env: TransportEnv = process.env) {
   const baseUrl = (config.base_url ?? DEFAULT_STRIPE_API_BASE).replace(/\/$/, '')
   const timeoutMs = parsePositiveInteger(
@@ -41,6 +49,13 @@ export function makeClient(config: StripeClientConfig, env: TransportEnv = proce
     10_000
   )
   const logRequests = env.STRIPE_LOG_REQUESTS === '1'
+
+  console.error({
+    msg: 'Stripe client initialized',
+    baseUrl,
+    apiVersion: config.api_version,
+    ...describeApiKey(config.api_key),
+  })
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${config.api_key}`,
