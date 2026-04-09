@@ -233,7 +233,9 @@ export function fetchWithProxy(
 
   return fetch(input, fetchInit).then((res) => {
     const resClone = res.clone()
-    logger.trace(`[http ${reqId}] ← ${method} ${String(input)} ${res.status} (${Date.now() - start}ms)`)
+    logger.trace(
+      `[http ${reqId}] ← ${method} ${String(input)} ${res.status} (${Date.now() - start}ms)`
+    )
     resClone
       .text()
       .then((body) => {
