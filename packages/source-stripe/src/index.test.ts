@@ -41,6 +41,15 @@ vi.mock('./resourceRegistry', async (importOriginal) => ({
   buildResourceRegistry: vi.fn(),
 }))
 
+vi.mock('./client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./client.js')>()),
+  makeClient: vi.fn(() => ({
+    accounts: {
+      retrieve: vi.fn(async () => ({ id: 'acct_test_fake123' })),
+    },
+  })),
+}))
+
 /** Wrap a single item as an AsyncIterable for source.read()'s $stdin param. */
 async function* toIter<T>(item: T): AsyncIterable<T> {
   yield item

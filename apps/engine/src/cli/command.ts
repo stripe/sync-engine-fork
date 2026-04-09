@@ -3,11 +3,20 @@ import { Readable } from 'node:stream'
 import { defineCommand } from 'citty'
 import { createCliFromSpec } from '@stripe/sync-ts-cli/openapi'
 import { parseJsonOrFile } from '@stripe/sync-ts-cli'
-import { createConnectorResolver } from '../lib/index.js'
+import {
+  createConnectorResolver,
+  createEngine,
+  selectStateStore,
+  pipe,
+  persistState,
+} from '../lib/index.js'
+import { collectMessages, PipelineConfig, writeLine } from '@stripe/sync-protocol'
 import { createApp } from '../api/app.js'
 import { serveAction } from '../serve-command.js'
 import { supabaseCmd } from './supabase.js'
 import { defaultConnectors } from '../lib/default-connectors.js'
+import { logger } from '../logger.js'
+import { resolveAccountId, type Config as StripeSourceConfig } from '@stripe/sync-source-stripe'
 
 /** Connector discovery flags shared by all commands (serve + one-shot). */
 const connectorArgs = {
@@ -95,8 +104,102 @@ export async function createProgram() {
     },
   })
 
+  const syncMultiCmd = defineCommand({
+    meta: {
+      name: 'sync-multi',
+      description:
+        'Sync multiple Stripe accounts into a shared schema. Accepts a JSON config with a "pipelines" array of PipelineConfig objects.',
+    },
+    args: {
+      config: {
+        type: 'string',
+        description: 'JSON file path or inline JSON: { "pipelines": [PipelineConfig, ...] }',
+        required: true,
+      },
+    },
+    async run({ args }) {
+      const raw = parseJsonOrFile(args.config)
+      const pipelinesRaw = (raw as { pipelines?: unknown[] }).pipelines
+      if (!Array.isArray(pipelinesRaw) || pipelinesRaw.length === 0) {
+        logger.error('Config must contain a non-empty "pipelines" array')
+        process.exit(1)
+      }
+
+      const pipelines = pipelinesRaw.map((p, i) => {
+        try {
+          return PipelineConfig.parse(p)
+        } catch (err) {
+          logger.error({ err, index: i }, `Invalid pipeline config at index ${i}`)
+          process.exit(1)
+        }
+      })
+
+      const engine = await createEngine(resolver)
+      const runs: Array<{
+        pipeline: PipelineConfig
+        stateStore: Awaited<ReturnType<typeof selectStateStore>>
+        index: number
+      }> = []
+
+      // Setup sequentially to avoid racing on CREATE SCHEMA
+      for (let i = 0; i < pipelines.length; i++) {
+        let pipeline = pipelines[i]
+        const { messages: controlMessages } = await collectMessages(
+          engine.pipeline_setup(pipeline),
+          'control'
+        )
+        for (const message of controlMessages) {
+          if (message.control.control_type === 'source_config') {
+            const type = pipeline.source.type
+            pipeline = {
+              ...pipeline,
+              source: { type, [type]: message.control.source_config } as PipelineConfig['source'],
+            }
+          } else if (message.control.control_type === 'destination_config') {
+            const type = pipeline.destination.type
+            pipeline = {
+              ...pipeline,
+              destination: {
+                type,
+                [type]: message.control.destination_config,
+              } as PipelineConfig['destination'],
+            }
+          }
+        }
+        const accountId = await resolveAccountId(pipeline.source as unknown as StripeSourceConfig)
+        const stateStore = await selectStateStore(pipeline, accountId)
+        logger.info({ pipeline: i }, 'sync-multi: setup completed')
+        runs.push({ pipeline, stateStore, index: i })
+      }
+
+      // Read/write concurrently — setup is already done
+      await Promise.all(
+        runs.map(async ({ pipeline, stateStore, index: i }) => {
+          logger.info({ pipeline: i }, 'sync-multi: starting sync')
+          try {
+            const state = await stateStore.get()
+            for await (const msg of pipe(
+              engine.pipeline_write(pipeline, engine.pipeline_read(pipeline, { state })),
+              persistState(stateStore)
+            )) {
+              writeLine(msg)
+            }
+            logger.info({ pipeline: i }, 'sync-multi: pipeline completed')
+          } finally {
+            await stateStore.close?.()
+          }
+        })
+      )
+    },
+  })
+
   return defineCommand({
     ...specCli,
-    subCommands: { serve: serveCmd, supabase: supabaseCmd, ...specCli.subCommands },
+    subCommands: {
+      serve: serveCmd,
+      supabase: supabaseCmd,
+      'sync-multi': syncMultiCmd,
+      ...specCli.subCommands,
+    },
   })
 }
