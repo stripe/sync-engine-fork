@@ -1,20 +1,17 @@
 import type { CatalogPayload, Stream } from '@stripe/sync-protocol'
+import type { ResourceConfig } from './types.js'
 import type { ParsedResourceTable } from '@stripe/sync-openapi'
 import { parsedTableToJsonSchema } from '@stripe/sync-openapi'
-import type { ResourceConfig } from './types.js'
 
 /** Derive a CatalogPayload from the existing resource registry (no json_schema). */
-export function catalogFromRegistry(
-  registry: Record<string, ResourceConfig>,
-  accountId: string
-): CatalogPayload {
+export function catalogFromRegistry(registry: Record<string, ResourceConfig>): CatalogPayload {
   const streams: Stream[] = Object.entries(registry)
     .filter(([, cfg]) => cfg.sync !== false)
     .sort(([, a], [, b]) => a.order - b.order)
     .map(([, cfg]) => ({
       name: cfg.tableName,
       primary_key: [['id'], ['_account_id']],
-      metadata: { account_id: accountId },
+      metadata: {},
     }))
 
   return { streams }
@@ -27,8 +24,7 @@ export function catalogFromRegistry(
  */
 export function catalogFromOpenApi(
   tables: ParsedResourceTable[],
-  registry: Record<string, ResourceConfig>,
-  accountId: string
+  registry: Record<string, ResourceConfig>
 ): CatalogPayload {
   const tableMap = new Map(tables.map((t) => [t.tableName, t]))
 
@@ -40,7 +36,7 @@ export function catalogFromOpenApi(
       const stream: Stream = {
         name: cfg.tableName,
         primary_key: [['id'], ['_account_id']],
-        metadata: { account_id: accountId },
+        metadata: {},
       }
 
       if (table) {
@@ -49,9 +45,7 @@ export function catalogFromOpenApi(
         properties._account_id = { type: 'string' }
         jsonSchema.properties = properties
 
-        const required = Array.isArray(jsonSchema.required)
-          ? [...jsonSchema.required]
-          : []
+        const required = Array.isArray(jsonSchema.required) ? [...jsonSchema.required] : []
         if (!required.includes('_account_id')) {
           required.push('_account_id')
         }

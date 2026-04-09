@@ -240,6 +240,7 @@ async function* paginateSegment(opts: {
   range: { gte: number; lt: number }
   numSegments: number
   streamName: string
+  accountId: string
   supportsLimit: boolean
   supportsForwardPagination: boolean
   backfillLimit?: number
@@ -253,6 +254,7 @@ async function* paginateSegment(opts: {
     range,
     numSegments,
     streamName,
+    accountId,
     supportsLimit,
     supportsForwardPagination,
     backfillLimit,
@@ -279,7 +281,10 @@ async function* paginateSegment(opts: {
     const response = await listFn(params as Parameters<typeof listFn>[0])
 
     for (const item of response.data) {
-      yield toRecordMessage(streamName, item as Record<string, unknown>)
+      yield toRecordMessage(streamName, {
+        ...(item as Record<string, unknown>),
+        _account_id: accountId,
+      })
       totalEmitted.count++
     }
 
@@ -315,12 +320,13 @@ async function* paginateSegment(opts: {
 async function* sequentialBackfillStream(opts: {
   resourceConfig: ResourceConfig
   streamName: string
+  accountId: string
   pageCursor: string | null
   backfillLimit?: number
   rateLimiter: RateLimiter
   drainQueue?: () => AsyncGenerator<Message>
 }): AsyncGenerator<Message> {
-  const { resourceConfig, streamName, backfillLimit, rateLimiter, drainQueue } = opts
+  const { resourceConfig, streamName, accountId, backfillLimit, rateLimiter, drainQueue } = opts
   let pageCursor = opts.pageCursor
   let hasMore = true
   let totalEmitted = 0
@@ -347,7 +353,10 @@ async function* sequentialBackfillStream(opts: {
     )
 
     for (const item of response.data) {
-      yield toRecordMessage(streamName, item as Record<string, unknown>)
+      yield toRecordMessage(streamName, {
+        ...(item as Record<string, unknown>),
+        _account_id: accountId,
+      })
       totalEmitted++
     }
 
@@ -389,6 +398,7 @@ export async function* listApiBackfill(opts: {
     | undefined
   registry: Record<string, ResourceConfig>
   client: StripeClient
+  accountId: string
   rateLimiter: RateLimiter
   backfillLimit?: number
   backfillConcurrency?: number
@@ -399,6 +409,7 @@ export async function* listApiBackfill(opts: {
     state,
     registry,
     client,
+    accountId,
     rateLimiter,
     backfillLimit,
     backfillConcurrency = DEFAULT_BACKFILL_CONCURRENCY,
@@ -479,6 +490,7 @@ export async function* listApiBackfill(opts: {
               range,
               numSegments,
               streamName: stream.name,
+              accountId,
               supportsLimit: resourceConfig.supportsLimit !== false,
               supportsForwardPagination: resourceConfig.supportsForwardPagination !== false,
               backfillLimit: streamBackfillLimit,
@@ -495,6 +507,7 @@ export async function* listApiBackfill(opts: {
         yield* sequentialBackfillStream({
           resourceConfig,
           streamName: stream.name,
+          accountId,
           pageCursor,
           backfillLimit: streamBackfillLimit,
           rateLimiter,

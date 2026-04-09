@@ -44,9 +44,7 @@ vi.mock('./resourceRegistry', async (importOriginal) => ({
 vi.mock('./client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./client.js')>()),
   makeClient: vi.fn(() => ({
-    accounts: {
-      retrieve: vi.fn(async () => ({ id: 'acct_test_fake123' })),
-    },
+    getAccount: vi.fn(async () => ({ id: 'acct_test_fake123' })),
   })),
 }))
 
@@ -653,6 +651,7 @@ describe('StripeSource', () => {
           state: undefined,
           registry,
           client: mockClient,
+          accountId: 'acct_test',
           rateLimiter: async () => 0,
           backfillConcurrency: 2,
         })
@@ -1924,6 +1923,7 @@ describe('StripeSource', () => {
           },
           registry,
           client: mockClient,
+          accountId: 'acct_test',
           rateLimiter,
           backfillConcurrency: 3,
         })
@@ -1978,6 +1978,7 @@ describe('StripeSource', () => {
           state: undefined,
           registry,
           client: mockClient,
+          accountId: 'acct_test',
           rateLimiter,
           backfillConcurrency: 3,
         })
@@ -2024,6 +2025,7 @@ describe('StripeSource', () => {
           state: undefined,
           registry,
           client: mockClient,
+          accountId: 'acct_test',
           rateLimiter,
         })
       )
@@ -2063,6 +2065,7 @@ describe('StripeSource', () => {
           state: undefined,
           registry,
           client: mockClient,
+          accountId: 'acct_test',
           rateLimiter,
         })
       )
@@ -2117,6 +2120,7 @@ describe('StripeSource', () => {
           state: undefined,
           registry,
           client: mockClient,
+          accountId: 'acct_test',
           rateLimiter,
           backfillConcurrency: 3,
         })
@@ -2200,6 +2204,7 @@ describe('StripeSource', () => {
           state: undefined,
           registry,
           client: {} as unknown as StripeClient,
+          accountId: 'acct_test',
           rateLimiter: rateLimiterSpy,
         })
       )

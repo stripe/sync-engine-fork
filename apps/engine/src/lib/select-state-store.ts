@@ -35,9 +35,7 @@ export async function selectStateStore(
       if (typeof pkg.setupStateStore === 'function') {
         await pkg.setupStateStore(destConfig)
       }
-      return pkg.createStateStore(destConfig, pipelineId) as StateStore & {
-        close?(): Promise<void>
-      }
+      return pkg.createStateStore(destConfig, pipelineId)
     }
   } catch {
     // Package not installed — fall through to readonly

@@ -256,7 +256,7 @@ describe('multi-org sync (two account IDs)', () => {
   }
 
   beforeEach(async () => {
-    await destination.setup({ config: makeConfig(), catalog: multiOrgCatalog })
+    await drain(destination.setup!({ config: makeConfig(), catalog: multiOrgCatalog }))
   })
 
   it('creates table with composite primary key (id, _account_id)', async () => {
