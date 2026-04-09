@@ -108,6 +108,25 @@ async function* verboseInput(label: string, iter: AsyncIterable<unknown>): Async
   }
 }
 
+/**
+ * Create an AbortSignal that fires when the HTTP client disconnects.
+ * Uses the Node.js ServerResponse 'close' event (works under both node and tsx),
+ * unlike ReadableStream.cancel() which only fires under compiled node.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function clientDisconnectSignal(c: { env: any; req: { raw: Request } }): AbortSignal {
+  const ac = new AbortController()
+  // Try multiple disconnect detection mechanisms:
+  // 1. Node.js ServerResponse 'close' event (works under node and tsx via @hono/node-server)
+  // 2. Node.js IncomingMessage 'close' event (backup)
+  // 3. Request.signal abort (works under Bun)
+  const abort = () => { if (!ac.signal.aborted) ac.abort() }
+  c.env?.outgoing?.on?.('close', abort)
+  c.env?.incoming?.on?.('close', abort)
+  c.req.raw.signal?.addEventListener?.('abort', abort, { once: true })
+  return ac.signal
+}
+
 // ── App factory ────────────────────────────────────────────────
 
 export async function createApp(resolver: ConnectorResolver) {
@@ -333,7 +352,8 @@ export async function createApp(resolver: ConnectorResolver) {
     const pipeline = c.req.valid('header')['x-pipeline']
     const context = { path: '/pipeline_check', ...syncRequestContext(pipeline) }
     return ndjsonResponse(
-      logApiStream('Engine API /pipeline_check', engine.pipeline_check(pipeline), context)
+      logApiStream('Engine API /pipeline_check', engine.pipeline_check(pipeline), context),
+      { signal: clientDisconnectSignal(c) }
     )
   })
 
@@ -358,7 +378,8 @@ export async function createApp(resolver: ConnectorResolver) {
     const pipeline = c.req.valid('header')['x-pipeline']
     const context = { path: '/pipeline_setup', ...syncRequestContext(pipeline) }
     return ndjsonResponse(
-      logApiStream('Engine API /pipeline_setup', engine.pipeline_setup(pipeline), context)
+      logApiStream('Engine API /pipeline_setup', engine.pipeline_setup(pipeline), context),
+      { signal: clientDisconnectSignal(c) }
     )
   })
 
@@ -383,7 +404,8 @@ export async function createApp(resolver: ConnectorResolver) {
     const pipeline = c.req.valid('header')['x-pipeline']
     const context = { path: '/pipeline_teardown', ...syncRequestContext(pipeline) }
     return ndjsonResponse(
-      logApiStream('Engine API /pipeline_teardown', engine.pipeline_teardown(pipeline), context)
+      logApiStream('Engine API /pipeline_teardown', engine.pipeline_teardown(pipeline), context),
+      { signal: clientDisconnectSignal(c) }
     )
   })
 
@@ -407,7 +429,8 @@ export async function createApp(resolver: ConnectorResolver) {
     const source = c.req.valid('header')['x-source']
     const context = { path: '/source_discover', sourceName: source.type }
     return ndjsonResponse(
-      logApiStream('Engine API /source_discover', engine.source_discover(source), context)
+      logApiStream('Engine API /source_discover', engine.source_discover(source), context),
+      { signal: clientDisconnectSignal(c) }
     )
   })
 
@@ -464,7 +487,9 @@ export async function createApp(resolver: ConnectorResolver) {
       }
     }
     const output = engine.pipeline_read(pipeline, { state, state_limit, time_limit }, input)
-    return ndjsonResponse(logApiStream('Engine API /pipeline_read', output, context, startedAt))
+    return ndjsonResponse(logApiStream('Engine API /pipeline_read', output, context, startedAt), {
+      signal: c.req.raw.signal,
+    })
   })
 
   const pipelineWriteRoute = createRoute({
@@ -507,7 +532,8 @@ export async function createApp(resolver: ConnectorResolver) {
         engine.pipeline_write(pipeline, messages),
         context,
         startedAt
-      )
+      ),
+      { signal: clientDisconnectSignal(c) }
     )
   })
 
@@ -545,7 +571,7 @@ export async function createApp(resolver: ConnectorResolver) {
       ? verboseInput('pipeline_sync', parseNdjsonStream(c.req.raw.body!))
       : undefined
     const output = engine.pipeline_sync(pipeline, { state, state_limit, time_limit }, input)
-    return ndjsonResponse(output)
+    return ndjsonResponse(output, { signal: clientDisconnectSignal(c) })
   })
 
   app.openapi(

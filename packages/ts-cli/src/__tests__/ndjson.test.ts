@@ -35,10 +35,12 @@ describe('ndjsonResponse', () => {
       yield { type: 'ok' }
       throw new Error('kaboom')
     }
-    const res = ndjsonResponse(failing(), (err) => ({
-      type: 'error',
-      msg: err instanceof Error ? err.message : 'unknown',
-    }))
+    const res = ndjsonResponse(failing(), {
+      onError: (err) => ({
+        type: 'error',
+        msg: err instanceof Error ? err.message : 'unknown',
+      }),
+    })
     const lines = await readLines(res)
     expect(lines).toEqual([{ type: 'ok' }, { type: 'error', msg: 'kaboom' }])
   })
