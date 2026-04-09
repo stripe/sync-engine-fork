@@ -1,8 +1,17 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ndjsonResponse } from '../ndjson.js'
 
 async function* fromArray<T>(items: T[]): AsyncIterable<T> {
   for (const item of items) yield item
+}
+
+/** Yields items slowly, tracking how many were pulled via the callback. */
+async function* slowItems(count: number, onYield: () => void): AsyncIterable<{ n: number }> {
+  for (let i = 0; i < count; i++) {
+    await new Promise((r) => setTimeout(r, 10))
+    onYield()
+    yield { n: i }
+  }
 }
 
 async function readLines(res: Response): Promise<unknown[]> {
@@ -43,5 +52,25 @@ describe('ndjsonResponse', () => {
     const lines = await readLines(res)
     // Only the item before the error — no error message emitted
     expect(lines).toEqual([{ type: 'ok' }])
+  })
+
+  it('stops pulling from the iterable when the stream is cancelled', async () => {
+    let yielded = 0
+    const res = ndjsonResponse(slowItems(100, () => yielded++))
+
+    const reader = res.body!.getReader()
+    // Read a couple of chunks to let the generator start
+    await reader.read()
+    await reader.read()
+
+    // Cancel simulates client disconnect
+    await reader.cancel()
+
+    const yieldedAtCancel = yielded
+    // Wait to confirm no more items are pulled
+    await new Promise((r) => setTimeout(r, 100))
+    expect(yielded).toBeLessThan(100)
+    // Should not have pulled significantly more after cancel
+    expect(yielded - yieldedAtCancel).toBeLessThanOrEqual(1)
   })
 })

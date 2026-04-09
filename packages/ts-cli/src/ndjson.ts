@@ -23,20 +23,29 @@ export function ndjsonResponse<T>(
   onError?: (err: unknown) => T
 ): Response {
   const encoder = new TextEncoder()
+  const ac = new AbortController()
 
   const stream = new ReadableStream({
     async start(controller) {
+      const iterator = iterable[Symbol.asyncIterator]()
       try {
-        for await (const item of iterable) {
-          controller.enqueue(encoder.encode(JSON.stringify(item) + '\n'))
+        while (!ac.signal.aborted) {
+          const { value, done } = await iterator.next()
+          if (done || ac.signal.aborted) break
+          controller.enqueue(encoder.encode(JSON.stringify(value) + '\n'))
         }
       } catch (err) {
-        if (onError) {
+        if (!ac.signal.aborted && onError) {
           controller.enqueue(encoder.encode(JSON.stringify(onError(err)) + '\n'))
         }
       } finally {
+        // Tear down the generator chain
+        await iterator.return?.()
         controller.close()
       }
+    },
+    cancel() {
+      ac.abort()
     },
   })
 

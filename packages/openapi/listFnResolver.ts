@@ -274,7 +274,7 @@ export function buildListFn(
   apiKey: string,
   apiPath: string,
   fetch: typeof globalThis.fetch,
-  apiVersion?: string,
+  apiVersion: string,
   baseUrl?: string
 ): ListFn {
   const base = baseUrl ?? DEFAULT_STRIPE_API_BASE
@@ -291,7 +291,7 @@ export function buildListFn(
       }
 
       const headers = authHeaders(apiKey)
-      if (apiVersion) headers['Stripe-Version'] = apiVersion
+      headers['Stripe-Version'] = apiVersion
 
       const response = await fetch(`${base}${apiPath}?${qs}`, { headers })
       const parsed = (await readJson(response)) as {
@@ -335,7 +335,7 @@ export function buildRetrieveFn(
   apiKey: string,
   apiPath: string,
   fetch: typeof globalThis.fetch,
-  apiVersion?: string,
+  apiVersion: string,
   baseUrl?: string
 ): RetrieveFn {
   const base = baseUrl ?? DEFAULT_STRIPE_API_BASE
@@ -343,7 +343,7 @@ export function buildRetrieveFn(
   if (isV2Path(apiPath)) {
     return async (id) => {
       const headers = authHeaders(apiKey)
-      if (apiVersion) headers['Stripe-Version'] = apiVersion
+      headers['Stripe-Version'] = apiVersion
 
       const response = await fetch(`${base}${apiPath}/${id}`, { headers })
       const body = await readJson(response)

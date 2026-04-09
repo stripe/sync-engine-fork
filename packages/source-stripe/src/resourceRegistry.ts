@@ -88,7 +88,7 @@ export type RevalidateEntityName = (typeof REVALIDATE_ENTITIES)[number]
 export function buildResourceRegistry(
   spec: OpenApiSpec,
   apiKey: string,
-  apiVersion?: string,
+  apiVersion: string,
   baseUrl?: string
 ): Record<string, ResourceConfig> {
   const endpoints = discoverListEndpoints(spec)
