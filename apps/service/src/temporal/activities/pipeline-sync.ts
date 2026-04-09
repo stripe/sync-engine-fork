@@ -1,5 +1,6 @@
 import { ApplicationFailure } from '@temporalio/activity'
 import type { SourceInputMessage, SourceReadOptions } from '@stripe/sync-engine'
+import { logger } from '../../logger.js'
 import type { ActivitiesContext } from './_shared.js'
 import { asIterable, drainMessages, type RunResult } from './_shared.js'
 import { classifySyncErrors, summarizeSyncErrors } from '../sync-errors.js'
@@ -33,7 +34,8 @@ export function createPipelineSyncActivity(context: ActivitiesContext) {
     const { transient, permanent } = classifySyncErrors(errors)
     if (permanent.length > 0) {
       if (transient.length > 0) {
-        console.warn(
+        logger.warn(
+          { transientCount: transient.length, permanentCount: permanent.length },
           `Transient errors suppressed by permanent failures: ${summarizeSyncErrors(transient)}`
         )
       }

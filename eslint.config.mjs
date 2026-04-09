@@ -13,6 +13,9 @@ const compat = new FlatCompat({
 })
 
 export default [
+  {
+    ignores: ['**/__generated__/**'],
+  },
   ...compat.extends('plugin:@typescript-eslint/recommended', 'plugin:prettier/recommended'),
   {
     languageOptions: {
@@ -22,7 +25,10 @@ export default [
     },
     rules: {
       '@typescript-eslint/ban-ts-comment': 'off',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       'no-console': 'error',
     },
   },
@@ -38,7 +44,7 @@ export default [
       'apps/dashboard/**',
     ],
     rules: {
-      'no-console': 'warn',
+      'no-console': 'off',
     },
   },
 ]

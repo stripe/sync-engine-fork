@@ -17,15 +17,7 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { createDocument, createSchema } from 'zod-openapi'
 import type { Hook } from '@hono/zod-validator'
-import type {
-  Context,
-  Env,
-  Handler,
-  Input,
-  MiddlewareHandler,
-  Schema,
-  ValidationTargets,
-} from 'hono'
+import type { Env, Handler, Input, MiddlewareHandler, Schema, ValidationTargets } from 'hono'
 import type {
   ZodOpenApiOperationObject,
   ZodOpenApiObject,
@@ -246,6 +238,7 @@ function processJsonContentHeaders(op: ZodOpenApiOperationObject): {
 
 export class OpenAPIHono<
   E extends Env = Env,
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   S extends Schema = {},
   BasePath extends string = '/',
 > extends Hono<E, S, BasePath> {

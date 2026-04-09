@@ -204,14 +204,14 @@ export async function createProgram() {
       terminate: async () => {},
     }),
     list: async function* () {},
-  } as any
+  } as unknown as Parameters<typeof createApp>[0]['temporal']['client']
   const mockStore = {
     get: async () => ({}),
     set: async () => {},
     update: async () => ({}),
     delete: async () => {},
     list: async () => [],
-  } as any
+  } as unknown as Parameters<typeof createApp>[0]['pipelineStore']
 
   const resolver = await resolverPromise
   const mockApp = createApp({

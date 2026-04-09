@@ -3,7 +3,6 @@ import { resolveBin } from './resolver.js'
 import { createSourceFromExec } from './source-exec.js'
 import { createDestinationFromExec } from './destination-exec.js'
 import { collectFirst } from '@stripe/sync-protocol'
-import type { Message } from '@stripe/sync-protocol'
 
 // These tests use real connector binaries (built by `pnpm build`).
 

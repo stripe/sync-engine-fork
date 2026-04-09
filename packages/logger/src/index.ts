@@ -1,6 +1,7 @@
 export {
   createLogger,
   createConnectorLogger,
+  REQUEST_HEADER_REDACT,
   type CreateLoggerOptions,
   type Logger,
 } from './logger.js'

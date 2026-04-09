@@ -189,10 +189,11 @@ describe('JSON content header — OAS spec', () => {
     const app = createTestApp()
     const spec = app.getOpenAPI31Document({
       info: { title: 'test', version: '1' },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any
 
     const params = spec.paths['/test'].post.parameters
-    const xData = params.find((p: any) => p.name === 'x-data')
+    const xData = params.find((p: { name: string }) => p.name === 'x-data')
 
     expect(xData).toBeDefined()
     expect(xData.in).toBe('header')
@@ -222,10 +223,11 @@ describe('JSON content header — OAS spec', () => {
 
     const spec = app.getOpenAPI31Document({
       info: { title: 'test', version: '1' },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any
 
     const params = spec.paths['/plain'].get.parameters
-    const xToken = params.find((p: any) => p.name === 'x-token')
+    const xToken = params.find((p: { name: string }) => p.name === 'x-token')
     expect(xToken.schema).toBeDefined()
     expect(xToken.content).toBeUndefined()
   })
@@ -234,6 +236,7 @@ describe('JSON content header — OAS spec', () => {
     const app = createTestApp()
     const spec = app.getOpenAPI31Document({
       info: { title: 'test', version: '1' },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any
 
     // Item schema should appear as a named component
@@ -243,7 +246,7 @@ describe('JSON content header — OAS spec', () => {
 
     // The header content schema should use $ref
     const params = spec.paths['/test'].post.parameters
-    const xData = params.find((p: any) => p.name === 'x-data')
+    const xData = params.find((p: { name: string }) => p.name === 'x-data')
     expect(xData.content['application/json'].schema.$ref).toBe('#/components/schemas/Item')
   })
 })

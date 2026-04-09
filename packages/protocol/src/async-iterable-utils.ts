@@ -25,7 +25,7 @@ export function channel<T>(): AsyncIterable<T> & {
       if (pending.length > 0) {
         return Promise.resolve({ value: pending.shift()!, done: false })
       }
-      if (done) return Promise.resolve({ value: undefined as any, done: true })
+      if (done) return Promise.resolve({ value: undefined, done: true } as IteratorResult<T>)
       return new Promise<IteratorResult<T>>((r) => {
         resolve = r
       })
@@ -48,7 +48,7 @@ export function channel<T>(): AsyncIterable<T> & {
       if (resolve) {
         const r = resolve
         resolve = null
-        r({ value: undefined as any, done: true })
+        r({ value: undefined, done: true } as IteratorResult<T>)
       }
     },
   })

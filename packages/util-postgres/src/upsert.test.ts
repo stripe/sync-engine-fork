@@ -448,8 +448,10 @@ describe('batch multi-row', () => {
 
     const r = await rows(table)
     expect(r).toHaveLength(3)
-    expect(r.find((x: any) => x.id === '2').name).toBe('Bob Updated')
-    expect(r.find((x: any) => x.id === '3').name).toBe('Charlie')
+    const bob = r.find((x: Record<string, unknown>) => x.id === '2')!
+    expect(bob.name).toBe('Bob Updated')
+    const charlie = r.find((x: Record<string, unknown>) => x.id === '3')!
+    expect(charlie.name).toBe('Charlie')
   })
 })
 

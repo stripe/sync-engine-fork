@@ -5,7 +5,7 @@ const mockGetAuthToken = vi.fn()
 
 vi.mock('@aws-sdk/client-sts', () => ({
   STSClient: vi.fn(() => ({ send: mockSend })),
-  AssumeRoleCommand: vi.fn((params: any) => ({ input: params })),
+  AssumeRoleCommand: vi.fn((params: Record<string, unknown>) => ({ input: params })),
 }))
 
 vi.mock('@aws-sdk/rds-signer', () => ({

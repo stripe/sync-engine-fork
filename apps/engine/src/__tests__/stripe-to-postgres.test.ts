@@ -187,8 +187,9 @@ describe('engine read → write', () => {
 
     for (const r of records) {
       expect(r.stream).toBe(targetStream)
-      expect((r as any).data).toBeDefined()
-      expect((r as any).data.id).toBeDefined()
+      const data = (r as Record<string, unknown>).data as Record<string, unknown>
+      expect(data).toBeDefined()
+      expect(data.id).toBeDefined()
     }
   })
 

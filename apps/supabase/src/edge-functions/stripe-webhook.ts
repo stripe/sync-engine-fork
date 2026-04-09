@@ -73,7 +73,6 @@ Deno.serve(async (req) => {
         yield { body: rawBody, signature: sig }
       })()
     )
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     for await (const _stateMsg of destinationPostgres.write(
       { config: destConfig, catalog },
       messages
@@ -83,7 +82,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ received: true })
   } catch (error: unknown) {
     const err = error as Error & { type?: string }
-    logger.error({ error: err.message, type: err.type }, 'Webhook processing error')
+    logger.error({ err }, 'Webhook processing error')
     const isSignatureError =
       err.message?.includes('signature') || err.type === 'StripeSignatureVerificationError'
     const status = isSignatureError ? 400 : 500

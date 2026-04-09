@@ -37,6 +37,7 @@ const ndjsonRef = {
   SourceInputMessage: { $ref: '#/components/schemas/SourceInputMessage' },
 }
 import { ndjsonResponse } from '@stripe/sync-ts-cli/ndjson'
+import { REQUEST_HEADER_REDACT } from '@stripe/sync-logger'
 import { logger } from '../logger.js'
 import {
   sslConfigFromConnectionString,
@@ -142,7 +143,7 @@ export async function createApp(resolver: ConnectorResolver) {
         }
       })
       logger.debug(
-        { requestId, method: c.req.method, path: c.req.path, headers },
+        { requestId, method: c.req.method, path: c.req.path, request_headers: headers },
         'request headers'
       )
     }
@@ -150,20 +151,14 @@ export async function createApp(resolver: ConnectorResolver) {
     if (dangerouslyVerbose) {
       const curlParts = [`curl -X ${c.req.method} '${c.req.url}'`]
       c.req.raw.headers.forEach((value, key) => {
-        curlParts.push(`  -H '${key}: ${value}'`)
+        curlParts.push(
+          REQUEST_HEADER_REDACT.has(key.toLowerCase())
+            ? `  -H '${key}: [REDACTED]'`
+            : `  -H '${key}: ${value}'`
+        )
       })
       if (hasBody(c)) {
-        const cl = c.req.header('Content-Length')
-        if (cl && Number(cl) < 100_000) {
-          try {
-            const body = await c.req.raw.clone().text()
-            curlParts.push(`  -d '${body.replace(/'/g, "'\\''")}'`)
-          } catch {
-            /* skip */
-          }
-        } else {
-          curlParts.push('  --data-binary @-')
-        }
+        curlParts.push('  --data-binary @-')
       }
       logger.debug(curlParts.join(' \\\n'))
     }

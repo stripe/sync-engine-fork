@@ -486,8 +486,7 @@ export class SupabaseSetupClient {
         try {
           await this.invokeFunction('stripe-worker', 'POST', this.workerSecret)
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error)
-          logger.warn({ error: errorMessage }, 'Failed to invoke stripe-worker')
+          logger.warn({ err: error }, 'Failed to invoke stripe-worker')
         }
       }
     } catch (error) {

@@ -505,10 +505,7 @@ export async function* listApiBackfill(opts: {
         } satisfies TraceMessage
         continue
       }
-      logger.error(
-        { stream: stream.name, error: err instanceof Error ? err.message : String(err) },
-        'Stripe list page failed'
-      )
+      logger.error({ err, stream: stream.name }, 'Stripe list page failed')
       const isRateLimit = err instanceof Error && err.message.includes('Rate limit')
       const isAuthError =
         err instanceof StripeApiRequestError && (err.status === 401 || err.status === 403)

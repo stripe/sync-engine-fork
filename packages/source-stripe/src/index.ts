@@ -1,7 +1,5 @@
 import type {
   CatalogPayload,
-  ConfiguredCatalog,
-  Message,
   Source,
   SpecOutput,
   CheckOutput,
@@ -10,8 +8,7 @@ import type {
   TeardownOutput,
 } from '@stripe/sync-protocol'
 import { sourceControlMsg } from '@stripe/sync-protocol'
-import { z } from 'zod'
-import defaultSpec, { configSchema } from './spec.js'
+import defaultSpec from './spec.js'
 import type { Config } from './spec.js'
 import type { StripeEvent } from './spec.js'
 import { buildResourceRegistry } from './resourceRegistry.js'
@@ -28,7 +25,6 @@ import { listApiBackfill } from './src-list-api.js'
 import { pollEvents } from './src-events-api.js'
 import type { StripeWebSocketClient, StripeWebhookEvent } from './src-websocket.js'
 import { createStripeWebSocketClient } from './src-websocket.js'
-import type { ResourceConfig } from './types.js'
 import { makeClient } from './client.js'
 import type { RateLimiter } from './rate-limiter.js'
 import { createInMemoryRateLimiter, DEFAULT_MAX_RPS } from './rate-limiter.js'
@@ -105,10 +101,13 @@ export function createStripeSource(
           type: 'connection_status' as const,
           connection_status: { status: 'succeeded' as const },
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         yield {
           type: 'connection_status' as const,
-          connection_status: { status: 'failed' as const, message: err.message },
+          connection_status: {
+            status: 'failed' as const,
+            message: err instanceof Error ? err.message : String(err),
+          },
         }
       }
     },
@@ -150,7 +149,7 @@ export function createStripeSource(
       yield { type: 'catalog' as const, catalog }
     },
 
-    async *setup({ config, catalog }): AsyncGenerator<SetupOutput> {
+    async *setup({ config, catalog: _catalog }): AsyncGenerator<SetupOutput> {
       const updates: Partial<Config> = {}
       const client = makeClient({
         ...config,

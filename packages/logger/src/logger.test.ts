@@ -35,37 +35,38 @@ function logAndCapture(logger: Logger, fn: (l: Logger) => void) {
 // ---------------------------------------------------------------------------
 
 describe('scrubSecrets', () => {
-  it('scrubs Stripe live keys', () => {
-    const text = 'Error: Invalid key sk_live_abc123XYZ789012 for account'
-    expect(scrubSecrets(text)).toBe(`Error: Invalid key ${REDACT_CENSOR} for account`)
-  })
-
-  it('scrubs Stripe test keys', () => {
-    const text = 'key: sk_test_51HnGDhKJ3xyz'
-    expect(scrubSecrets(text)).toBe(`key: ${REDACT_CENSOR}`)
-  })
-
-  it('scrubs restricted keys', () => {
-    const text = 'rk_live_longkeyvalue1234'
-    expect(scrubSecrets(text)).toBe(REDACT_CENSOR)
-  })
-
-  it('scrubs URL credentials', () => {
-    const text = 'postgres://admin:s3cret@db.host.com:5432/mydb'
-    expect(scrubSecrets(text)).toContain(REDACT_CENSOR)
-    expect(scrubSecrets(text)).not.toContain('s3cret')
-    expect(scrubSecrets(text)).not.toContain('admin')
-  })
-
-  it('scrubs Bearer tokens', () => {
-    const text = 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig'
-    expect(scrubSecrets(text)).toContain(REDACT_CENSOR)
-    expect(scrubSecrets(text)).not.toContain('eyJhbG')
+  it('preserves URL structure when scrubbing credentials', () => {
+    expect(scrubSecrets('postgres://admin:s3cret@db.host.com:5432/mydb')).toBe(
+      `postgres://${REDACT_CENSOR}@db.host.com:5432/mydb`
+    )
   })
 
   it('leaves clean text unchanged', () => {
-    const text = 'Sync completed: 42 records in 3.2s'
-    expect(scrubSecrets(text)).toBe(text)
+    expect(scrubSecrets('Sync completed: 42 records in 3.2s')).toBe(
+      'Sync completed: 42 records in 3.2s'
+    )
+  })
+
+  it.each([
+    ['Stripe live key', 'sk_live_abc123XYZ789012'],
+    ['Stripe test key', 'sk_test_51HnGDhKJ3xyz'],
+    ['Stripe restricted key', 'rk_live_longkeyvalue1234'],
+    ['webhook signing secret', 'whsec_abc123XYZ789012'],
+    ['Bearer token', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig'],
+    ['URL credentials', 'postgres://admin:s3cret@db.host.com:5432/mydb'],
+    [
+      'Supabase JWT key',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJvbGUiOiJhbm9uIn0.abcdefghijklmnopqrstuvwx',
+    ],
+    ['AWS access key', 'AKIAIOSFODNN7EXAMPLE'],
+    ['GitHub PAT', 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij'],
+    ['GitHub OAuth token', 'gho_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij'],
+    ['GitHub fine-grained PAT', 'github_pat_11AABBC_xyzXYZxyzXYZxy'],
+  ])('scrubs %s', (_label, secret) => {
+    const text = `error: ${secret} leaked`
+    const scrubbed = scrubSecrets(text)
+    expect(scrubbed).not.toContain(secret)
+    expect(scrubbed).toContain(REDACT_CENSOR)
   })
 })
 
@@ -109,7 +110,7 @@ describe('createLogger redaction', () => {
 
   beforeEach(() => {
     capture = createCapture()
-    logger = createLogger({ destination: capture.stream, pretty: false })
+    logger = createLogger({ destination: capture.stream, pretty: false, level: 'debug' })
   })
 
   it('redacts top-level sensitive fields', () => {
@@ -121,9 +122,7 @@ describe('createLogger redaction', () => {
   })
 
   it('redacts nested sensitive fields', () => {
-    logAndCapture(logger, (l) =>
-      l.info({ config: { secret_key: 'whsec_abc123' } }, 'nested test')
-    )
+    logAndCapture(logger, (l) => l.info({ config: { secret_key: 'whsec_abc123' } }, 'nested test'))
     logger.flush()
     const out = capture.lines()
     expect(out).toHaveLength(1)
@@ -167,6 +166,125 @@ describe('createLogger redaction', () => {
 })
 
 // ---------------------------------------------------------------------------
+// createLogger — string value scrubbing (final safety hook)
+// ---------------------------------------------------------------------------
+
+describe('createLogger string value scrubbing', () => {
+  let capture: ReturnType<typeof createCapture>
+  let logger: Logger
+
+  beforeEach(() => {
+    capture = createCapture()
+    logger = createLogger({ destination: capture.stream, pretty: false })
+  })
+
+  it('scrubs secrets from arbitrary string fields', () => {
+    logAndCapture(logger, (l) =>
+      l.error({ error: 'connection to postgres://admin:pass123@host:5432/db failed' }, 'db error')
+    )
+    logger.flush()
+    const out = capture.lines()
+    expect(out[0].error as string).not.toContain('pass123')
+    expect(out[0].error as string).not.toContain('admin')
+  })
+
+  it('scrubs Stripe keys from any string field', () => {
+    logAndCapture(logger, (l) =>
+      l.warn({ detail: 'Invalid key sk_test_51HnGDhKJ3xyzABC' }, 'auth failure')
+    )
+    logger.flush()
+    const out = capture.lines()
+    expect(out[0].detail as string).not.toContain('sk_test_')
+    expect(out[0].detail as string).toContain(REDACT_CENSOR)
+  })
+
+  it('scrubs secrets from message strings', () => {
+    logAndCapture(logger, (l) =>
+      l.error('connection to postgres://admin:pass123@host:5432/db failed')
+    )
+    logger.flush()
+    const out = capture.lines()
+    expect(out[0].msg as string).not.toContain('pass123')
+    expect(out[0].msg as string).not.toContain('admin')
+    expect(out[0].msg as string).toContain(REDACT_CENSOR)
+  })
+
+  it('scrubs secrets from nested string fields', () => {
+    logAndCapture(logger, (l) =>
+      l.error(
+        {
+          request: {
+            url: 'postgres://admin:pass123@host:5432/db',
+            headers: ['Bearer abcdefghijklmnopqrstuvwxyz123456'],
+          },
+        },
+        'nested secret'
+      )
+    )
+    logger.flush()
+    const out = capture.lines()
+    const request = out[0].request as Record<string, unknown>
+    expect(request.url).toBe(`postgres://${REDACT_CENSOR}@host:5432/db`)
+    expect(request.headers).toEqual([REDACT_CENSOR])
+  })
+
+  it('does not modify non-string fields', () => {
+    logAndCapture(logger, (l) => l.info({ count: 42, active: true }, 'stats'))
+    logger.flush()
+    const out = capture.lines()
+    expect(out[0].count).toBe(42)
+    expect(out[0].active).toBe(true)
+  })
+
+  it('leaves clean strings unchanged', () => {
+    logAndCapture(logger, (l) => l.info({ status: 'ok', region: 'us-east-1' }, 'healthy'))
+    logger.flush()
+    const out = capture.lines()
+    expect(out[0].status).toBe('ok')
+    expect(out[0].region).toBe('us-east-1')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// createLogger — structured serializers
+// ---------------------------------------------------------------------------
+
+describe('createLogger structured serializers', () => {
+  let capture: ReturnType<typeof createCapture>
+  let logger: Logger
+
+  beforeEach(() => {
+    capture = createCapture()
+    logger = createLogger({ destination: capture.stream, pretty: false, level: 'debug' })
+  })
+
+  it('allowlists and redacts request headers', () => {
+    logAndCapture(logger, (l) =>
+      l.debug(
+        {
+          request_headers: {
+            authorization: 'Bearer abcdefghijklmnopqrstuvwxyz123456',
+            cookie: 'session=top-secret',
+            'content-type': 'application/json',
+            referer: 'https://example.com/?token=hidden',
+            'x-custom': 'left-out',
+          },
+        },
+        'request headers'
+      )
+    )
+    logger.flush()
+    const out = capture.lines()
+    expect(out[0].request_headers).toEqual({
+      authorization: REDACT_CENSOR,
+      cookie: REDACT_CENSOR,
+      'content-type': 'application/json',
+      omitted_header_count: 2,
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
 // createLogger — error serializer
 // ---------------------------------------------------------------------------
 
@@ -199,6 +317,46 @@ describe('createLogger error serializer', () => {
     expect(serialized.message as string).not.toContain('admin')
   })
 
+  it('scrubs enumerable string properties on the error', () => {
+    const err = Object.assign(new Error('fail'), {
+      detail: 'Bearer abcdefghijklmnopqrstuvwxyz123456',
+      meta: { url: 'postgres://admin:pass123@host:5432/db' },
+    })
+    logAndCapture(logger, (l) => l.error({ err }, 'request failed'))
+    logger.flush()
+    const out = capture.lines()
+    const serialized = out[0].err as Record<string, unknown>
+    expect(serialized.detail).toBe(REDACT_CENSOR)
+    expect(serialized.meta).toEqual({ url: `postgres://${REDACT_CENSOR}@host:5432/db` })
+  })
+
+  it('bounds deep recursive scrubbing on error properties', () => {
+    let nested: Record<string, unknown> = { secret: 'sk_test_51HnGDhKJ3xyzABC' }
+    for (const k of ['f', 'e', 'd', 'c', 'b', 'a']) nested = { [k]: nested }
+    const err = Object.assign(new Error('fail'), { nested })
+    logAndCapture(logger, (l) => l.error({ err }, 'depth bound'))
+    logger.flush()
+    const serialized = capture.lines()[0].err as Record<string, unknown>
+    expect(serialized.nested).toEqual({
+      a: { b: { c: { d: { e: { f: '[Truncated: depth limit]' } } } } },
+    })
+  })
+
+  it('summarizes binary error properties instead of logging their contents', () => {
+    const err = Object.assign(new Error('fail'), {
+      payload: Buffer.from('secret'),
+    })
+    logAndCapture(logger, (l) => l.error({ err }, 'binary payload'))
+    logger.flush()
+    const out = capture.lines()
+    const serialized = out[0].err as Record<string, unknown>
+    expect(serialized.payload).toEqual({
+      type: 'Buffer',
+      byte_length: 6,
+      data_redacted: true,
+    })
+  })
+
   it('preserves extra enumerable properties on the error', () => {
     const err = Object.assign(new Error('fail'), { code: 'ECONNREFUSED', port: 5432 })
     logAndCapture(logger, (l) => l.error({ err }, 'connection error'))
@@ -208,6 +366,26 @@ describe('createLogger error serializer', () => {
     expect(serialized.code).toBe('ECONNREFUSED')
     expect(serialized.port).toBe(5432)
     expect(serialized.type).toBe('Error')
+  })
+})
+
+describe('createLogger pretty env parsing', () => {
+  it.each(['0', 'false'])('treats LOG_PRETTY=%s as disabled', (value) => {
+    const origEnv = process.env.LOG_PRETTY
+    const capture = createCapture()
+    try {
+      process.env.LOG_PRETTY = value
+      const logger = createLogger({ destination: capture.stream })
+      logger.info({ ok: true }, 'hello')
+      logger.flush()
+      expect(capture.lines()).toHaveLength(1)
+    } finally {
+      if (origEnv === undefined) {
+        delete process.env.LOG_PRETTY
+      } else {
+        process.env.LOG_PRETTY = origEnv
+      }
+    }
   })
 })
 
@@ -226,8 +404,6 @@ describe('createConnectorLogger', () => {
     try {
       process.env.LOG_PRETTY = '1'
       const logger = createConnectorLogger('test-connector')
-      // Transport would be set if pretty leaked through. The logger should
-      // still produce valid JSON (not pretty-printed text).
       expect(logger).toBeDefined()
     } finally {
       if (origEnv === undefined) {
@@ -236,5 +412,42 @@ describe('createConnectorLogger', () => {
         process.env.LOG_PRETTY = origEnv
       }
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// createLogger — named logger output
+// ---------------------------------------------------------------------------
+
+describe('createLogger named logger output', () => {
+  it('outputs valid NDJSON with the configured name', () => {
+    const capture = createCapture()
+    const logger = createLogger({
+      name: 'test-connector',
+      destination: capture.stream,
+      pretty: false,
+    })
+    logger.info({ stream: 'customers' }, 'sync started')
+    logger.flush()
+    const out = capture.lines()
+    expect(out).toHaveLength(1)
+    expect(out[0].name).toBe('test-connector')
+    expect(out[0].stream).toBe('customers')
+    expect(out[0].msg).toBe('sync started')
+    expect(out[0].level).toBe(30)
+  })
+
+  it('redacts secrets in named logger output', () => {
+    const capture = createCapture()
+    const logger = createLogger({
+      name: 'test-connector',
+      destination: capture.stream,
+      pretty: false,
+    })
+    logger.error({ api_key: 'sk_test_secret123' }, 'auth failed')
+    logger.flush()
+    const out = capture.lines()
+    expect(out[0].api_key).toBe(REDACT_CENSOR)
+    expect(JSON.stringify(out[0])).not.toContain('sk_test_secret123')
   })
 })

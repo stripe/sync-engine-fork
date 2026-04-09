@@ -73,19 +73,25 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
     return { name, config, variant: z.object({ type: z.literal(name), [name]: config }) }
   })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SourceConfig =
     sources.length > 0
       ? z
-          .discriminatedUnion('type', sources.map((s) => s.variant) as [any, any, ...any[]])
+          .discriminatedUnion(
+            'type',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            sources.map((s) => s.variant) as [any, any, ...any[]]
+          )
           .meta({ id: connectorUnionId('Source') })
       : z.object({ type: z.string() }).catchall(z.unknown())
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const DestinationConfig =
     destinations.length > 0
       ? z
-          .discriminatedUnion('type', destinations.map((d) => d.variant) as [any, any, ...any[]])
+          .discriminatedUnion(
+            'type',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            destinations.map((d) => d.variant) as [any, any, ...any[]]
+          )
           .meta({ id: connectorUnionId('Destination') })
       : z.object({ type: z.string() }).catchall(z.unknown())
 

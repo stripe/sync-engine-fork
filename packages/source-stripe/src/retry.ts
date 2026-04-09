@@ -1,3 +1,7 @@
+import { createConnectorLogger } from '@stripe/sync-logger'
+
+const logger = createConnectorLogger('source-stripe')
+
 const BACKOFF_BASE_MS = 1000
 const BACKOFF_MAX_MS = 32000
 const MAX_RETRIES = 5
@@ -102,8 +106,9 @@ export async function withHttpRetry<T>(
 
       const status = getHttpErrorStatus(err)
       const errName = err instanceof Error ? err.name : 'UnknownError'
-      console.error(
-        `[source-stripe] retry attempt=${attempt + 1}/${maxRetries} delay=${delayMs}ms status=${status ?? 'n/a'} error=${errName}`
+      logger.warn(
+        { attempt: attempt + 1, maxRetries, delayMs, status: status ?? 'n/a', error: errName },
+        'Retrying after transient error'
       )
 
       await sleep(delayMs)

@@ -130,7 +130,7 @@ describe('StripeSource', () => {
         invoices: makeConfig({ order: 2, tableName: 'invoices' }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const cat = (await collectFirst(source.discover({ config }), 'catalog')).catalog
 
       expect(cat.streams).toHaveLength(2)
@@ -143,7 +143,7 @@ describe('StripeSource', () => {
         internal: makeConfig({ order: 2, tableName: 'internal', sync: false }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const cat = (await collectFirst(source.discover({ config }), 'catalog')).catalog
 
       expect(cat.streams).toHaveLength(1)
@@ -151,7 +151,7 @@ describe('StripeSource', () => {
     })
 
     it('returns empty streams for empty registry', async () => {
-      vi.mocked(buildResourceRegistry).mockReturnValue({} as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue({})
       const cat = (await collectFirst(source.discover({ config }), 'catalog')).catalog
 
       expect(cat.streams).toEqual([])
@@ -184,7 +184,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({ config, catalog: catalog({ name: 'customers', primary_key: [['id']] }) })
       )
@@ -257,7 +257,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({
           config,
@@ -333,7 +333,7 @@ describe('StripeSource', () => {
         global: {},
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({
           config,
@@ -365,7 +365,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({ config, catalog: catalog({ name: 'customers', primary_key: [['id']] }) })
       )
@@ -528,7 +528,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({ config, catalog: catalog({ name: 'customers', primary_key: [['id']] }) })
       )
@@ -559,7 +559,7 @@ describe('StripeSource', () => {
     })
 
     it('emits TraceMessage error with failure_type config_error for unknown stream', async () => {
-      vi.mocked(buildResourceRegistry).mockReturnValue({} as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue({})
       const messages = await collect(
         source.read({
           config,
@@ -594,7 +594,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({ config, catalog: catalog({ name: 'customers', primary_key: [['id']] }) })
       )
@@ -626,7 +626,12 @@ describe('StripeSource', () => {
         getAccount: vi.fn().mockRejectedValueOnce(
           new StripeRequestError(
             401,
-            { error: { type: 'invalid_request_error', message: 'Invalid API Key provided: sk_test_bad' } },
+            {
+              error: {
+                type: 'invalid_request_error',
+                message: 'Invalid API Key provided: sk_test_bad',
+              },
+            },
             'GET',
             '/v1/account'
           )
@@ -671,7 +676,12 @@ describe('StripeSource', () => {
       const listFn = vi.fn().mockRejectedValueOnce(
         new StripeRequestError(
           401,
-          { error: { type: 'invalid_request_error', message: 'Invalid API Key provided: sk_test_bad' } },
+          {
+            error: {
+              type: 'invalid_request_error',
+              message: 'Invalid API Key provided: sk_test_bad',
+            },
+          },
           'GET',
           '/v1/tax_ids'
         )
@@ -686,7 +696,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({ config, catalog: catalog({ name: 'tax_ids', primary_key: [['id']] }) })
       )
@@ -718,7 +728,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({ config, catalog: catalog({ name: 'customers', primary_key: [['id']] }) })
       )
@@ -749,7 +759,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({ config, catalog: catalog({ name: 'invoices', primary_key: [['id']] }) })
       )
@@ -791,7 +801,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({
           config,
@@ -850,7 +860,7 @@ describe('StripeSource', () => {
 
     beforeEach(() => {
       listFn.mockReset()
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
     })
 
     it('backfill only: no input, no state → paginates from beginning', async () => {
@@ -888,7 +898,7 @@ describe('StripeSource', () => {
     })
 
     it('stream via webhook (input): single event → record + state, no pagination', async () => {
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const event = makeEvent({
         id: 'evt_wh_1',
         type: 'customer.updated',
@@ -924,7 +934,7 @@ describe('StripeSource', () => {
     it('stream via websocket (input): same code path as webhook', async () => {
       // WebSocket is a transport concern — the StripeEvent is identical.
       // read() with input= behaves the same regardless of transport.
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const event = makeEvent({
         id: 'evt_ws_1',
         type: 'customer.created',
@@ -953,7 +963,7 @@ describe('StripeSource', () => {
     })
 
     it('stream via input: filters out events for streams not in catalog', async () => {
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const event = makeEvent({
         id: 'evt_other',
         type: 'invoice.paid',
@@ -981,7 +991,7 @@ describe('StripeSource', () => {
         has_more: false,
       })
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({
           config,
@@ -1012,7 +1022,7 @@ describe('StripeSource', () => {
         has_more: false,
       })
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({
           config,
@@ -1045,7 +1055,7 @@ describe('StripeSource', () => {
         customers: makeConfig({ order: 1, tableName: 'customers' }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const event = makeEvent({
         id: 'evt_del_1',
         type: 'customer.deleted',
@@ -1076,7 +1086,7 @@ describe('StripeSource', () => {
         products: makeConfig({ order: 1, tableName: 'products' }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       // product.deleted event — the object may not have deleted: true in its body
       const event = makeEvent({
         id: 'evt_del_2',
@@ -1101,7 +1111,7 @@ describe('StripeSource', () => {
         subscriptions: makeConfig({ order: 1, tableName: 'subscriptions' }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const event = makeEvent({
         id: 'evt_sub_1',
         type: 'customer.subscription.updated',
@@ -1148,7 +1158,7 @@ describe('StripeSource', () => {
         active_entitlements: makeConfig({ order: 1, tableName: 'active_entitlements' }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const event = makeEvent({
         id: 'evt_ent_1',
         type: 'entitlements.active_entitlement_summary.updated',
@@ -1231,7 +1241,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const event = makeEvent({
         id: 'evt_reval_1',
         type: 'customer.subscription.updated',
@@ -1266,7 +1276,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const event = makeEvent({
         id: 'evt_reval_2',
         type: 'customer.subscription.deleted',
@@ -1295,7 +1305,7 @@ describe('StripeSource', () => {
         invoices: makeConfig({ order: 1, tableName: 'invoices' }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const event = makeEvent({
         id: 'evt_preview_1',
         type: 'invoice.upcoming',
@@ -1314,7 +1324,7 @@ describe('StripeSource', () => {
         checkout_sessions: makeConfig({ order: 1, tableName: 'checkout_sessions' }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const event = makeEvent({
         id: 'evt_cs_1',
         type: 'checkout.session.completed',
@@ -1338,7 +1348,7 @@ describe('StripeSource', () => {
         customers: makeConfig({ order: 1, tableName: 'customers' }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const rawInput = { body: '{"id":"evt_1"}', signature: 'sig_test' }
 
       await expect(
@@ -1379,7 +1389,7 @@ describe('StripeSource', () => {
     }
 
     beforeEach(() => {
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
     })
 
     afterEach(() => {
@@ -1414,7 +1424,7 @@ describe('StripeSource', () => {
     })
 
     it("read()'s finally block closes WebSocket client", async () => {
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
 
       const iter = source
         .read({
@@ -1435,7 +1445,7 @@ describe('StripeSource', () => {
     })
 
     it('streams WebSocket events after empty backfill', async () => {
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       // No setup() needed — WebSocket client is created inside read()
 
       const iter = source
@@ -1512,7 +1522,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(wsRegistry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(wsRegistry)
       // No setup() needed — WebSocket client is created inside read()
 
       const iter = source
@@ -1605,7 +1615,7 @@ describe('StripeSource', () => {
     })
 
     it('filters out WebSocket events for streams not in catalog', async () => {
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       // No setup() needed — WebSocket client is created inside read()
 
       const iter = source
@@ -1654,7 +1664,7 @@ describe('StripeSource', () => {
 
     it('read() with websocket: true creates WebSocket client (combined config)', async () => {
       const { createStripeWebSocketClient } = await import('./src-websocket.js')
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
 
       vi.mocked(createStripeWebSocketClient).mockClear()
 
@@ -1676,7 +1686,7 @@ describe('StripeSource', () => {
     })
 
     it('teardown() is safe when no websocket was configured', async () => {
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       // No setup() call — teardown should not throw
       await drain(
         source.teardown!({
@@ -1693,7 +1703,7 @@ describe('StripeSource', () => {
       const registry: Record<string, ResourceConfig> = {
         customers: makeConfig({ order: 1, tableName: 'customers', listFn }),
       }
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const cat = catalog({ name: 'customers' })
 
       // Use port 0 so the OS picks a free port
@@ -1739,7 +1749,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({
           config: { ...config, poll_events: true },
@@ -1771,7 +1781,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const now = Math.floor(Date.now() / 1000)
       const messages = await collect(
         source.read({
@@ -1801,7 +1811,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({
           config, // no poll_events
@@ -1841,7 +1851,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
       const messages = await collect(
         source.read({
           config: { ...config, poll_events: true },
@@ -2205,7 +2215,7 @@ describe('StripeSource', () => {
         }),
       }
 
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry)
 
       await collect(
         customSource.read({

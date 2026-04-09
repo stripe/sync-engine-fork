@@ -1,11 +1,14 @@
 import type pg from 'pg'
+import { createLogger } from '@stripe/sync-logger'
 
-const verbose = !!process.env.DANGEROUSLY_VERBOSE_LOGGING
+const verbose = process.env.DANGEROUSLY_VERBOSE_LOGGING === 'true'
+const STDERR_FD = 2
+const logger = createLogger({ name: 'util-postgres', destination: STDERR_FD })
 
 /**
  * Wrap a pg.Pool so every query is logged to stderr when
  * DANGEROUSLY_VERBOSE_LOGGING is enabled.
- * Format: [pg] <ms>ms | rows=<n> | <sql (truncated)>
+ * Format: structured log with duration, row count, and truncated SQL preview.
  */
 export function withQueryLogging<T extends pg.Pool>(pool: T): T {
   if (!verbose) return pool
@@ -22,16 +25,29 @@ export function withQueryLogging<T extends pg.Pool>(pool: T): T {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(pool as any).query = async function (...args: unknown[]) {
     const sql = extractSql(args)
-    const label = sql?.replace(/\s+/g, ' ').slice(0, 300) ?? '(unknown)'
+    const sql_preview = sql?.replace(/\s+/g, ' ').slice(0, 300) ?? '(unknown)'
     const start = Date.now()
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (origQuery as any)(...args)
-      console.error(`[pg] ${Date.now() - start}ms | rows=${result?.rowCount ?? 0} | ${label}`)
+      logger.info(
+        {
+          duration_ms: Date.now() - start,
+          row_count: result?.rowCount ?? 0,
+          sql_preview,
+        },
+        'Postgres query'
+      )
       return result
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.error(`[pg] ${Date.now() - start}ms | ERROR ${msg} | ${label}`)
+      logger.error(
+        {
+          duration_ms: Date.now() - start,
+          sql_preview,
+          err,
+        },
+        'Postgres query failed'
+      )
       throw err
     }
   }

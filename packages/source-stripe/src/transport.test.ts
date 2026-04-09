@@ -113,7 +113,7 @@ describe('fetchWithProxy', () => {
 
     expect(mockFetch).toHaveBeenCalledOnce()
     const [, init] = mockFetch.mock.calls[0]
-    expect((init as any)?.dispatcher).toBeUndefined()
+    expect((init as Record<string, unknown>)?.dispatcher).toBeUndefined()
   })
 
   it('calls fetch with a proxy dispatcher when HTTPS_PROXY is set', async () => {
@@ -130,7 +130,7 @@ describe('fetchWithProxy', () => {
 
     expect(mockFetch).toHaveBeenCalledOnce()
     const [, init] = mockFetch.mock.calls[0]
-    expect((init as any).dispatcher).toBeDefined()
+    expect((init as Record<string, unknown>).dispatcher).toBeDefined()
   })
 
   it('bypasses proxy for localhost even when HTTPS_PROXY is set', async () => {
@@ -147,7 +147,7 @@ describe('fetchWithProxy', () => {
 
     expect(mockFetch).toHaveBeenCalledOnce()
     const [, init] = mockFetch.mock.calls[0]
-    expect((init as any)?.dispatcher).toBeUndefined()
+    expect((init as Record<string, unknown>)?.dispatcher).toBeUndefined()
   })
 
   it('bypasses proxy for NO_PROXY domains', async () => {
@@ -165,7 +165,7 @@ describe('fetchWithProxy', () => {
 
     expect(mockFetch).toHaveBeenCalledOnce()
     const [, init] = mockFetch.mock.calls[0]
-    expect((init as any)?.dispatcher).toBeUndefined()
+    expect((init as Record<string, unknown>)?.dispatcher).toBeUndefined()
   })
 })
 

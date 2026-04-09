@@ -282,7 +282,8 @@ describe('pipeline integration', () => {
 
     // 11. Pipeline should be gone from list and get
     const { data: listAfter } = await c.GET('/pipelines')
-    expect(listAfter!.data.find((p: any) => p.id === id)).toBeUndefined()
+    const match = listAfter!.data.find((p: Record<string, unknown>) => p.id === id)
+    expect(match).toBeUndefined()
 
     const { error: getAfter } = await c.GET('/pipelines/{id}', {
       params: { path: { id } },

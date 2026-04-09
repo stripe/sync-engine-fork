@@ -496,6 +496,7 @@ export type TeardownOutput = z.infer<typeof TeardownOutput>
  */
 export interface Source<
   TConfig extends Record<string, unknown> = Record<string, unknown>,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   TStreamState = unknown,
   TInput = unknown,
 > {

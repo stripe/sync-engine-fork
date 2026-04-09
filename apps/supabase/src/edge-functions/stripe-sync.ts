@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
         // skip_until has passed — delete it and continue with sync
         await pool.query(`DELETE FROM vault.secrets WHERE name = 'stripe_sync_skip_until'`)
       }
-    } catch (err) {
+    } catch {
       logger.warn('Could not read skip_until from vault')
     }
 
@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
             await pool.query(`SELECT vault.create_secret($1, 'stripe_sync_skip_until')`, [
               skipUntilMs,
             ])
-          } catch (err) {
+          } catch {
             logger.warn('Could not write skip_until to vault')
           }
           const remainingSec = Math.round(SYNC_INTERVAL - elapsed)
@@ -179,7 +179,6 @@ Deno.serve(async (req) => {
     }
 
     // Consume setup generator to run migrations/table creation
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     for await (const _msg of destinationPostgres.setup({ config: destConfig, catalog })) {
       // setup yields control messages; we don't need them here
     }
@@ -225,7 +224,7 @@ Deno.serve(async (req) => {
     })
   } catch (error: unknown) {
     const err = error as Error
-    logger.error({ error: err.message }, 'Sync error')
+    logger.error({ err }, 'Sync error')
     try {
       await pool.end()
     } catch {}

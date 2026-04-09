@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
-import type { Source, Destination, ConnectorSpecification } from '@stripe/sync-protocol'
+import type { Source, Destination } from '@stripe/sync-protocol'
 import { collectFirst } from '@stripe/sync-protocol'
 import { createSourceFromExec } from './source-exec.js'
 import { createDestinationFromExec } from './destination-exec.js'

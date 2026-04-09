@@ -48,7 +48,7 @@ export async function googleSheetPipelineWorkflow(
   let desiredStatus: DesiredStatus = opts?.desiredStatus ?? 'active'
   let syncState: SourceState = opts?.syncState ?? { streams: {}, global: {} }
   let readState: SourceState = opts?.readState ?? syncState
-  let rowIndexMap: RowIndexMap = opts?.rowIndexMap ?? {}
+  const rowIndexMap: RowIndexMap = opts?.rowIndexMap ?? {}
   let catalog: ConfiguredCatalog | undefined = opts?.catalog
   let state: GoogleSheetWorkflowState = { ...opts?.state }
   const writeRps = opts?.writeRps

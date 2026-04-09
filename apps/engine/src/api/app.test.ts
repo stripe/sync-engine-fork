@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ConnectorResolver, Message, SourceStateMessage } from '../lib/index.js'
 import { sourceTest, destinationTest, collectFirst } from '../lib/index.js'
 import { createApp } from './app.js'
+import { z } from 'zod'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Json = Record<string, any>
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,7 +37,7 @@ beforeAll(async () => {
           'test',
           {
             connector: sourceTest,
-            configSchema: {} as any,
+            configSchema: z.object({}),
             rawConfigJsonSchema: srcConfigSchema,
           },
         ],
@@ -44,7 +48,7 @@ beforeAll(async () => {
           'test',
           {
             connector: destinationTest,
-            configSchema: {} as any,
+            configSchema: z.object({}),
             rawConfigJsonSchema: destConfigSchema,
           },
         ],
@@ -131,7 +135,7 @@ describe('GET /openapi.json', () => {
   it('has typed connector schemas in components (auto-generated from Zod)', async () => {
     const app = await createApp(resolver)
     const res = await app.request('/openapi.json')
-    const spec = (await res.json()) as any
+    const spec = (await res.json()) as Json
     const schemaNames = Object.keys(spec.components?.schemas ?? {})
 
     expect(schemaNames).toContain('SourceTestConfig')
@@ -150,7 +154,7 @@ describe('GET /openapi.json', () => {
   it('defines NDJSON message schemas with discriminated unions', async () => {
     const app = await createApp(resolver)
     const res = await app.request('/openapi.json')
-    const spec = (await res.json()) as any
+    const spec = (await res.json()) as Json
     const schemas = spec.components.schemas
 
     // Individual message types — zod-openapi uses const for z.literal() in OpenAPI 3.1
@@ -187,18 +191,18 @@ describe('GET /openapi.json', () => {
   it('ControlMessage source_config/destination_config reference typed connector schemas', async () => {
     const app = await createApp(resolver)
     const res = await app.request('/openapi.json')
-    const spec = (await res.json()) as any
+    const spec = (await res.json()) as Json
     const control = spec.components.schemas.ControlMessage.properties.control
 
     const sourceVariant = control.oneOf.find(
-      (v: any) => v.properties?.control_type?.const === 'source_config'
+      (v: Json) => v.properties?.control_type?.const === 'source_config'
     )
     expect(sourceVariant.properties.source_config.$ref).toBe(
       '#/components/schemas/SourceTestConfig'
     )
 
     const destVariant = control.oneOf.find(
-      (v: any) => v.properties?.control_type?.const === 'destination_config'
+      (v: Json) => v.properties?.control_type?.const === 'destination_config'
     )
     expect(destVariant.properties.destination_config.$ref).toBe(
       '#/components/schemas/DestinationTestConfig'
@@ -208,7 +212,7 @@ describe('GET /openapi.json', () => {
   it('/setup spec documents 200 response (not 204)', async () => {
     const app = await createApp(resolver)
     const res = await app.request('/openapi.json')
-    const spec = (await res.json()) as any
+    const spec = (await res.json()) as Json
     const setupOp = spec.paths['/pipeline_setup']?.post
     expect(setupOp).toBeDefined()
     expect(setupOp.responses['200']).toBeDefined()
@@ -218,7 +222,7 @@ describe('GET /openapi.json', () => {
   it('/write spec documents a required NDJSON request body', async () => {
     const app = await createApp(resolver)
     const res = await app.request('/openapi.json')
-    const spec = (await res.json()) as any
+    const spec = (await res.json()) as Json
     const writeOp = spec.paths['/pipeline_write']?.post
     expect(writeOp).toBeDefined()
     const body = writeOp.requestBody
@@ -232,7 +236,7 @@ describe('GET /openapi.json', () => {
   it('/read and /sync spec documents an optional NDJSON request body', async () => {
     const app = await createApp(resolver)
     const res = await app.request('/openapi.json')
-    const spec = (await res.json()) as any
+    const spec = (await res.json()) as Json
 
     for (const path of ['/pipeline_read', '/pipeline_sync'] as const) {
       const op = spec.paths[path]?.post
@@ -247,13 +251,13 @@ describe('GET /openapi.json', () => {
   it('documents the X-Pipeline header on sync routes', async () => {
     const app = await createApp(resolver)
     const res = await app.request('/openapi.json')
-    const spec = (await res.json()) as any
+    const spec = (await res.json()) as Json
 
     // /check is a POST with X-Pipeline header
     const checkOp = spec.paths['/pipeline_check']?.post
     expect(checkOp).toBeDefined()
     const headerParam = checkOp.parameters?.find(
-      (p: any) => p.in === 'header' && p.name === 'x-pipeline'
+      (p: Json) => p.in === 'header' && p.name === 'x-pipeline'
     )
     expect(headerParam).toBeDefined()
   })
@@ -264,9 +268,9 @@ describe('GET /meta/sources', () => {
     const app = await createApp(resolver)
     const res = await app.request('/meta/sources')
     expect(res.status).toBe(200)
-    const body = (await res.json()) as any
+    const body = (await res.json()) as Json
     expect(Array.isArray(body.items)).toBe(true)
-    expect(body.items.find((c: any) => c.type === 'test')?.config_schema).toBeDefined()
+    expect(body.items.find((c: Json) => c.type === 'test')?.config_schema).toBeDefined()
   })
 })
 
@@ -275,7 +279,7 @@ describe('GET /meta/sources/:type', () => {
     const app = await createApp(resolver)
     const res = await app.request('/meta/sources/test')
     expect(res.status).toBe(200)
-    const body = (await res.json()) as any
+    const body = (await res.json()) as Json
     expect(body.config_schema).toBeDefined()
   })
 
@@ -291,9 +295,9 @@ describe('GET /meta/destinations', () => {
     const app = await createApp(resolver)
     const res = await app.request('/meta/destinations')
     expect(res.status).toBe(200)
-    const body = (await res.json()) as any
+    const body = (await res.json()) as Json
     expect(Array.isArray(body.items)).toBe(true)
-    expect(body.items.find((c: any) => c.type === 'test')?.config_schema).toBeDefined()
+    expect(body.items.find((c: Json) => c.type === 'test')?.config_schema).toBeDefined()
   })
 })
 
@@ -302,7 +306,7 @@ describe('GET /meta/destinations/:type', () => {
     const app = await createApp(resolver)
     const res = await app.request('/meta/destinations/test')
     expect(res.status).toBe(200)
-    const body = (await res.json()) as any
+    const body = (await res.json()) as Json
     expect(body.config_schema).toBeDefined()
   })
 
@@ -372,7 +376,7 @@ describe('POST /check', () => {
     const events = await readNdjson<Record<string, unknown>>(res)
     const statuses = events.filter((e) => e.type === 'connection_status')
     expect(statuses).toHaveLength(2)
-    expect(statuses.every((s: any) => s.connection_status.status === 'succeeded')).toBe(true)
+    expect(statuses.every((s: Json) => s.connection_status.status === 'succeeded')).toBe(true)
   })
 })
 
@@ -436,7 +440,7 @@ describe('POST /read', () => {
               'test',
               {
                 connector: sourceTest,
-                configSchema: {} as any,
+                configSchema: z.object({}),
                 rawConfigJsonSchema: srcConfigSchema,
                 rawInputJsonSchema: inputSchema,
               },
@@ -448,7 +452,7 @@ describe('POST /read', () => {
               'test',
               {
                 connector: destinationTest,
-                configSchema: {} as any,
+                configSchema: z.object({}),
                 rawConfigJsonSchema: destConfigSchema,
               },
             ],
@@ -459,7 +463,7 @@ describe('POST /read', () => {
 
     it('spec uses SourceInputMessage schema for /read and /sync request body when source has input schema', async () => {
       const res = await inputApp.request('/openapi.json')
-      const spec = (await res.json()) as any
+      const spec = (await res.json()) as Json
 
       for (const path of ['/pipeline_read', '/pipeline_sync'] as const) {
         const body = spec.paths[path]?.post?.requestBody
@@ -794,8 +798,8 @@ describe('POST /source_discover', () => {
     const events = await readNdjson<Record<string, unknown>>(res)
     const catalogs = events.filter((e) => e.type === 'catalog')
     expect(catalogs).toHaveLength(1)
-    const catalog = (catalogs[0] as any).catalog
-    const streamNames = catalog.streams.map((s: any) => s.name)
+    const catalog = (catalogs[0] as Json).catalog
+    const streamNames = catalog.streams.map((s: Json) => s.name)
     expect(streamNames).toContain('customers')
     expect(streamNames).toContain('products')
   })
@@ -824,7 +828,7 @@ describe('POST /source_discover', () => {
     const events = await readNdjson<Record<string, unknown>>(res)
     const traces = events.filter((e) => e.type === 'trace')
     expect(traces).toHaveLength(1)
-    const trace = (traces[0] as any).trace
+    const trace = (traces[0] as Json).trace
     expect(trace.trace_type).toBe('error')
     expect(trace.error.failure_type).toBe('system_error')
     expect(trace.error.message).toContain('network unreachable')

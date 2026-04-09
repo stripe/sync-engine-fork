@@ -82,7 +82,7 @@ await esbuild.build({
   format: 'esm',
   platform: 'node',
   target: 'node22',
-  external: ['npm:*', 'esbuild'],
+  external: ['npm:*', 'esbuild', 'pino', 'pino-pretty'],
   plugins: [rawTsBundledPlugin],
 })
 

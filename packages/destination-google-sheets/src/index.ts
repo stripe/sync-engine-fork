@@ -2,17 +2,14 @@ import type { Destination, DestinationInput } from '@stripe/sync-protocol'
 import { destinationControlMsg } from '@stripe/sync-protocol'
 import type { sheets_v4 } from 'googleapis'
 import { google } from 'googleapis'
-import { z } from 'zod'
 import {
-  GOOGLE_SHEETS_META_LOG_PREFIX,
   formatGoogleSheetsMetaLog,
-  parseGoogleSheetsMetaLog,
   ROW_KEY_FIELD,
   ROW_NUMBER_FIELD,
   serializeRowKey,
   stripSystemFields,
 } from './metadata.js'
-import defaultSpec, { configSchema } from './spec.js'
+import defaultSpec from './spec.js'
 import type { Config } from './spec.js'
 import {
   appendRows,

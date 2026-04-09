@@ -133,7 +133,7 @@ async function deleteSecret(
   })
 
   if (!response.ok && response.status !== 404) {
-    const text = await response.text()
+    await response.text()
     logger.warn({ secretName, status: response.status }, `Failed to delete secret`)
   }
 }
@@ -193,7 +193,7 @@ async function handleSetupPost(req: Request): Promise<Response> {
     // Clear skip_until so cron resumes immediately after reinstall
     try {
       await pool.query(`DELETE FROM vault.secrets WHERE name = 'stripe_sync_skip_until'`)
-    } catch (err) {
+    } catch {
       logger.warn('Could not delete skip_until vault secret')
     }
 
@@ -220,10 +220,7 @@ async function handleSetupPost(req: Request): Promise<Response> {
         await stripe.webhookEndpoints.del(old.id)
         logger.info({ webhookId: old.id }, 'Deleted legacy webhook')
       } catch (err) {
-        logger.warn(
-          { webhookId: old.id, error: err instanceof Error ? err.message : String(err) },
-          'Could not delete legacy webhook'
-        )
+        logger.warn({ err, webhookId: old.id }, 'Could not delete legacy webhook')
       }
     }
 
@@ -263,12 +260,12 @@ async function handleSetupPost(req: Request): Promise<Response> {
     })
   } catch (error: unknown) {
     const err = error as Error
-    logger.error({ error: err.message }, 'Setup error')
+    logger.error({ err }, 'Setup error')
     if (pool) {
       try {
         await pool.query('SELECT pg_advisory_unlock_all()')
         await pool.end()
-      } catch (cleanupErr) {
+      } catch {
         logger.warn('Cleanup failed')
       }
     }
@@ -313,7 +310,7 @@ async function handleSetupGet(_req: Request): Promise<Response> {
           ORDER BY account_id, started_at DESC
         `)
         syncStatus = syncResult.rows
-      } catch (err) {
+      } catch {
         logger.warn('sync_runs query failed (may not exist yet)')
       }
     }
@@ -336,7 +333,7 @@ async function handleSetupGet(_req: Request): Promise<Response> {
     )
   } catch (error: unknown) {
     const err = error as Error
-    logger.error({ error: err.message }, 'Status query error')
+    logger.error({ err }, 'Status query error')
     return jsonResponse(
       {
         error: err.message,
@@ -386,18 +383,12 @@ async function handleSetupDelete(req: Request): Promise<Response> {
             await stripe.webhookEndpoints.del(wh.id)
             logger.info({ webhookId: wh.id }, 'Deleted webhook')
           } catch (err) {
-            logger.warn(
-              { webhookId: wh.id, error: err instanceof Error ? err.message : String(err) },
-              'Could not delete webhook'
-            )
+            logger.warn({ err, webhookId: wh.id }, 'Could not delete webhook')
           }
         }
       }
     } catch (err) {
-      logger.warn(
-        { error: err instanceof Error ? err.message : String(err) },
-        'Could not get webhooks'
-      )
+      logger.warn({ err }, 'Could not get webhooks')
     }
 
     // Unschedule pg_cron jobs
@@ -413,7 +404,7 @@ async function handleSetupDelete(req: Request): Promise<Response> {
           END IF;
         END $$;
       `)
-    } catch (err) {
+    } catch {
       logger.warn('Could not unschedule pg_cron job')
     }
 
@@ -423,7 +414,7 @@ async function handleSetupDelete(req: Request): Promise<Response> {
         DELETE FROM vault.secrets
         WHERE name IN ('stripe_sync_worker_secret', 'stripe_sigma_worker_secret')
       `)
-    } catch (err) {
+    } catch {
       logger.warn('Could not delete vault secret')
     }
 
@@ -431,7 +422,7 @@ async function handleSetupDelete(req: Request): Promise<Response> {
     try {
       const dropSchema = syncTablesSchemaName.replace(/"/g, '""')
       await pool.query(`DROP FUNCTION IF EXISTS "${dropSchema}".trigger_sigma_worker()`)
-    } catch (err) {
+    } catch {
       logger.warn('Could not drop sigma trigger function')
     }
 
@@ -445,7 +436,7 @@ async function handleSetupDelete(req: Request): Promise<Response> {
          WHERE n.nspname = $1 AND l.pid != pg_backend_pid()`,
         [syncTablesSchemaName]
       )
-    } catch (err) {
+    } catch {
       logger.warn('Could not terminate connections')
     }
 
@@ -487,7 +478,7 @@ async function handleSetupDelete(req: Request): Promise<Response> {
     ]) {
       try {
         await deleteSecret(projectRef, secretName, accessToken)
-      } catch (err) {
+      } catch {
         logger.warn({ secretName }, 'Could not delete secret')
       }
     }
@@ -503,7 +494,7 @@ async function handleSetupDelete(req: Request): Promise<Response> {
     ]) {
       try {
         await deleteEdgeFunction(projectRef, slug, accessToken)
-      } catch (err) {
+      } catch {
         logger.warn({ slug }, 'Could not delete edge function')
       }
     }
@@ -511,11 +502,11 @@ async function handleSetupDelete(req: Request): Promise<Response> {
     return jsonResponse({ success: true, message: 'Uninstall complete' })
   } catch (error: unknown) {
     const err = error as Error
-    logger.error({ error: err.message }, 'Uninstall error')
+    logger.error({ err }, 'Uninstall error')
     if (pool) {
       try {
         await pool.end()
-      } catch (cleanupErr) {
+      } catch {
         logger.warn('Cleanup failed')
       }
     }

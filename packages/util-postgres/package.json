@@ -16,6 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@stripe/sync-logger": "workspace:*",
     "pg": "^8.16.3"
   },
   "devDependencies": {

@@ -75,11 +75,14 @@ export function createSchemas(resolver: ConnectorResolver) {
     return z.object({ type: z.literal(name), [name]: obj })
   })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SourceConfig =
     sourceVariants.length > 0
       ? z
-          .discriminatedUnion('type', sourceVariants as [any, any, ...any[]])
+          .discriminatedUnion(
+            'type',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            sourceVariants as [any, any, ...any[]]
+          )
           .meta({ id: connectorUnionId('Source') })
       : z.object({ type: z.string() }).catchall(z.unknown())
 
@@ -92,11 +95,14 @@ export function createSchemas(resolver: ConnectorResolver) {
     return z.object({ type: z.literal(name), [name]: obj })
   })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const DestinationConfig =
     destVariants.length > 0
       ? z
-          .discriminatedUnion('type', destVariants as [any, any, ...any[]])
+          .discriminatedUnion(
+            'type',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            destVariants as [any, any, ...any[]]
+          )
           .meta({ id: connectorUnionId('Destination') })
       : z.object({ type: z.string() }).catchall(z.unknown())
 

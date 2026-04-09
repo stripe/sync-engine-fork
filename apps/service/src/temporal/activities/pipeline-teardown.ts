@@ -1,5 +1,4 @@
 import { drain } from '@stripe/sync-protocol'
-import type { Message } from '@stripe/sync-protocol'
 
 import type { ActivitiesContext } from './_shared.js'
 

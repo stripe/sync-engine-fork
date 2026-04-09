@@ -1,6 +1,7 @@
 import pg from 'pg'
 import type { PoolConfig } from 'pg'
 import type { Destination, DestinationInput, LogMessage } from '@stripe/sync-protocol'
+import { createConnectorLogger } from '@stripe/sync-logger'
 import {
   sql,
   sslConfigFromConnectionString,
@@ -12,6 +13,8 @@ import {
 import { buildCreateTableDDL } from './schemaProjection.js'
 import defaultSpec from './spec.js'
 import type { Config } from './spec.js'
+
+const logger = createConnectorLogger('destination-postgres')
 
 function logMsg(message: string, level: LogMessage['log']['level'] = 'info'): LogMessage {
   return { type: 'log', log: { level, message } }
@@ -109,7 +112,7 @@ function createPool(config: PoolConfig): pg.Pool {
   const pool = new pg.Pool(config)
   // Destination connectors should surface pool failures without crashing the host process.
   pool.on('error', (err) => {
-    console.error('Postgres destination pool error:', err)
+    logger.error({ err }, 'Postgres destination pool error')
   })
   return pool
 }

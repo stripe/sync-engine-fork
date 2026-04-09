@@ -30,17 +30,17 @@ async function assumeRole(
   externalId: string | undefined,
   region: string
 ): Promise<CachedCredentials> {
-  let STSClient: any, AssumeRoleCommand: any
+  let stsMod: typeof import('@aws-sdk/client-sts')
   try {
-    ;({ STSClient, AssumeRoleCommand } = await import('@aws-sdk/client-sts'))
+    stsMod = await import('@aws-sdk/client-sts')
   } catch {
     throw new Error(
       '@aws-sdk/client-sts is required for AWS IAM auth. Install it: pnpm add @aws-sdk/client-sts'
     )
   }
 
-  const sts = new STSClient({ region })
-  const command = new AssumeRoleCommand({
+  const sts = new stsMod.STSClient({ region })
+  const command = new stsMod.AssumeRoleCommand({
     RoleArn: roleArn,
     RoleSessionName: 'sync-engine',
     ...(externalId ? { ExternalId: externalId } : {}),
@@ -71,9 +71,9 @@ async function assumeRole(
  * Performs an eager validation call on build to surface config errors early.
  */
 export async function buildRdsIamPasswordFn(config: RdsIamConfig): Promise<() => Promise<string>> {
-  let Signer: any
+  let signerMod: typeof import('@aws-sdk/rds-signer')
   try {
-    ;({ Signer } = await import('@aws-sdk/rds-signer'))
+    signerMod = await import('@aws-sdk/rds-signer')
   } catch {
     throw new Error(
       '@aws-sdk/rds-signer is required for AWS IAM auth. Install it: pnpm add @aws-sdk/rds-signer'
@@ -91,22 +91,19 @@ export async function buildRdsIamPasswordFn(config: RdsIamConfig): Promise<() =>
       cachedCredentials = await assumeRole(config.roleArn, config.externalId, config.region)
     }
 
-    const signerOptions: Record<string, unknown> = {
+    const signer = new signerMod.Signer({
       hostname: config.host,
       port: config.port,
       username: config.user,
       region: config.region,
-    }
-
-    if (cachedCredentials) {
-      signerOptions.credentials = {
-        accessKeyId: cachedCredentials.accessKeyId,
-        secretAccessKey: cachedCredentials.secretAccessKey,
-        sessionToken: cachedCredentials.sessionToken,
-      }
-    }
-
-    const signer = new Signer(signerOptions)
+      ...(cachedCredentials && {
+        credentials: {
+          accessKeyId: cachedCredentials.accessKeyId,
+          secretAccessKey: cachedCredentials.secretAccessKey,
+          sessionToken: cachedCredentials.sessionToken,
+        },
+      }),
+    })
     return signer.getAuthToken()
   }
 }

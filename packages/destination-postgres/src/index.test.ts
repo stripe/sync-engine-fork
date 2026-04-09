@@ -10,7 +10,6 @@ import type {
   SourceStateMessage,
 } from '@stripe/sync-protocol'
 import { collectFirst, drain } from '@stripe/sync-protocol'
-import type { Message } from '@stripe/sync-protocol'
 
 // ---------------------------------------------------------------------------
 // Docker Postgres lifecycle

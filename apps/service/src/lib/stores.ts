@@ -1,4 +1,3 @@
-import type { PipelineConfig } from '@stripe/sync-protocol'
 import type { Pipeline } from './createSchemas.js'
 
 export type { Pipeline }

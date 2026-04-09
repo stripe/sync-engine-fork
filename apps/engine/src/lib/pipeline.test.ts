@@ -64,7 +64,10 @@ describe('enforceCatalog()', () => {
     ]
     const result = await drain(enforceCatalog(catalog([{ name: 'customers' }]))(toAsync(msgs)))
     expect(result).toHaveLength(1)
-    expect((result[0] as any).record.data).toEqual({ id: 'cus_1', name: 'Alice' })
+    expect((result[0] as { record: { data: unknown } }).record.data).toEqual({
+      id: 'cus_1',
+      name: 'Alice',
+    })
   })
 
   it('filters record fields to json_schema.properties when present', async () => {
@@ -92,7 +95,10 @@ describe('enforceCatalog()', () => {
       )(toAsync(msgs))
     )
     expect(result).toHaveLength(1)
-    expect((result[0] as any).record.data).toEqual({ id: 'sub_1', status: 'active' })
+    expect((result[0] as { record: { data: unknown } }).record.data).toEqual({
+      id: 'sub_1',
+      status: 'active',
+    })
   })
 
   it('drops unknown internal fields that are not present in the catalog schema', async () => {
@@ -126,7 +132,7 @@ describe('enforceCatalog()', () => {
       )(toAsync(msgs))
     )
     expect(result).toHaveLength(1)
-    expect((result[0] as any).record.data).toEqual({
+    expect((result[0] as { record: { data: unknown } }).record.data).toEqual({
       id: 'sub_1',
       status: 'active',
     })
@@ -145,7 +151,7 @@ describe('enforceCatalog()', () => {
     ]
     const result = await drain(enforceCatalog(catalog([{ name: 'subscriptions' }]))(toAsync(msgs)))
     expect(result).toHaveLength(1)
-    expect((result[0] as any).record.data).toEqual({
+    expect((result[0] as { record: { data: unknown } }).record.data).toEqual({
       id: 'sub_1',
       status: 'active',
       customer: 'cus_1',

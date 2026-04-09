@@ -6,6 +6,7 @@ import { sourceTest, destinationTest, collectFirst } from './index.js'
 import { createApp } from '../api/app.js'
 import { createRemoteEngine } from './remote-engine.js'
 import type { PipelineConfig, SourceStateMessage } from '@stripe/sync-protocol'
+import { z } from 'zod'
 
 // ---------------------------------------------------------------------------
 // Server setup
@@ -54,7 +55,7 @@ beforeAll(async () => {
           'test',
           {
             connector: sourceTest,
-            configSchema: {} as any,
+            configSchema: z.object({}),
             rawConfigJsonSchema: srcConfigSchema,
           },
         ],
@@ -65,7 +66,7 @@ beforeAll(async () => {
           'test',
           {
             connector: destinationTest,
-            configSchema: {} as any,
+            configSchema: z.object({}),
             rawConfigJsonSchema: destConfigSchema,
           },
         ],
