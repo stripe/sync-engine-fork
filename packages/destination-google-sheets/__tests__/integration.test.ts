@@ -185,9 +185,30 @@ describeWithEnv(
 
       // First write: insert 3 records
       const initialRecords: DestinationInput[] = [
-        { type: 'record', record: { stream: streamName, data: { id: 'cus_1', name: 'Alice', balance: 100 }, emitted_at: emittedAt } },
-        { type: 'record', record: { stream: streamName, data: { id: 'cus_2', name: 'Bob', balance: 250 }, emitted_at: emittedAt } },
-        { type: 'record', record: { stream: streamName, data: { id: 'cus_3', name: 'Charlie', balance: 0 }, emitted_at: emittedAt } },
+        {
+          type: 'record',
+          record: {
+            stream: streamName,
+            data: { id: 'cus_1', name: 'Alice', balance: 100 },
+            emitted_at: emittedAt,
+          },
+        },
+        {
+          type: 'record',
+          record: {
+            stream: streamName,
+            data: { id: 'cus_2', name: 'Bob', balance: 250 },
+            emitted_at: emittedAt,
+          },
+        },
+        {
+          type: 'record',
+          record: {
+            stream: streamName,
+            data: { id: 'cus_3', name: 'Charlie', balance: 0 },
+            emitted_at: emittedAt,
+          },
+        },
       ]
 
       const output1: DestinationOutput[] = []
@@ -203,9 +224,30 @@ describeWithEnv(
 
       // Second write: update cus_1 and cus_3, add cus_4 — no _row_number provided
       const upsertRecords: DestinationInput[] = [
-        { type: 'record', record: { stream: streamName, data: { id: 'cus_1', name: 'Alice Updated', balance: 150 }, emitted_at: emittedAt } },
-        { type: 'record', record: { stream: streamName, data: { id: 'cus_3', name: 'Charlie Updated', balance: 50 }, emitted_at: emittedAt } },
-        { type: 'record', record: { stream: streamName, data: { id: 'cus_4', name: 'Diana', balance: 300 }, emitted_at: emittedAt } },
+        {
+          type: 'record',
+          record: {
+            stream: streamName,
+            data: { id: 'cus_1', name: 'Alice Updated', balance: 150 },
+            emitted_at: emittedAt,
+          },
+        },
+        {
+          type: 'record',
+          record: {
+            stream: streamName,
+            data: { id: 'cus_3', name: 'Charlie Updated', balance: 50 },
+            emitted_at: emittedAt,
+          },
+        },
+        {
+          type: 'record',
+          record: {
+            stream: streamName,
+            data: { id: 'cus_4', name: 'Diana', balance: 300 },
+            emitted_at: emittedAt,
+          },
+        },
       ]
 
       const dest2 = createDestination(sheets)
@@ -220,9 +262,9 @@ describeWithEnv(
       expect(rows).toHaveLength(5) // header + 3 original + 1 new
       expect(rows[0]).toEqual(['id', 'name', 'balance'])
       expect(rows[1]).toEqual(['cus_1', 'Alice Updated', '150']) // updated in place
-      expect(rows[2]).toEqual(['cus_2', 'Bob', '250'])           // unchanged
+      expect(rows[2]).toEqual(['cus_2', 'Bob', '250']) // unchanged
       expect(rows[3]).toEqual(['cus_3', 'Charlie Updated', '50']) // updated in place
-      expect(rows[4]).toEqual(['cus_4', 'Diana', '300'])          // appended
+      expect(rows[4]).toEqual(['cus_4', 'Diana', '300']) // appended
 
       // Clean up test tab
       if (!process.env.KEEP_TEST_DATA) {
@@ -241,7 +283,9 @@ describeWithEnv(
         }
       }
 
-      console.log(`\n  Upsert test spreadsheet: https://docs.google.com/spreadsheets/d/${GOOGLE_SPREADSHEET_ID}/`)
+      console.log(
+        `\n  Upsert test spreadsheet: https://docs.google.com/spreadsheets/d/${GOOGLE_SPREADSHEET_ID}/`
+      )
     }, 30_000)
   }
 )

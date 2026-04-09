@@ -401,9 +401,7 @@ describe('check', () => {
 })
 
 describe('native upsert', () => {
-  const catalogWith = (
-    primaryKey: string[][] = [['id']]
-  ): ConfiguredCatalog => ({
+  const catalogWith = (primaryKey: string[][] = [['id']]): ConfiguredCatalog => ({
     streams: [
       {
         stream: {
@@ -568,7 +566,9 @@ describe('native upsert', () => {
     await collect(
       dest.write(
         { config: cfg(), catalog: cat },
-        toAsyncIter([record('customers', { name: 'Alice', email: 'alice@test.invalid', id: 'cus_1' })])
+        toAsyncIter([
+          record('customers', { name: 'Alice', email: 'alice@test.invalid', id: 'cus_1' }),
+        ])
       )
     )
 
