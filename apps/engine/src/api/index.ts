@@ -29,7 +29,10 @@ async function main() {
   if (typeof (globalThis as any).Bun !== 'undefined') {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(globalThis as any).Bun.serve({ fetch: app.fetch, port })
-    logger.warn({ port, server: 'Bun.serve' }, `Sync Engine API listening on http://localhost:${port}`)
+    logger.warn(
+      { port, server: 'Bun.serve' },
+      `Sync Engine API listening on http://localhost:${port}`
+    )
   } else {
     const { serve } = await import('@hono/node-server')
     serve({ fetch: app.fetch, port }, (info) => {

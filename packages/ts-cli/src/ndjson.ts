@@ -20,54 +20,23 @@ export function writeLine(obj: unknown) {
  */
 export function ndjsonResponse<T>(
   iterable: AsyncIterable<T>,
-  opts?: { onError?: (err: unknown) => T; signal?: AbortSignal }
+  onError?: (err: unknown) => T
 ): Response {
   const encoder = new TextEncoder()
-  const ac = new AbortController()
-
-  // Link external signal (e.g. request abort on client disconnect) to our controller
-  if (opts?.signal) {
-    if (opts.signal.aborted) {
-      ac.abort()
-    } else {
-      opts.signal.addEventListener('abort', () => ac.abort(), { once: true })
-    }
-  }
-
-  const aborted = new Promise<never>((_, reject) => {
-    ac.signal.addEventListener(
-      'abort',
-      () => reject(new DOMException('The operation was aborted', 'AbortError')),
-      { once: true }
-    )
-  })
 
   const stream = new ReadableStream({
     async start(controller) {
-      const iterator = iterable[Symbol.asyncIterator]()
       try {
-        while (true) {
-          const { value, done } = await Promise.race([iterator.next(), aborted])
-          if (done) break
-          controller.enqueue(encoder.encode(JSON.stringify(value) + '\n'))
+        for await (const item of iterable) {
+          controller.enqueue(encoder.encode(JSON.stringify(item) + '\n'))
         }
       } catch (err) {
-        if (!(err instanceof DOMException && err.name === 'AbortError') && opts?.onError) {
-          controller.enqueue(encoder.encode(JSON.stringify(opts.onError(err)) + '\n'))
+        if (onError) {
+          controller.enqueue(encoder.encode(JSON.stringify(onError(err)) + '\n'))
         }
       } finally {
-        // Tear down the generator chain
-        await iterator.return?.()
-        try {
-          controller.close()
-        } catch {
-          // Already closed by cancel — ignore
-        }
+        controller.close()
       }
-    },
-    cancel() {
-      console.error('[ndjson] client disconnected — aborting pipeline')
-      ac.abort()
     },
   })
 
