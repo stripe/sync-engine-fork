@@ -20,6 +20,11 @@ fi
 echo "=== Stripe → Postgres ===" >&2
 echo "Postgres: $POSTGRES_URL" >&2
 
+# npx @stripe/sync-engine --stripe-api-key $API_KEY --postgres-url $PG_URL
+# bun 
+
+
+
 # ── Option A: Simple shorthand (new sync command) ────────────────────────────
 $RUN apps/engine/src/cli/index.ts sync \
   --stripe-api-key "$STRIPE_API_KEY" \
