@@ -6,6 +6,23 @@ import type { RateLimiter } from './rate-limiter.js'
 import { StripeApiRequestError } from '@stripe/sync-openapi'
 import type { StripeClient } from './client.js'
 
+export function errorToTrace(err: unknown, stream: string): TraceMessage {
+  const isRateLimit = err instanceof Error && err.message.includes('Rate limit')
+  const isAuth = err instanceof StripeApiRequestError && (err.status === 401 || err.status === 403)
+  return {
+    type: 'trace',
+    trace: {
+      trace_type: 'error',
+      error: {
+        failure_type: isRateLimit ? 'transient_error' : isAuth ? 'auth_error' : 'system_error',
+        message: err instanceof Error ? err.message : String(err),
+        stream,
+        ...(err instanceof Error ? { stack_trace: err.stack } : {}),
+      },
+    },
+  }
+}
+
 // Errors matching these patterns are silently skipped during backfill.
 // The stream is marked complete without yielding records.
 // NOTE: these are band-aids — the underlying issue is that the OpenAPI spec
@@ -538,25 +555,7 @@ export async function* listApiBackfill(opts: {
         stream: stream.name,
         error: err instanceof Error ? err.message : String(err),
       })
-      const isRateLimit = err instanceof Error && err.message.includes('Rate limit')
-      const isAuthError =
-        err instanceof StripeApiRequestError && (err.status === 401 || err.status === 403)
-      yield {
-        type: 'trace',
-        trace: {
-          trace_type: 'error',
-          error: {
-            failure_type: isRateLimit
-              ? 'transient_error'
-              : isAuthError
-                ? 'auth_error'
-                : 'system_error',
-            message: String(err),
-            stream: stream.name,
-            ...(err instanceof Error ? { stack_trace: err.stack } : {}),
-          },
-        },
-      } satisfies TraceMessage
+      yield errorToTrace(err, stream.name)
     }
   }
 }

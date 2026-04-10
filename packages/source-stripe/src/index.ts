@@ -22,7 +22,7 @@ import {
 } from '@stripe/sync-openapi'
 import { processStripeEvent } from './process-event.js'
 import { processWebhookInput, createInputQueue, startWebhookServer } from './src-webhook.js'
-import { listApiBackfill } from './src-list-api.js'
+import { listApiBackfill, errorToTrace } from './src-list-api.js'
 import { pollEvents } from './src-events-api.js'
 import type { StripeWebSocketClient, StripeWebhookEvent } from './src-websocket.js'
 import { createStripeWebSocketClient } from './src-websocket.js'
@@ -246,7 +246,13 @@ export function createStripeSource(
         config.base_url
       )
       const streamNames = new Set(catalog.streams.map((s) => s.stream.name))
-      const accountId = await resolveAccountId(config, client)
+      let accountId: string
+      try {
+        accountId = await resolveAccountId(config, client)
+      } catch (err) {
+        yield errorToTrace(err, catalog.streams[0]?.stream.name ?? 'unknown')
+        return
+      }
 
       // Event-driven mode: iterate over incoming webhook inputs
       if ($stdin) {
