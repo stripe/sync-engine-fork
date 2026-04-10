@@ -1,3 +1,4 @@
+import os from 'node:os'
 import { OpenAPIHono, createRoute } from '@stripe/sync-hono-zod-openapi'
 import { z } from 'zod'
 import { apiReference } from '@scalar/hono-api-reference'
@@ -70,13 +71,15 @@ export function createApp(options: AppOptions) {
       responses: {
         200: {
           content: {
-            'application/json': { schema: z.object({ ok: z.literal(true) }) },
+            'application/json': {
+              schema: z.object({ ok: z.literal(true), hostname: z.string() }),
+            },
           },
           description: 'Server is healthy',
         },
       },
     }),
-    (c) => c.json({ ok: true as const }, 200)
+    (c) => c.json({ ok: true as const, hostname: os.hostname() }, 200)
   )
 
   // MARK: - Pipelines
