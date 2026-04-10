@@ -96,13 +96,28 @@ This syncs `products`, `prices`, and `customers` into Postgres with full schema 
 
 ## All demos
 
-| Script | What it does | Required env vars |
-|--------|-------------|-------------------|
-| `read-from-stripe.sh` | Read from Stripe, output NDJSON to stdout | `STRIPE_API_KEY` |
-| `write-to-postgres.sh` | Write NDJSON (stdin or sample data) to Postgres | `DATABASE_URL` |
-| `write-to-sheets.sh` | Write NDJSON (stdin or sample data) to Google Sheets | `GOOGLE_*` |
-| `stripe-to-postgres.sh` | Stripe → Postgres via the engine | `STRIPE_API_KEY`, `DATABASE_URL` |
-| `stripe-to-google-sheets.sh` | Stripe → Google Sheets via the engine | `STRIPE_API_KEY`, `GOOGLE_*` |
+| Script                       | What it does                                         | Required env vars                |
+| ---------------------------- | ---------------------------------------------------- | -------------------------------- |
+| `read-from-stripe.sh`        | Read from Stripe, output NDJSON to stdout            | `STRIPE_API_KEY`                 |
+| `write-to-postgres.sh`       | Write NDJSON (stdin or sample data) to Postgres      | `DATABASE_URL`                   |
+| `write-to-sheets.sh`         | Write NDJSON (stdin or sample data) to Google Sheets | `GOOGLE_*`                       |
+| `stripe-to-postgres.sh`      | Stripe → Postgres via the engine                     | `STRIPE_API_KEY`, `DATABASE_URL` |
+| `stripe-to-google-sheets.sh` | Stripe → Google Sheets via the engine                | `STRIPE_API_KEY`, `GOOGLE_*`     |
+| `stripe-to-dsql.ts`          | Stripe → AWS DSQL via the engine                     | `STRIPE_API_KEY`, `AWS_*`        |
+
+### Stripe → AWS DSQL
+
+Sync Stripe data to [Aurora DSQL](https://aws.amazon.com/rds/aurora/dsql/) (serverless distributed SQL):
+
+```sh
+# One-time: provision the DSQL cluster
+cd terraform && terraform init && terraform apply && cd ..
+
+# Sync (auto-reads endpoint from terraform output)
+node --import tsx demo/stripe-to-dsql.ts
+```
+
+Or with explicit env vars: `DSQL_ENDPOINT=<id>.dsql.<region>.on.aws node --import tsx demo/stripe-to-dsql.ts`
 
 ### TypeScript API
 
@@ -115,7 +130,7 @@ node --import tsx demo/stripe-to-google-sheets.ts
 
 ## Utilities
 
-| Script | What it does |
-|--------|-------------|
-| `reset-postgres.sh` | Drop all tables and non-system schemas |
-| `webhooksite.sh` | Set up webhook forwarding for live Stripe events |
+| Script              | What it does                                     |
+| ------------------- | ------------------------------------------------ |
+| `reset-postgres.sh` | Drop all tables and non-system schemas           |
+| `webhooksite.sh`    | Set up webhook forwarding for live Stripe events |

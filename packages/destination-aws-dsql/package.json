@@ -1,0 +1,32 @@
+{
+  "name": "@stripe/sync-destination-aws-dsql",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "dependencies": {
+    "@aws-sdk/dsql-signer": "^3.1013.0",
+    "@stripe/sync-protocol": "workspace:*",
+    "@stripe/sync-util-postgres": "workspace:*",
+    "pg": "^8.16.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.5",
+    "vitest": "^3.2.4"
+  }
+}
