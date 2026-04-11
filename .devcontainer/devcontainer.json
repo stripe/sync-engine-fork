@@ -1,0 +1,56 @@
+{
+  "name": "Sync Engine",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/sync-engine",
+
+  "postCreateCommand": "corepack enable && pnpm install && pnpm build",
+  "postStartCommand": "echo 'Dev container ready. Services: postgres, stripe-mock, temporal.'",
+
+  "forwardPorts": [55432, 12111, 12112, 7233, 8080, 3000, 4010, 4020, 5173],
+  "portsAttributes": {
+    "55432": { "label": "Postgres", "onAutoForward": "silent" },
+    "12111": { "label": "Stripe Mock (HTTP)", "onAutoForward": "silent" },
+    "12112": { "label": "Stripe Mock (HTTPS)", "onAutoForward": "silent" },
+    "7233": { "label": "Temporal gRPC", "onAutoForward": "silent" },
+    "8080": { "label": "Temporal UI", "onAutoForward": "openBrowser" },
+    "3000": { "label": "Engine API", "onAutoForward": "notify" },
+    "4010": { "label": "Engine API (Docker)", "onAutoForward": "silent" },
+    "4020": { "label": "Service API", "onAutoForward": "notify" },
+    "5173": { "label": "Dashboard", "onAutoForward": "openBrowser" }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "vitest.explorer",
+        "ckolkman.vscode-postgres",
+        "ms-azuretools.vscode-docker",
+        "ms-vscode.vscode-typescript-next"
+      ],
+      "settings": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "typescript.enablePromptUseWorkspaceTsdk": true,
+        "vitest.commandLine": "pnpm exec vitest",
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "files.eol": "\n",
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+        "search.exclude": {
+          "**/node_modules": true,
+          "**/dist": true,
+          "**/.tsbuildinfo": true
+        }
+      }
+    }
+  },
+
+  "remoteUser": "node"
+}

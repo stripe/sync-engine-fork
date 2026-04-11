@@ -1,0 +1,41 @@
+# Dev container compose overlay — imports the repo's compose.yml for
+# infrastructure services and adds the development container alongside them.
+# All services share the same Docker network, so the app container can
+# reach postgres, stripe-mock, and temporal by service name.
+
+include:
+  - path: ../compose.yml
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Mount the workspace source code
+      - ..:/workspaces/sync-engine:cached
+      # Persist pnpm store across rebuilds
+      - pnpm-store:/home/node/.local/share/pnpm/store
+    # Keep the container running for VS Code to attach
+    command: sleep infinity
+    environment:
+      # Database — uses Docker service hostname, internal port
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable&search_path=stripe
+      POSTGRES_URL: postgres://postgres:postgres@postgres:5432/postgres
+      # Stripe mock — uses Docker service hostname
+      STRIPE_MOCK_URL: http://stripe-mock:12111
+      STRIPE_API_KEY: sk_test_fake123
+      # Temporal — uses Docker service hostname
+      TEMPORAL_ADDRESS: temporal:7233
+      # Node
+      NODE_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      stripe-mock:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+
+volumes:
+  pnpm-store:
