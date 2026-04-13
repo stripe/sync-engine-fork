@@ -172,7 +172,7 @@ jobs:
   # ---------------------------------------------------------------------------
   publish_npmjs:
     name: Publish to npmjs.org
-    needs: [test, changes]
+    needs: [test, publish_npm, changes]
     if: >-
       github.event_name == 'push'
       && needs.changes.outputs.code == 'true'
@@ -189,12 +189,15 @@ jobs:
             --registry https://registry.npmjs.org 2>/dev/null || echo "0.0.0")
           echo "local=$LOCAL_VERSION" >> "$GITHUB_OUTPUT"
           echo "npm=$NPM_VERSION" >> "$GITHUB_OUTPUT"
-          if [ "$LOCAL_VERSION" != "$NPM_VERSION" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Version changed: npm=$NPM_VERSION -> local=$LOCAL_VERSION"
-          else
+          if [ "$LOCAL_VERSION" = "$NPM_VERSION" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Version unchanged: $LOCAL_VERSION"
+          elif [ "$(printf '%s\n%s\n' "$LOCAL_VERSION" "$NPM_VERSION" | sort -V | tail -n1)" = "$LOCAL_VERSION" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Version increased: npm=$NPM_VERSION -> local=$LOCAL_VERSION"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping npmjs publish because local version $LOCAL_VERSION is older than npmjs version $NPM_VERSION"
           fi
 
       - name: Install pnpm
@@ -220,6 +223,7 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_REPO_OWNER: ${{ github.repository_owner }}
           GITHUB_REPO_NAME: ${{ github.event.repository.name }}
+          RELEASE_VERSION: ${{ steps.version-check.outputs.local }}
 
       - name: Create GitHub Release
         if: steps.version-check.outputs.changed == 'true'
