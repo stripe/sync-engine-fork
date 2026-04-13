@@ -3,8 +3,27 @@
 #   docker compose -f compose.yml -f compose.dev.yml up --build -d
 #
 # Requires pre-built dist/ in build context: run `pnpm build` first.
+#
+# One-shot Temporal init (Keyword search attributes for pipelineWorkflow) lives
+# here so `docker compose -f compose.yml up` (CI unit/integration) is unaffected.
 
 services:
+  temporal-search-attributes:
+    image: temporalio/admin-tools:latest
+    depends_on:
+      temporal:
+        condition: service_healthy
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        set -e
+        temporal operator cluster health --address temporal:7233
+        temporal operator search-attribute create --address temporal:7233 --namespace default \
+          --name SyncEnginePipelineStatus --type Keyword || true
+        temporal operator search-attribute create --address temporal:7233 --namespace default \
+          --name SyncEnginePipelineDesiredStatus --type Keyword || true
+    restart: 'no'
+
   engine:
     image: sync-engine-engine:dev
     build:
@@ -41,6 +60,8 @@ services:
         condition: service_healthy
       temporal:
         condition: service_healthy
+      temporal-search-attributes:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:4020/health || exit 1']
       interval: 5s
@@ -63,6 +84,8 @@ services:
         condition: service_healthy
       temporal:
         condition: service_healthy
+      temporal-search-attributes:
+        condition: service_completed_successfully
 
   dashboard:
     build:

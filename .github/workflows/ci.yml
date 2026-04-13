@@ -461,6 +461,20 @@ jobs:
       - name: Install dependencies & build
         run: pnpm install --frozen-lockfile && pnpm build
 
+      - name: Wait for Temporal and register pipeline search attributes
+        run: |
+          echo "Waiting for Temporal gRPC on localhost:7233..."
+          for i in $(seq 1 90); do
+            if nc -z 127.0.0.1 7233 2>/dev/null; then
+              echo "Temporal port open after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          nc -z 127.0.0.1 7233 || (echo "Temporal never became ready"; exit 1)
+          sleep 15
+          bash scripts/register-temporal-pipeline-search-attributes.sh 127.0.0.1:7233
+
       - name: E2E vitest tests
         run: |
           if [ -z "${STRIPE_API_KEY:-}" ]; then
@@ -632,6 +646,8 @@ jobs:
 
           # Sleep to allow schema migration + namespace creation to complete after port opens
           sleep 20
+
+          bash scripts/register-temporal-pipeline-search-attributes.sh 127.0.0.1:7233
 
       - name: Start service containers
         run: |
