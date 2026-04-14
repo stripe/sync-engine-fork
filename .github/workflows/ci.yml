@@ -478,6 +478,32 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ---------------------------------------------------------------------------
+  # E2E Memory — memory leak regression test (pipeline_sync + time_limit)
+  # ---------------------------------------------------------------------------
+  e2e_memory:
+    name: E2E Memory Leak
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: ./.nvmrc
+          cache: pnpm
+
+      - name: Install dependencies & build
+        run: pnpm install --frozen-lockfile && pnpm build
+
+      - name: Memory leak regression test
+        run: pnpm --filter @stripe/sync-e2e exec vitest run memory-leak.test.ts
+        timeout-minutes: 10
+
+  # ---------------------------------------------------------------------------
   # E2E Stripe — Stripe API + Temporal integration tests (runs on every push/PR)
   # ---------------------------------------------------------------------------
   e2e_stripe:
@@ -547,7 +573,8 @@ jobs:
             --exclude 'test-server-sync.test.ts' \
             --exclude 'test-sync-e2e.test.ts' \
             --exclude 'test-sync-engine.test.ts' \
-            --exclude 'test-e2e-network.test.ts'  # ↑ run in e2e_test_server job
+            --exclude 'test-e2e-network.test.ts' \
+            --exclude 'memory-leak.test.ts'  # ↑ run in dedicated jobs
         env:
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           POSTGRES_URL: 'postgres://postgres:postgres@localhost:55432/postgres'
