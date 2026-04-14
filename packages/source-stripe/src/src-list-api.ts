@@ -570,9 +570,12 @@ export async function* listApiBackfill(opts: {
         if (incompleteSegments.length > 0) {
           const totalEmitted = { count: 0 }
 
-          // Yield probe's first page records directly (zero waste)
-          if (firstPage && firstPage.data.length > 0) {
-            const newestSegment = incompleteSegments[0]
+          // For single-segment streams, yield probe data directly (zero waste).
+          // Multi-segment streams skip this because the probe fetches newest-first
+          // across the full range, and attributing those items to a specific segment
+          // would cause cursor/range mismatches during pagination.
+          if (firstPage && firstPage.data.length > 0 && numSegments === 1) {
+            const onlySegment = incompleteSegments[0]
             for (const item of firstPage.data) {
               yield toRecordMessage(stream.name, {
                 ...(item as Record<string, unknown>),
@@ -580,14 +583,12 @@ export async function* listApiBackfill(opts: {
               })
               totalEmitted.count++
             }
-            // Set cursor so paginateSegment continues from where the probe left off
             if (firstPage.has_more) {
               const lastId = (firstPage.data[firstPage.data.length - 1] as { id: string }).id
-              newestSegment.page_cursor = lastId
+              onlySegment.page_cursor = lastId
             } else {
-              newestSegment.status = 'complete'
+              onlySegment.status = 'complete'
             }
-            // Emit checkpoint after yielding probe data
             const allComplete = segments.every((s) => s.status === 'complete')
             yield stateMsg({
               stream: stream.name,
