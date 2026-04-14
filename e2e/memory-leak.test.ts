@@ -73,14 +73,19 @@ function spawnEngine(port: number): { proc: ChildProcess; ready: Promise<void> }
 
   const ready = new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('Engine did not start within 30s')), 30_000)
-    let stderr = ''
+    let output = ''
 
-    proc.stderr!.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString()
-      if (stderr.includes('Sync Engine API listening')) {
+    // Pino logs to stdout by default
+    proc.stdout!.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
+      if (output.includes('Sync Engine API listening')) {
         clearTimeout(timeout)
         resolve()
       }
+    })
+
+    proc.stderr!.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
     })
 
     proc.on('error', (err: Error) => {
@@ -90,7 +95,7 @@ function spawnEngine(port: number): { proc: ChildProcess; ready: Promise<void> }
 
     proc.on('exit', (code: number | null) => {
       clearTimeout(timeout)
-      reject(new Error(`Engine exited with code ${code} before ready.\nstderr: ${stderr}`))
+      reject(new Error(`Engine exited with code ${code} before ready.\noutput: ${output}`))
     })
   })
 
