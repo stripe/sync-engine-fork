@@ -111,12 +111,13 @@ const dangerouslyVerbose = process.env.DANGEROUSLY_VERBOSE_LOGGING === 'true'
  * (wired via ndjsonResponse onCancel).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createConnectionAbort(c: any): AbortController {
+function createConnectionAbort(c: any, onDisconnect?: () => void): AbortController {
   const ac = new AbortController()
   const outgoing = c.env?.outgoing as import('node:http').ServerResponse | undefined
   if (outgoing && typeof outgoing.on === 'function') {
     outgoing.on('close', () => {
       if (!ac.signal.aborted && outgoing.writableFinished === false) {
+        onDisconnect?.()
         ac.abort()
       }
     })
@@ -502,16 +503,12 @@ export async function createApp(resolver: ConnectorResolver) {
     const startedAt = Date.now()
     logger.info(context, 'Engine API /pipeline_read started')
 
-    const ac = createConnectionAbort(c)
-    const onDisconnect = () => {
-      if (!ac.signal.aborted) {
-        logger.warn(
-          { elapsed_ms: Date.now() - startedAt, event: 'SYNC_CLIENT_DISCONNECT' },
-          'SYNC_CLIENT_DISCONNECT'
-        )
-        ac.abort()
-      }
-    }
+    const onDisconnect = () =>
+      logger.warn(
+        { elapsed_ms: Date.now() - startedAt, event: 'SYNC_CLIENT_DISCONNECT' },
+        'SYNC_CLIENT_DISCONNECT'
+      )
+    const ac = createConnectionAbort(c, onDisconnect)
 
     let input: AsyncIterable<unknown> | undefined
     if (inputPresent) {
@@ -571,16 +568,12 @@ export async function createApp(resolver: ConnectorResolver) {
     const startedAt = Date.now()
     logger.info(context, 'Engine API /write started')
 
-    const ac = createConnectionAbort(c)
-    const onDisconnect = () => {
-      if (!ac.signal.aborted) {
-        logger.warn(
-          { elapsed_ms: Date.now() - startedAt, event: 'SYNC_CLIENT_DISCONNECT' },
-          'SYNC_CLIENT_DISCONNECT'
-        )
-        ac.abort()
-      }
-    }
+    const onDisconnect = () =>
+      logger.warn(
+        { elapsed_ms: Date.now() - startedAt, event: 'SYNC_CLIENT_DISCONNECT' },
+        'SYNC_CLIENT_DISCONNECT'
+      )
+    const ac = createConnectionAbort(c, onDisconnect)
 
     const messages = verboseInput(
       'pipeline_write',
@@ -630,16 +623,12 @@ export async function createApp(resolver: ConnectorResolver) {
     const context = { path: '/pipeline_sync', ...syncRequestContext(pipeline) }
     const startedAt = Date.now()
 
-    const ac = createConnectionAbort(c)
-    const onDisconnect = () => {
-      if (!ac.signal.aborted) {
-        logger.warn(
-          { elapsed_ms: Date.now() - startedAt, event: 'SYNC_CLIENT_DISCONNECT' },
-          'SYNC_CLIENT_DISCONNECT'
-        )
-        ac.abort()
-      }
-    }
+    const onDisconnect = () =>
+      logger.warn(
+        { elapsed_ms: Date.now() - startedAt, event: 'SYNC_CLIENT_DISCONNECT' },
+        'SYNC_CLIENT_DISCONNECT'
+      )
+    const ac = createConnectionAbort(c, onDisconnect)
 
     const input = hasBody(c)
       ? verboseInput('pipeline_sync', parseNdjsonStream(c.req.raw.body!))
