@@ -413,11 +413,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       const { catalog } = await discoverCatalog(engine, pipeline)
       const state = opts?.state
 
-      const raw = connector.read(
-        { config: sourceConfig, catalog, state },
-        input,
-        signal
-      )
+      const raw = connector.read({ config: sourceConfig, catalog, state }, input, signal)
       const logged = withLoggedStream(
         'Engine source read',
         {
@@ -474,12 +470,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       const now = () => new Date().toISOString()
 
       // Read from source (pass state + signal but not state_limit — state_limit controls sync output)
-      const readOutput = engine.pipeline_read(
-        pipeline,
-        { state: opts?.state },
-        input,
-        signal
-      )
+      const readOutput = engine.pipeline_read(pipeline, { state: opts?.state }, input, signal)
 
       // Split: data + eof → destination path, source signals → caller
       // Eof from pipeline_read is excluded from source signals (pipeline_sync adds its own)
