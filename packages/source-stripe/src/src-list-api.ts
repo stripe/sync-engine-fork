@@ -49,8 +49,6 @@ const SKIPPABLE_ERROR_PATTERNS = [
   'not set up to use',
 ]
 
-const DEFAULT_BACKFILL_CONCURRENCY = 10
-
 // MARK: - Compact state (generative — O(concurrency) not O(total segments))
 
 /**
@@ -232,7 +230,7 @@ async function getAccountCreatedTimestamp(client: StripeClient): Promise<number>
 function buildSegments(
   startTimestamp: number,
   endTimestamp: number,
-  numSegments = DEFAULT_BACKFILL_CONCURRENCY
+  numSegments = 50
 ): SegmentState[] {
   const range = endTimestamp - startTimestamp
   const segmentSize = Math.max(1, Math.ceil(range / numSegments))
@@ -246,6 +244,39 @@ function buildSegments(
   }
 
   return segments
+}
+
+// MARK: - Density probe
+
+/**
+ * Probe data density with a single list call to choose the segment count.
+ * Stripe returns data in descending `created` order. If 100 items span a
+ * large fraction of the time range the resource is sparse and fewer segments
+ * suffice; if they cluster in a narrow window the resource is dense and more
+ * segments help parallelise.
+ */
+export async function probeSegmentCount(opts: {
+  listFn: NonNullable<ResourceConfig['listFn']>
+  range: { gte: number; lt: number }
+  rateLimiter: RateLimiter
+}): Promise<number> {
+  const { listFn, range, rateLimiter } = opts
+  const wait = await rateLimiter()
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait * 1000))
+
+  const response = await listFn({ limit: 100 })
+
+  if (!response.has_more) return 1
+
+  const lastItem = response.data[response.data.length - 1] as { created?: number }
+  if (!lastItem?.created) return 10
+
+  const totalSpan = range.lt - range.gte
+  const timeProgress = (range.lt - lastItem.created) / totalSpan
+
+  if (timeProgress >= 0.2) return 1
+  if (timeProgress >= 0.1) return 10
+  return 50
 }
 
 // MARK: - Segment pagination
@@ -418,7 +449,6 @@ export async function* listApiBackfill(opts: {
   accountId: string
   rateLimiter: RateLimiter
   backfillLimit?: number
-  backfillConcurrency?: number
   drainQueue?: () => AsyncGenerator<Message>
 }): AsyncGenerator<Message> {
   const {
@@ -429,7 +459,6 @@ export async function* listApiBackfill(opts: {
     accountId,
     rateLimiter,
     backfillLimit,
-    backfillConcurrency = DEFAULT_BACKFILL_CONCURRENCY,
     drainQueue,
   } = opts
 
@@ -484,7 +513,7 @@ export async function* listApiBackfill(opts: {
           // Legacy: resume from old segment array format
           segments = streamState.segments.map((s) => ({ ...s }))
           range = { gte: segments[0].gte, lt: segments[segments.length - 1].lt }
-          numSegments = backfillConcurrency
+          numSegments = segments.length
         } else {
           // First run: fetch account creation date and build segments
           if (accountCreated === null) {
@@ -492,8 +521,12 @@ export async function* listApiBackfill(opts: {
           }
           const now = Math.floor(Date.now() / 1000)
           range = { gte: accountCreated, lt: now + 1 }
-          numSegments = backfillConcurrency
-          segments = buildSegments(accountCreated, now, backfillConcurrency)
+          numSegments = await probeSegmentCount({
+            listFn: resourceConfig.listFn!,
+            range,
+            rateLimiter,
+          })
+          segments = buildSegments(accountCreated, now, numSegments)
         }
 
         const incompleteSegments = segments.filter((s) => s.status !== 'complete')
@@ -516,7 +549,7 @@ export async function* listApiBackfill(opts: {
             })
           )
 
-          yield* mergeAsync(generators, backfillConcurrency)
+          yield* mergeAsync(generators, numSegments)
         }
       } else {
         // Sequential path: no created filter support

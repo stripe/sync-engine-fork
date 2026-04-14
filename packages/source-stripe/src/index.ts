@@ -307,7 +307,6 @@ export function createStripeSource(
           client,
           accountId,
           backfillLimit: config.backfill_limit,
-          backfillConcurrency: config.backfill_concurrency,
           drainQueue: wsClient
             ? () => inputQueue.drain(config, catalog, registry, streamNames, accountId)
             : undefined,

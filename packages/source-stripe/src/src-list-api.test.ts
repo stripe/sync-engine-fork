@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SegmentState, BackfillState } from './index.js'
-import { compactState, expandState } from './src-list-api.js'
+import { compactState, expandState, probeSegmentCount } from './src-list-api.js'
 
 const seg = (
   index: number,
@@ -148,5 +148,84 @@ describe('compactState → expandState round-trip', () => {
     expect(pending.length).toBeGreaterThanOrEqual(1)
     expect(pending[0].gte).toBe(750)
     expect(pending[pending.length - 1].lt).toBe(1000)
+  })
+})
+
+// MARK: - probeSegmentCount
+
+type MockListResult = { data: unknown[]; has_more: boolean }
+
+function mockListFn(response: MockListResult) {
+  return async () => response
+}
+
+const noopRateLimiter = async () => 0
+
+describe('probeSegmentCount', () => {
+  const probeRange = { gte: 0, lt: 1000 }
+
+  it('returns 1 for an empty stream', async () => {
+    const result = await probeSegmentCount({
+      listFn: mockListFn({ data: [], has_more: false }),
+      range: probeRange,
+      rateLimiter: noopRateLimiter,
+    })
+    expect(result).toBe(1)
+  })
+
+  it('returns 1 when all data fits in one page', async () => {
+    const items = Array.from({ length: 50 }, (_, i) => ({ id: `id_${i}`, created: 900 - i }))
+    const result = await probeSegmentCount({
+      listFn: mockListFn({ data: items, has_more: false }),
+      range: probeRange,
+      rateLimiter: noopRateLimiter,
+    })
+    expect(result).toBe(1)
+  })
+
+  it('returns 1 for low density (100 items cover >= 20% of time)', async () => {
+    // 100 items, last item created at 800 → timeProgress = (1000-800)/1000 = 0.2
+    const items = Array.from({ length: 100 }, (_, i) => ({ id: `id_${i}`, created: 1000 - i * 2 }))
+    items[99] = { id: 'id_last', created: 800 }
+    const result = await probeSegmentCount({
+      listFn: mockListFn({ data: items, has_more: true }),
+      range: probeRange,
+      rateLimiter: noopRateLimiter,
+    })
+    expect(result).toBe(1)
+  })
+
+  it('returns 10 for medium density (100 items cover 10-20% of time)', async () => {
+    // last item created at 850 → timeProgress = (1000-850)/1000 = 0.15
+    const items = Array.from({ length: 100 }, (_, i) => ({ id: `id_${i}`, created: 999 - i }))
+    items[99] = { id: 'id_last', created: 850 }
+    const result = await probeSegmentCount({
+      listFn: mockListFn({ data: items, has_more: true }),
+      range: probeRange,
+      rateLimiter: noopRateLimiter,
+    })
+    expect(result).toBe(10)
+  })
+
+  it('returns 50 for high density (100 items cover < 10% of time)', async () => {
+    // last item created at 950 → timeProgress = (1000-950)/1000 = 0.05
+    const items = Array.from({ length: 100 }, (_, i) => ({ id: `id_${i}`, created: 999 - i }))
+    items[99] = { id: 'id_last', created: 950 }
+    const result = await probeSegmentCount({
+      listFn: mockListFn({ data: items, has_more: true }),
+      range: probeRange,
+      rateLimiter: noopRateLimiter,
+    })
+    expect(result).toBe(50)
+  })
+
+  it('falls back to 10 when items lack created field', async () => {
+    const items = Array.from({ length: 100 }, (_, i) => ({ id: `id_${i}` }))
+    const result = await probeSegmentCount({
+      listFn: mockListFn({ data: items, has_more: true }),
+      range: probeRange,
+      rateLimiter: noopRateLimiter,
+    })
+    expect(result).toBe(10)
   })
 })
