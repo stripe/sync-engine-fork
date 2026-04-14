@@ -233,7 +233,7 @@ export function createStripeSource(
       }
     },
 
-    async *read({ config, catalog, state, signal }, $stdin?) {
+    async *read({ config, catalog, state }, $stdin?, signal?) {
       const apiVersion = config.api_version ?? BUNDLED_API_VERSION
       const rateLimiter =
         externalRateLimiter ?? createInMemoryRateLimiter(config.rate_limit ?? DEFAULT_MAX_RPS)

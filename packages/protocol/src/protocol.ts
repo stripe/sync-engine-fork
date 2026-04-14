@@ -530,9 +530,9 @@ export interface Source<
       config: TConfig
       catalog: ConfiguredCatalog
       state?: SourceState
-      signal?: AbortSignal
     },
-    $stdin?: AsyncIterable<TInput>
+    $stdin?: AsyncIterable<TInput>,
+    signal?: AbortSignal
   ): AsyncIterable<Message>
 
   /** Provision external resources (webhook endpoints, replication slots, etc.). */

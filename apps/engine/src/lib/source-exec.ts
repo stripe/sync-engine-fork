@@ -51,9 +51,9 @@ export function createSourceFromExec(cmd: string): Source {
         config: Record<string, unknown>
         catalog: ConfiguredCatalog
         state?: Record<string, unknown>
-        signal?: AbortSignal
       },
-      $stdin?: AsyncIterable<unknown>
+      $stdin?: AsyncIterable<unknown>,
+      signal?: AbortSignal
     ): AsyncIterable<Message> {
       const args = [
         ...baseArgs,
@@ -67,9 +67,9 @@ export function createSourceFromExec(cmd: string): Source {
         args.push('--state', JSON.stringify(params.state))
       }
       if ($stdin) {
-        return spawnWithStdin<unknown, Message>(bin, args, $stdin, params.signal)
+        return spawnWithStdin<unknown, Message>(bin, args, $stdin, signal)
       }
-      return spawnAndStream<Message>(bin, args, params.signal)
+      return spawnAndStream<Message>(bin, args, signal)
     },
 
     async *setup(params: {

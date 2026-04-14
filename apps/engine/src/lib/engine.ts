@@ -35,10 +35,7 @@ export const SourceReadOptions = z.object({
   /** Wall-clock time limit in seconds; the stream stops after this duration. */
   time_limit: z.number().positive().optional(),
 })
-export type SourceReadOptions = z.infer<typeof SourceReadOptions> & {
-  /** Abort signal for cancellation (e.g. client disconnect). Runtime-only, not serialized. */
-  signal?: AbortSignal
-}
+export type SourceReadOptions = z.infer<typeof SourceReadOptions>
 
 /** Metadata for a single connector type, including its configuration JSON Schema. */
 export const ConnectorInfo = z.object({
@@ -113,7 +110,8 @@ export interface Engine {
   pipeline_read(
     pipeline: PipelineConfig,
     opts?: SourceReadOptions,
-    input?: AsyncIterable<unknown>
+    input?: AsyncIterable<unknown>,
+    signal?: AbortSignal
   ): AsyncIterable<Message>
 
   /**
@@ -134,7 +132,8 @@ export interface Engine {
   pipeline_sync(
     pipeline: PipelineConfig,
     opts?: SourceReadOptions,
-    input?: AsyncIterable<unknown>
+    input?: AsyncIterable<unknown>,
+    signal?: AbortSignal
   ): AsyncIterable<SyncOutput>
 }
 
@@ -405,7 +404,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       )
     },
 
-    async *pipeline_read(pipeline, opts?, input?) {
+    async *pipeline_read(pipeline, opts?, input?, signal?) {
       const baseContext = engineLogContext(pipeline)
       const connector = await resolver.resolveSource(pipeline.source.type)
       const rawSrc = configPayload(pipeline.source)
@@ -414,8 +413,9 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       const state = opts?.state
 
       const raw = connector.read(
-        { config: sourceConfig, catalog, state, signal: opts?.signal },
-        input
+        { config: sourceConfig, catalog, state },
+        input,
+        signal
       )
       const logged = withLoggedStream(
         'Engine source read',
@@ -434,7 +434,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       yield* takeLimits({
         state_limit: opts?.state_limit,
         time_limit: opts?.time_limit,
-        signal: opts?.signal,
+        signal,
       })(parsed)
     },
 
@@ -464,7 +464,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       }
     },
 
-    async *pipeline_sync(pipeline, opts?, input?) {
+    async *pipeline_sync(pipeline, opts?, input?, signal?) {
       const baseContext = engineLogContext(pipeline)
       const sourceTag = `source/${pipeline.source.type}`
       const destTag = `destination/${pipeline.destination.type}`
@@ -473,8 +473,9 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       // Read from source (pass state + signal but not state_limit — state_limit controls sync output)
       const readOutput = engine.pipeline_read(
         pipeline,
-        { state: opts?.state, signal: opts?.signal },
-        input
+        { state: opts?.state },
+        input,
+        signal
       )
 
       // Split: data + eof → destination path, source signals → caller
@@ -515,7 +516,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       yield* takeLimits<SyncOutput>({
         state_limit: opts?.state_limit,
         time_limit: opts?.time_limit,
-        signal: opts?.signal,
+        signal,
       })(merge(taggedDest, taggedSource))
     },
   }
