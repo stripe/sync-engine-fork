@@ -62,14 +62,12 @@ export async function drainMessages(
 ): Promise<{
   errors: RunResult['errors']
   state: SourceState
-  records: Message[]
   sourceConfig?: Record<string, unknown>
   destConfig?: Record<string, unknown>
   eof?: EofPayload
 }> {
   const errors: RunResult['errors'] = []
   let state: SourceState = initialState ?? { streams: {}, global: {} }
-  const records: Message[] = []
   let sourceConfig: Record<string, unknown> | undefined
   let destConfig: Record<string, unknown> | undefined
   let eof: EofPayload | undefined
@@ -91,13 +89,11 @@ export async function drainMessages(
         errors.push(error)
       } else if (message.type === 'source_state') {
         state = mergeStateMessage(state, message)
-      } else if (message.type === 'record') {
-        records.push(message)
       }
     }
     if (count % 50 === 0) heartbeat({ messages: count })
   }
   if (count % 50 !== 0) heartbeat({ messages: count })
 
-  return { errors, state, records, sourceConfig, destConfig, eof }
+  return { errors, state, sourceConfig, destConfig, eof }
 }
