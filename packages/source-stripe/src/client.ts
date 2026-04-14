@@ -71,10 +71,24 @@ export function makeClient(
       env
     )
 
-    const json = (await response.json()) as unknown
+    const responseHeaders = Object.fromEntries(response.headers.entries())
+
+    const text = await response.text()
+    let json: unknown
+    try {
+      json = JSON.parse(text)
+    } catch {
+      throw new StripeApiRequestError(
+        response.status,
+        { error: { message: `Non-JSON response: ${text.slice(0, 200)}` } },
+        method,
+        path,
+        responseHeaders
+      )
+    }
 
     if (!response.ok) {
-      throw new StripeApiRequestError(response.status, json, method, path)
+      throw new StripeApiRequestError(response.status, json, method, path, responseHeaders)
     }
 
     return json

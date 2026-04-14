@@ -226,14 +226,40 @@ export class StripeApiRequestError extends Error {
     public readonly status: number,
     public readonly body: unknown,
     method: string,
-    path: string
+    path: string,
+    public readonly responseHeaders?: Record<string, string>
   ) {
-    super(extractErrorMessage(body, status, method, path))
+    super(extractErrorMessage(body, status, method, path, responseHeaders))
     this.name = 'StripeApiRequestError'
   }
 }
 
-function extractErrorMessage(body: unknown, status: number, method: string, path: string): string {
+/** Headers worth surfacing in error messages for debugging. */
+const DEBUG_HEADERS = [
+  'request-id',
+  'stripe-should-retry',
+  'stripe-action-id',
+  'stripe-server-environment',
+]
+
+function extractErrorMessage(
+  body: unknown,
+  status: number,
+  method: string,
+  path: string,
+  responseHeaders?: Record<string, string>
+): string {
+  const context = `${method.toUpperCase()} ${path} (${status})`
+
+  const headerParts: string[] = []
+  if (responseHeaders) {
+    for (const key of DEBUG_HEADERS) {
+      const value = responseHeaders[key]
+      if (value) headerParts.push(`${key}=${value}`)
+    }
+  }
+  const headerStr = headerParts.length > 0 ? ` {${headerParts.join(', ')}}` : ''
+
   if (
     body &&
     typeof body === 'object' &&
@@ -243,10 +269,10 @@ function extractErrorMessage(body: unknown, status: number, method: string, path
     'message' in body.error &&
     typeof body.error.message === 'string'
   ) {
-    return body.error.message
+    return `${body.error.message} [${context}]${headerStr}`
   }
 
-  return `Stripe API request failed (${status}) for ${method.toUpperCase()} ${path}`
+  return `Stripe API request failed: ${context}${headerStr}`
 }
 
 async function readJson(response: Response): Promise<unknown> {
@@ -262,7 +288,8 @@ async function readJson(response: Response): Promise<unknown> {
 
 function assertOk(response: Response, body: unknown, method: string, path: string): void {
   if (!response.ok) {
-    throw new StripeApiRequestError(response.status, body, method, path)
+    const responseHeaders = Object.fromEntries(response.headers.entries())
+    throw new StripeApiRequestError(response.status, body, method, path, responseHeaders)
   }
 }
 
