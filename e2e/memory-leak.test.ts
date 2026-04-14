@@ -1,4 +1,4 @@
-import { execSync, spawn, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -17,6 +17,14 @@ import {
   generateObjectsFromSchema,
   resolveOpenApiSpec,
 } from '@stripe/sync-openapi'
+import {
+  drainNdjsonResponse,
+  formatMemoryLeakSummary,
+  formatRssSamplesTable,
+  hasTimeLimitEof,
+  runMemoryLeakDetector,
+  type MemoryLeakSettings,
+} from './memory-leak-harness.js'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 const SOURCE_SCHEMA = 'stripe'
@@ -35,33 +43,12 @@ const TIME_LIMIT_SECONDS = 0.1
 const RANGE_START = Math.floor(new Date('2021-04-03T00:00:00Z').getTime() / 1000)
 const RANGE_END = Math.floor(new Date('2026-04-02T00:00:00Z').getTime() / 1000)
 
-// ── RSS measurement ──────────────────────────────────────────────
-
-function getRssKb(pid: number): number | null {
-  try {
-    const raw = execSync(`ps -o rss= -p ${pid}`, { encoding: 'utf8' }).trim()
-    const kb = parseInt(raw, 10)
-    return Number.isFinite(kb) ? kb : null
-  } catch {
-    return null
-  }
-}
-
-/** Least-squares slope: KB growth per iteration. */
-function linearRegressionSlope(ys: number[]): number {
-  const n = ys.length
-  if (n < 2) return 0
-  let sumX = 0,
-    sumY = 0,
-    sumXY = 0,
-    sumXX = 0
-  for (let i = 0; i < n; i++) {
-    sumX += i
-    sumY += ys[i]
-    sumXY += i * ys[i]
-    sumXX += i * i
-  }
-  return (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX)
+const DETECTOR_SETTINGS: MemoryLeakSettings = {
+  warmupIterations: WARMUP_ITERATIONS,
+  testIterations: TEST_ITERATIONS,
+  settleMs: 500,
+  slopeThresholdKb: 3000,
+  growthThresholdMb: 300,
 }
 
 // ── Engine subprocess management ─────────────────────────────────
@@ -105,26 +92,6 @@ function spawnEngine(port: number): { proc: ChildProcess; ready: Promise<void> }
 
   return { proc, ready }
 }
-
-const decoder = new TextDecoder()
-
-/** Drain an NDJSON response; returns true if an eof with reason=time_limit was seen. */
-async function drainResponse(res: Response): Promise<boolean> {
-  const reader = res.body?.getReader()
-  if (!reader) return false
-  let sawTimeLimit = false
-  let buffer = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    if (!sawTimeLimit && buffer.includes('"reason":"time_limit"')) {
-      sawTimeLimit = true
-    }
-  }
-  return sawTimeLimit
-}
-
 // ── Test suite ───────────────────────────────────────────────────
 
 describe('memory leak regression', { timeout: 600_000 }, () => {
@@ -212,7 +179,7 @@ describe('memory leak regression', { timeout: 600_000 }, () => {
       headers: { 'X-Pipeline': pipelineHeader },
     })
     expect(setupRes.ok, `pipeline_setup failed: ${setupRes.status}`).toBe(true)
-    await drainResponse(setupRes)
+    await drainNdjsonResponse(setupRes)
     console.log(`  Pipeline setup complete`)
   }, 120_000)
 
@@ -238,78 +205,46 @@ describe('memory leak regression', { timeout: 600_000 }, () => {
 
   it('RSS does not grow unboundedly during repeated time-limited syncs', { timeout: 300_000 }, async () => {
     const pid = engineProc.pid!
-    const rssSamples: number[] = []
-    const totalIterations = WARMUP_ITERATIONS + TEST_ITERATIONS
-    let timeLimitEofCount = 0
+    const result = await runMemoryLeakDetector({
+      pid,
+      settings: DETECTOR_SETTINGS,
+      iterate: async () => {
+        const res = await fetch(
+          `http://localhost:${enginePort}/pipeline_sync?time_limit=${TIME_LIMIT_SECONDS}`,
+          { method: 'POST', headers: { 'X-Pipeline': pipelineHeader } }
+        )
+        expect(res.ok, `pipeline_sync failed: ${res.status}`).toBe(true)
+        const messages = await drainNdjsonResponse(res)
+        return { sawTimeLimit: hasTimeLimitEof(messages) }
+      },
+    })
 
-    for (let i = 0; i < totalIterations; i++) {
-      const res = await fetch(
-        `http://localhost:${enginePort}/pipeline_sync?time_limit=${TIME_LIMIT_SECONDS}`,
-        { method: 'POST', headers: { 'X-Pipeline': pipelineHeader } }
-      )
-      const sawTimeLimit = await drainResponse(res)
-      if (sawTimeLimit) timeLimitEofCount++
+    console.log(`\n${formatRssSamplesTable(result)}`)
+    console.log(`\n${formatMemoryLeakSummary(result)}`)
 
-      // Brief pause to let V8's incremental GC run
-      await new Promise((r) => setTimeout(r, 500))
-
-      const rss = getRssKb(pid)
-      if (rss !== null) rssSamples.push(rss)
-    }
-
-    // ── Log RSS table for CI debugging ─────────────────────────
-    console.log('\n  RSS samples (MB):')
-    console.log('   iter  │  RSS (MB)  │  delta')
-    console.log('  ──────┼────────────┼────────')
-    for (let i = 0; i < rssSamples.length; i++) {
-      const mb = (rssSamples[i] / 1024).toFixed(1)
-      const delta =
-        i > 0 ? ((rssSamples[i] - rssSamples[i - 1]) / 1024).toFixed(1) : '—'
-      const marker = i === WARMUP_ITERATIONS ? ' ← warmup end' : ''
-      console.log(
-        `  ${String(i + 1).padStart(4)}  │  ${mb.padStart(8)}  │  ${String(delta).padStart(6)}${marker}`
-      )
-    }
-
-    // ── Canary: verify the test is exercising the leak path ────
-    // If time_limit never fires, syncs complete naturally and the
-    // leak path (orphaned iterators after early termination) is
-    // never exercised, making this test meaningless.
-    const timeLimitPct = (timeLimitEofCount / totalIterations) * 100
-    console.log(
-      `\n  Canary: ${timeLimitEofCount}/${totalIterations} windows ended by time_limit (${timeLimitPct.toFixed(0)}%)`
-    )
+    // Canary: if time_limit never fires, the leak path is never exercised.
     expect(
-      timeLimitEofCount,
-      `Only ${timeLimitEofCount}/${totalIterations} syncs hit time_limit — ` +
+      result.timeLimitCount,
+      `Only ${result.timeLimitCount}/${result.totalIterations} syncs hit time_limit — ` +
         `the test is not exercising the leak path. Reduce TIME_LIMIT_SECONDS or add more data.`
-    ).toBeGreaterThanOrEqual(totalIterations * 0.8)
+    ).toBeGreaterThanOrEqual(result.totalIterations * 0.8)
 
-    // ── Assertions on post-warmup samples ──────────────────────
-    const postWarmup = rssSamples.slice(WARMUP_ITERATIONS)
     expect(
-      postWarmup.length,
+      result.postWarmupSamplesKb.length,
       'Not enough post-warmup samples'
     ).toBeGreaterThanOrEqual(TEST_ITERATIONS * 0.8)
-
-    const slope = linearRegressionSlope(postWarmup)
-    const totalGrowthKb = postWarmup[postWarmup.length - 1] - postWarmup[0]
-    const totalGrowthMb = totalGrowthKb / 1024
-
-    console.log(`\n  Post-warmup analysis:`)
-    console.log(`    Baseline RSS:   ${(postWarmup[0] / 1024).toFixed(1)} MB`)
-    console.log(`    Final RSS:      ${(postWarmup[postWarmup.length - 1] / 1024).toFixed(1)} MB`)
-    console.log(`    Total growth:   ${totalGrowthMb.toFixed(1)} MB`)
-    console.log(`    Slope:          ${slope.toFixed(1)} KB/iteration`)
 
     // Before the fix: orphaned iterators accumulate in pending arrays,
     // producing slopes >3000 KB/iter even with short windows.
     // After the fix: RSS plateaus with minor V8 heap noise.
-    expect(slope, `RSS slope ${slope.toFixed(0)} KB/iter exceeds threshold`).toBeLessThan(3000)
+    expect(
+      result.slopeKbPerIteration,
+      `RSS slope ${result.slopeKbPerIteration.toFixed(0)} KB/iter exceeds threshold`
+    ).toBeLessThan(DETECTOR_SETTINGS.slopeThresholdKb)
 
     expect(
-      totalGrowthMb,
-      `Total RSS growth ${totalGrowthMb.toFixed(0)} MB exceeds 300 MB`
-    ).toBeLessThan(300)
+      result.totalGrowthMb,
+      `Total RSS growth ${result.totalGrowthMb.toFixed(0)} MB exceeds ${DETECTOR_SETTINGS.growthThresholdMb} MB`
+    ).toBeLessThan(DETECTOR_SETTINGS.growthThresholdMb)
   })
 })
