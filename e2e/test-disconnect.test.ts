@@ -258,7 +258,10 @@ function makePipelineHeader(mockStripeUrl: string): string {
     },
     destination: {
       type: 'postgres',
-      postgres: { connection_string: 'postgres://user:pass@localhost:65432/testdb' },
+      postgres: {
+        connection_string: 'postgres://user:pass@localhost:65432/testdb',
+        schema: 'test_disconnect',
+      },
     },
     streams: [{ name: 'customers' }],
   })
