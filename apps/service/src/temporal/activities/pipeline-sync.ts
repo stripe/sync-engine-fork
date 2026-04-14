@@ -1,9 +1,7 @@
-import { ApplicationFailure } from '@temporalio/activity'
 import type { SourceInputMessage, SourceReadOptions } from '@stripe/sync-engine'
 import type { EofPayload } from '@stripe/sync-protocol'
 import type { ActivitiesContext } from './_shared.js'
 import { asIterable, drainMessages, type RunResult } from './_shared.js'
-import { classifySyncErrors, summarizeSyncErrors } from '../sync-errors.js'
 
 export function createPipelineSyncActivity(context: ActivitiesContext) {
   return async function pipelineSync(
@@ -18,7 +16,6 @@ export function createPipelineSyncActivity(context: ActivitiesContext) {
       context.engine.pipeline_sync(config, readOpts, input),
       readOpts.state
     )
-    // Full replacement — connector emits the complete updated config
     if (sourceConfig) {
       const type = pipeline.source.type
       await context.pipelineStore.update(pipelineId, {
@@ -30,18 +27,6 @@ export function createPipelineSyncActivity(context: ActivitiesContext) {
       await context.pipelineStore.update(pipelineId, {
         destination: { type, [type]: destConfig },
       })
-    }
-    const { transient, permanent } = classifySyncErrors(errors)
-    if (permanent.length > 0) {
-      if (transient.length > 0) {
-        console.warn(
-          `Transient errors suppressed by permanent failures: ${summarizeSyncErrors(transient)}`
-        )
-      }
-      return { errors, state, eof }
-    }
-    if (transient.length > 0) {
-      throw ApplicationFailure.retryable(summarizeSyncErrors(transient), 'TransientSyncError')
     }
     return { errors, state, eof }
   }

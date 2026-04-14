@@ -540,7 +540,7 @@ describe('StripeSource', () => {
         source.read({ config, catalog: catalog({ name: 'customers', primary_key: [['id']] }) })
       )
 
-      // trace(stream_status started) + trace(error)
+      // trace(stream_status started) + trace(error) — transient errors don't mark stream errored
       expect(messages).toHaveLength(2)
       expect(messages[0]).toMatchObject({
         type: 'trace',
@@ -606,7 +606,7 @@ describe('StripeSource', () => {
         source.read({ config, catalog: catalog({ name: 'customers', primary_key: [['id']] }) })
       )
 
-      expect(messages).toHaveLength(2)
+      expect(messages).toHaveLength(3)
       const errorMsg = messages[1] as TraceMessage
       expect(errorMsg.type).toBe('trace')
       expect(errorMsg.trace.trace_type).toBe('error')
@@ -657,7 +657,7 @@ describe('StripeSource', () => {
         })
       )
 
-      expect(messages).toHaveLength(2)
+      expect(messages).toHaveLength(3)
       expect(listFn).not.toHaveBeenCalled()
       expect(messages[0]).toMatchObject({
         type: 'trace',
@@ -709,7 +709,7 @@ describe('StripeSource', () => {
         source.read({ config, catalog: catalog({ name: 'tax_ids', primary_key: [['id']] }) })
       )
 
-      expect(messages).toHaveLength(2)
+      expect(messages).toHaveLength(3)
       const errorMsg = messages[1] as TraceMessage
       expect(errorMsg.trace.trace_type).toBe('error')
       const traceError = (
@@ -741,7 +741,7 @@ describe('StripeSource', () => {
         source.read({ config, catalog: catalog({ name: 'customers', primary_key: [['id']] }) })
       )
 
-      expect(messages).toHaveLength(2)
+      expect(messages).toHaveLength(3)
       expect(messages[1]).toMatchObject({
         type: 'trace',
         trace: {
@@ -750,6 +750,14 @@ describe('StripeSource', () => {
             failure_type: 'system_error',
             stream: 'customers',
           },
+        },
+      })
+      expect(messages[2]).toMatchObject({
+        type: 'source_state',
+        source_state: {
+          state_type: 'stream',
+          stream: 'customers',
+          data: { status: 'errored' },
         },
       })
     })
@@ -820,9 +828,9 @@ describe('StripeSource', () => {
         })
       )
 
-      // customers: started + error = 2
+      // customers: started + error + errored-state = 3
       // invoices: started + record + state + complete = 4
-      expect(messages).toHaveLength(6)
+      expect(messages).toHaveLength(7)
 
       // Customers errored
       expect(messages[0]).toMatchObject({
@@ -836,16 +844,24 @@ describe('StripeSource', () => {
         type: 'trace',
         trace: { trace_type: 'error', error: { stream: 'customers' } },
       })
+      expect(messages[2]).toMatchObject({
+        type: 'source_state',
+        source_state: {
+          state_type: 'stream',
+          stream: 'customers',
+          data: { status: 'errored' },
+        },
+      })
 
       // Invoices succeeded
-      expect(messages[2]).toMatchObject({
+      expect(messages[3]).toMatchObject({
         type: 'trace',
         trace: {
           trace_type: 'stream_status',
           stream_status: { stream: 'invoices', status: 'started' },
         },
       })
-      expect(messages[5]).toMatchObject({
+      expect(messages[6]).toMatchObject({
         type: 'trace',
         trace: {
           trace_type: 'stream_status',

@@ -6,15 +6,45 @@ import type { RateLimiter } from './rate-limiter.js'
 import { StripeApiRequestError } from '@stripe/sync-openapi'
 import type { StripeClient } from './client.js'
 
+const NETWORK_ERROR_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+  'EPIPE',
+  'EAI_AGAIN',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+])
+
+function isNetworkError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const code = (err as NodeJS.ErrnoException).code
+  if (code && NETWORK_ERROR_CODES.has(code)) return true
+  if (err.cause) return isNetworkError(err.cause)
+  return false
+}
+
+function classifyError(
+  err: unknown
+): 'transient_error' | 'auth_error' | 'system_error' {
+  if (err instanceof StripeApiRequestError) {
+    if (err.status === 401 || err.status === 403) return 'auth_error'
+    if (err.status === 429) return 'transient_error'
+    if (err.status >= 500) return 'transient_error'
+  }
+  if (isNetworkError(err)) return 'transient_error'
+  if (err instanceof Error && err.message.includes('Rate limit')) return 'transient_error'
+  return 'system_error'
+}
+
 export function errorToTrace(err: unknown, stream: string): TraceMessage {
-  const isRateLimit = err instanceof Error && err.message.includes('Rate limit')
-  const isAuth = err instanceof StripeApiRequestError && (err.status === 401 || err.status === 403)
   return {
     type: 'trace',
     trace: {
       trace_type: 'error',
       error: {
-        failure_type: isRateLimit ? 'transient_error' : isAuth ? 'auth_error' : 'system_error',
+        failure_type: classifyError(err),
         message: err instanceof Error ? err.message : String(err),
         stream,
         ...(err instanceof Error ? { stack_trace: err.stack } : {}),
@@ -36,15 +66,16 @@ export function errorToTrace(err: unknown, stream: string): TraceMessage {
 //   400 "This endpoint is not in live mode"                     → not in live mode
 //   400 "Must provide customer"                                 → Must provide customer
 //   400 "Must provide source or customer"                       → Must provide
-//   400 "This API surface is not enabled for testmode usage."   → not enabled for
-//   400 "Accounts v2 is not enabled for your platform."         → not enabled for
+//   400 "Missing required param: customer"                      → Missing required param
+//   400 "Unrecognized request URL (GET: /v1/exchange_rates)"    → Unrecognized request URL
 //   400 "Your account is not set up to use Issuing."            → not set up to use
 const SKIPPABLE_ERROR_PATTERNS = [
   'only available in testmode',
   'not in live mode',
-  'not enabled for',
   'Must provide customer',
   'Must provide ',
+  'Missing required param',
+  'Unrecognized request URL',
   'not set up to use',
 ]
 
@@ -457,7 +488,7 @@ export async function* listApiBackfill(opts: {
     if (!resourceConfig.listFn) continue
 
     const streamState = state?.[stream.name]
-    if (streamState?.status === 'complete') continue
+    if (streamState?.status === 'complete' || streamState?.status === 'errored') continue
 
     yield {
       type: 'trace',
@@ -555,6 +586,12 @@ export async function* listApiBackfill(opts: {
         error: err instanceof Error ? err.message : String(err),
       })
       yield errorToTrace(err, stream.name)
+      if (classifyError(err) !== 'transient_error') {
+        yield stateMsg({
+          stream: stream.name,
+          data: { ...streamState, status: 'errored' },
+        })
+      }
     }
   }
 }

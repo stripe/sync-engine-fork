@@ -94,6 +94,7 @@ export async function pipelineBackfillWorkflow(
 ### What this means for `pipelineSync` activity
 
 Today the activity has two paths:
+
 - Permanent errors → return `{ errors, state }`
 - Transient errors → throw `ApplicationFailure.retryable`
 
@@ -118,6 +119,7 @@ export function createPipelineSyncActivity(context: ActivitiesContext) {
 The source needs to **continue past stream errors** and mark errored streams so they don't block eof. Today `listApiBackfill` already does this partially — the `catch` block emits an error trace and `continue`s to the next stream. But the errored stream's state isn't advanced, so the next `pipelineSync` call would retry it.
 
 Two options:
+
 - **Mark errored streams as complete** (with an error flag in state) so they're skipped on the next chunk. The child accumulates the error and reports it at the end.
 - **Mark errored streams as `errored`** (new status alongside `complete` and `pending`). The source skips `errored` streams the same way it skips `complete` ones. Eof fires when all streams are either `complete` or `errored`.
 
@@ -127,15 +129,15 @@ The second option is cleaner — it preserves the distinction between "successfu
 
 Reclassify the catch-all `system_error` into genuinely transient vs. deterministic:
 
-| Error | Current type | Proposed type |
-|---|---|---|
-| Rate limit (429) | `transient_error` | `transient_error` (no change) |
-| Auth (401/403) | `auth_error` | `auth_error` (no change) |
-| Network timeout / ECONNRESET | `system_error` | `transient_error` |
-| Stripe 5xx | `system_error` | `transient_error` |
-| JSON parse failure | `system_error` | `system_error` → permanent |
-| Connector bug (bad params) | `system_error` | `system_error` → permanent |
-| Unknown stream | `config_error` | `config_error` (no change) |
+| Error                        | Current type      | Proposed type                 |
+| ---------------------------- | ----------------- | ----------------------------- |
+| Rate limit (429)             | `transient_error` | `transient_error` (no change) |
+| Auth (401/403)               | `auth_error`      | `auth_error` (no change)      |
+| Network timeout / ECONNRESET | `system_error`    | `transient_error`             |
+| Stripe 5xx                   | `system_error`    | `transient_error`             |
+| JSON parse failure           | `system_error`    | `system_error` → permanent    |
+| Connector bug (bad params)   | `system_error`    | `system_error` → permanent    |
+| Unknown stream               | `config_error`    | `config_error` (no change)    |
 
 ```ts
 const PERMANENT_FAILURE_TYPES = new Set(['config_error', 'auth_error', 'system_error'])
@@ -150,7 +152,7 @@ function classifyError(err: unknown): TraceError['failure_type'] {
   }
   if (isNetworkError(err)) return 'transient_error'
   if (err instanceof Error && err.message.includes('Rate limit')) return 'transient_error'
-  return 'system_error'  // deterministic by default
+  return 'system_error' // deterministic by default
 }
 ```
 
@@ -210,17 +212,25 @@ export async function pipelineWorkflow(
 
   // Main loop
   while (desiredStatus !== 'deleted') {
-    if (state.errored) { await waitForErrorRecovery(); continue }
-    if (desiredStatus === 'paused') { await waitForResume(); continue }
+    if (state.errored) {
+      await waitForErrorRecovery()
+      continue
+    }
+    if (desiredStatus === 'paused') {
+      await waitForResume()
+      continue
+    }
 
     await Promise.all([
       liveLoop(),
-      backfillLoop(),  // spawns pipelineBackfillWorkflow children on a schedule
+      backfillLoop(), // spawns pipelineBackfillWorkflow children on a schedule
     ])
 
     if (shouldContinueAsNew()) {
       await continueAsNew<typeof pipelineWorkflow>(pipelineId, {
-        desiredStatus, sourceState, state,
+        desiredStatus,
+        sourceState,
+        state,
       })
     }
   }
@@ -256,7 +266,7 @@ async function liveLoop(): Promise<void> {
 
 ### `backfillLoop` — the loop in the parent that spawns child workflows
 
-This is *not* a separate workflow — it's a function inside `pipelineWorkflow` that periodically spawns `pipelineBackfillWorkflow` child workflows. Each child is an independent run.
+This is _not_ a separate workflow — it's a function inside `pipelineWorkflow` that periodically spawns `pipelineBackfillWorkflow` child workflows. Each child is an independent run.
 
 ```ts
 async function backfillLoop(): Promise<void> {
@@ -281,12 +291,12 @@ async function backfillLoop(): Promise<void> {
 
 ### Recovery signals
 
-| Signal | Trigger | Workflow action |
-|---|---|---|
-| `desired_status: active` | User re-enables | Clear errored state, re-enter main loop (existing) |
-| `credentials_updated` | User rotates API key | Clear if `auth_error` |
-| `config_updated` | User modifies config | Clear, re-run setup if needed |
-| `deployment_updated` | New connector deployed | Clear if `system_error` |
+| Signal                   | Trigger                | Workflow action                                    |
+| ------------------------ | ---------------------- | -------------------------------------------------- |
+| `desired_status: active` | User re-enables        | Clear errored state, re-enter main loop (existing) |
+| `credentials_updated`    | User rotates API key   | Clear if `auth_error`                              |
+| `config_updated`         | User modifies config   | Clear, re-run setup if needed                      |
+| `deployment_updated`     | New connector deployed | Clear if `system_error`                            |
 
 After recovery, the parent spawns a new `pipelineBackfillWorkflow` that resumes from the last checkpointed `sourceState`. Previously-completed streams are skipped. Previously-errored streams are retried (their state resets from `errored` to `pending`). Streams that were in-flight when the child failed resume from their last cursor.
 
@@ -328,8 +338,8 @@ Enable per-stream error isolation.
 
 1. Replace inline `reconcileLoop` with `backfillLoop` function that spawns `pipelineBackfillWorkflow` children
 2. Add try/catch for `ChildWorkflowFailure` → `markPermanentError`
-4. Keep `liveLoop` as activities in the parent
-5. Simplify `continueAsNew` payload
+3. Keep `liveLoop` as activities in the parent
+4. Simplify `continueAsNew` payload
 
 ### Phase 5: Reclassify `system_error`
 
@@ -357,10 +367,10 @@ Phase 1 ships without versioning concerns — same workflow shape, different act
 ## Constants
 
 ```ts
-const BACKFILL_CONTINUE_AS_NEW_THRESHOLD = 500   // for pipelineBackfillWorkflow
-const PIPELINE_CONTINUE_AS_NEW_THRESHOLD = 1000  // pipeline is lighter now
-const MAX_TRANSIENT_RETRIES = 5                   // for transient errors in liveLoop
-const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000      // reconcile schedule
+const BACKFILL_CONTINUE_AS_NEW_THRESHOLD = 500 // for pipelineBackfillWorkflow
+const PIPELINE_CONTINUE_AS_NEW_THRESHOLD = 1000 // pipeline is lighter now
+const MAX_TRANSIENT_RETRIES = 5 // for transient errors in liveLoop
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000 // reconcile schedule
 ```
 
 ## Open questions

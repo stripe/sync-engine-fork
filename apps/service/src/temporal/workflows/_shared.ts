@@ -9,6 +9,11 @@ export const sourceInputSignal = defineSignal<[SourceInputMessage]>('source_inpu
 /** Carries the new desired_status value — workflow updates its local state directly. */
 export const desiredStatusSignal = defineSignal<[DesiredStatus]>('desired_status')
 
+/** Signals that notify the workflow about external changes, enabling targeted error recovery. */
+export const credentialsUpdatedSignal = defineSignal('credentials_updated')
+export const configUpdatedSignal = defineSignal('config_updated')
+export const deploymentUpdatedSignal = defineSignal('deployment_updated')
+
 export const { pipelineSetup, pipelineTeardown } = proxyActivities<SyncActivities>({
   startToCloseTimeout: '2m',
   retry: retryPolicy,

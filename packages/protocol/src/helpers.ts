@@ -12,8 +12,23 @@ import type {
   SourceStateMessage,
   SpecMessage,
   StreamStatePayload,
+  TraceError,
   TraceMessage,
 } from './protocol.js'
+
+// MARK: - Error types
+
+/** Typed error preserving failure_type from trace errors for activity-level handling. */
+export class TraceErrorException extends Error {
+  constructor(
+    public readonly failure_type: TraceError['failure_type'],
+    message: string,
+    public readonly stream?: string
+  ) {
+    super(message)
+    this.name = 'TraceErrorException'
+  }
+}
 
 // MARK: - Message constructors
 
@@ -137,7 +152,11 @@ export async function collectMessages<T extends Message['type']>(
     if (msg.type === 'log') {
       logs.push(`[${msg.log.level}] ${msg.log.message}`)
     } else if (msg.type === 'trace' && msg.trace.trace_type === 'error') {
-      throw new Error(msg.trace.error.message)
+      throw new TraceErrorException(
+        msg.trace.error.failure_type,
+        msg.trace.error.message,
+        msg.trace.error.stream
+      )
     }
     if (typeSet.has(msg.type)) {
       messages.push(msg as Extract<Message, { type: T }>)

@@ -23,6 +23,8 @@ export {
   isDataMessage,
   isTraceError,
   isTraceStreamStatus,
+  // Error types
+  TraceErrorException,
   // Stream collectors
   collectMessages,
   collectFirst,
