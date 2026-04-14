@@ -138,6 +138,7 @@ function getPort(): number {
 
 async function startEngineNode(port: number): Promise<EngineProcess> {
   let stderr = ''
+  let exited = false
   const child = spawn('node', [ENGINE_DIST], {
     env: { ...process.env, PORT: String(port), LOG_LEVEL: 'trace', LOG_PRETTY: '' },
     stdio: ['ignore', 'ignore', 'pipe'],
@@ -145,8 +146,16 @@ async function startEngineNode(port: number): Promise<EngineProcess> {
   child.stderr.on('data', (chunk: Buffer) => {
     stderr += chunk.toString()
   })
+  child.on('exit', (code) => {
+    exited = true
+    if (code !== 0 && code !== null) {
+      console.error(`Engine process exited with code ${code}. stderr:\n${stderr}`)
+    }
+  })
 
-  await waitForServer(`http://localhost:${port}`)
+  await waitForServer(`http://localhost:${port}`, 60_000, () => {
+    if (exited) throw new Error(`Engine exited before becoming healthy. stderr:\n${stderr}`)
+  })
   return {
     url: `http://localhost:${port}`,
     get stderr() {
@@ -158,6 +167,7 @@ async function startEngineNode(port: number): Promise<EngineProcess> {
 
 async function startEngineBun(port: number): Promise<EngineProcess> {
   let stderr = ''
+  let exited = false
   const child = spawn('bun', [ENGINE_SRC], {
     env: { ...process.env, PORT: String(port), LOG_LEVEL: 'trace', LOG_PRETTY: '' },
     stdio: ['ignore', 'ignore', 'pipe'],
@@ -165,8 +175,16 @@ async function startEngineBun(port: number): Promise<EngineProcess> {
   child.stderr.on('data', (chunk: Buffer) => {
     stderr += chunk.toString()
   })
+  child.on('exit', (code) => {
+    exited = true
+    if (code !== 0 && code !== null) {
+      console.error(`Bun engine process exited with code ${code}. stderr:\n${stderr}`)
+    }
+  })
 
-  await waitForServer(`http://localhost:${port}`)
+  await waitForServer(`http://localhost:${port}`, 60_000, () => {
+    if (exited) throw new Error(`Bun engine exited before becoming healthy. stderr:\n${stderr}`)
+  })
   return {
     url: `http://localhost:${port}`,
     get stderr() {
@@ -208,14 +226,19 @@ async function startEngineDocker(port: number, mockUrl: string): Promise<EngineP
   }
 }
 
-async function waitForServer(url: string, timeout = 30_000): Promise<void> {
+async function waitForServer(
+  url: string,
+  timeout = 30_000,
+  checkAlive?: () => void
+): Promise<void> {
   const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
+    checkAlive?.()
     try {
       const res = await fetch(`${url}/health`)
       if (res.ok) return
     } catch {}
-    await new Promise((r) => setTimeout(r, 200))
+    await new Promise((r) => setTimeout(r, 500))
   }
   throw new Error(`Server at ${url} did not become healthy in ${timeout}ms`)
 }
@@ -233,7 +256,10 @@ function makePipelineHeader(mockStripeUrl: string): string {
         rate_limit: 1000,
       },
     },
-    destination: { type: 'postgres', postgres: { connection_string: 'postgres://fake:5432/db' } },
+    destination: {
+      type: 'postgres',
+      postgres: { connection_string: 'postgres://user:pass@localhost:65432/testdb' },
+    },
     streams: [{ name: 'customers' }],
   })
 }
@@ -312,6 +338,12 @@ for (const runtime of runtimes) {
         method: 'POST',
         headers: { 'X-Pipeline': pipelineHeader },
         signal: ac.signal,
+      }).then(async (res) => {
+        if (!res.ok) {
+          const body = await res.text().catch(() => '')
+          console.error(`pipeline_read returned ${res.status}: ${body}`)
+        }
+        return res
       }).catch(() => null)
 
       // Wait for some requests to hit the mock
@@ -342,6 +374,10 @@ for (const runtime of runtimes) {
         method: 'POST',
         headers: { 'X-Pipeline': pipelineHeader },
       })
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        console.error(`soft time limit test: pipeline_read returned ${res.status}: ${body}`)
+      }
       expect(res.status).toBe(200)
 
       // Read all NDJSON lines until stream ends
@@ -376,6 +412,10 @@ for (const runtime of runtimes) {
           method: 'POST',
           headers: { 'X-Pipeline': pipelineHeader },
         })
+        if (!res.ok) {
+          const body = await res.text().catch(() => '')
+          console.error(`hard time limit test: pipeline_read returned ${res.status}: ${body}`)
+        }
         expect(res.status).toBe(200)
 
         const text = await res.text()
