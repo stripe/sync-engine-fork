@@ -26,7 +26,9 @@ const SEED_BATCH = 1000
 
 const WARMUP_ITERATIONS = 25
 const TEST_ITERATIONS = 50
-const TIME_LIMIT_SECONDS = 2
+// Must be short enough that syncs don't complete before the limit fires.
+// 5000 rows at ~3ms/page = ~150ms total; 0.1s ensures early termination.
+const TIME_LIMIT_SECONDS = 0.1
 
 const RANGE_START = Math.floor(new Date('2021-04-03T00:00:00Z').getTime() / 1000)
 const RANGE_END = Math.floor(new Date('2026-04-02T00:00:00Z').getTime() / 1000)
