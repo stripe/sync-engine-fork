@@ -575,7 +575,8 @@ export interface Destination<TConfig extends Record<string, unknown> = Record<st
    */
   write(
     params: { config: TConfig; catalog: ConfiguredCatalog },
-    $stdin: AsyncIterable<DestinationInput>
+    $stdin: AsyncIterable<DestinationInput>,
+    signal?: AbortSignal
   ): AsyncIterable<DestinationOutput>
 
   /** Provision downstream resources (schemas, tables, etc.). */

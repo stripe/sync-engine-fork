@@ -570,6 +570,18 @@ export async function createApp(resolver: ConnectorResolver) {
     }
     const startedAt = Date.now()
     logger.info(context, 'Engine API /write started')
+
+    const ac = createConnectionAbort(c)
+    const onDisconnect = () => {
+      if (!ac.signal.aborted) {
+        logger.warn(
+          { elapsed_ms: Date.now() - startedAt, event: 'SYNC_CLIENT_DISCONNECT' },
+          'SYNC_CLIENT_DISCONNECT'
+        )
+        ac.abort()
+      }
+    }
+
     const messages = verboseInput(
       'pipeline_write',
       parseNdjsonStream<Message>(c.req.raw.body!)
@@ -577,10 +589,11 @@ export async function createApp(resolver: ConnectorResolver) {
     return ndjsonResponse(
       logApiStream(
         'Engine API /write',
-        engine.pipeline_write(pipeline, messages),
+        engine.pipeline_write(pipeline, messages, ac.signal),
         context,
         startedAt
-      )
+      ),
+      { onCancel: onDisconnect }
     )
   })
 

@@ -172,9 +172,10 @@ export function createRemoteEngine(engineUrl: string): Engine {
 
     async *pipeline_write(
       pipeline: PipelineConfig,
-      messages: AsyncIterable<Message>
+      messages: AsyncIterable<Message>,
+      signal?: AbortSignal
     ): AsyncIterable<DestinationOutput> {
-      const res = await post('/pipeline_write', pipeline, undefined, toNdjsonStream(messages))
+      const res = await post('/pipeline_write', pipeline, undefined, toNdjsonStream(messages), signal)
       yield* parseNdjsonStream<DestinationOutput>(res.body!)
     },
 

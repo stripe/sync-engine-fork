@@ -121,7 +121,8 @@ export interface Engine {
    */
   pipeline_write(
     pipeline: PipelineConfig,
-    messages: AsyncIterable<Message>
+    messages: AsyncIterable<Message>,
+    signal?: AbortSignal
   ): AsyncIterable<DestinationOutput>
 
   /**
@@ -438,7 +439,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       })(parsed)
     },
 
-    async *pipeline_write(pipeline, messages) {
+    async *pipeline_write(pipeline, messages, signal?) {
       const baseContext = engineLogContext(pipeline)
       const connector = await resolver.resolveDestination(pipeline.destination.type)
       const rawDest = configPayload(pipeline.destination)
@@ -453,13 +454,15 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       )
       const destOutput = connector.write(
         { config: destConfig, catalog: filteredCatalog },
-        destInput
+        destInput,
+        signal
       )
       for await (const msg of withLoggedStream(
         'Engine destination write',
         baseContext,
         destOutput
       )) {
+        if (signal?.aborted) return
         yield DestinationOutput.parse(msg)
       }
     },
