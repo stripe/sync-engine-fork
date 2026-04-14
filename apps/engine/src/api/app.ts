@@ -102,6 +102,29 @@ async function* logApiStream<T>(
 
 const dangerouslyVerbose = process.env.DANGEROUSLY_VERBOSE_LOGGING === 'true'
 
+/**
+ * Wire client disconnect detection to an AbortController.
+ *
+ * Under @hono/node-server the Node ServerResponse is available at `c.env.outgoing`.
+ * Under Bun.serve() the ReadableStream.cancel() callback handles this instead
+ * (wired via ndjsonResponse onCancel).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function wireDisconnect(c: any, ac: AbortController, startedAt: number) {
+  const outgoing = c.env?.outgoing as import('node:http').ServerResponse | undefined
+  if (outgoing && typeof outgoing.on === 'function') {
+    outgoing.on('close', () => {
+      if (!ac.signal.aborted && outgoing.writableFinished === false) {
+        logger.warn(
+          { elapsed_ms: Date.now() - startedAt, event: 'SYNC_CLIENT_DISCONNECT' },
+          'SYNC_CLIENT_DISCONNECT'
+        )
+        ac.abort()
+      }
+    })
+  }
+}
+
 async function* verboseInput(label: string, iter: AsyncIterable<unknown>): AsyncIterable<unknown> {
   for await (const msg of iter) {
     if (dangerouslyVerbose) logger.debug({ msg }, `${label} input`)
@@ -480,6 +503,9 @@ export async function createApp(resolver: ConnectorResolver) {
     const startedAt = Date.now()
     logger.info(context, 'Engine API /pipeline_read started')
 
+    const ac = new AbortController()
+    wireDisconnect(c, ac, startedAt)
+
     let input: AsyncIterable<unknown> | undefined
     if (inputPresent) {
       if (SourceInputMessage) {
@@ -498,8 +524,22 @@ export async function createApp(resolver: ConnectorResolver) {
         input = verboseInput('pipeline_read', parseNdjsonStream(c.req.raw.body!))
       }
     }
-    const output = engine.pipeline_read(pipeline, { state, state_limit, time_limit }, input)
-    return ndjsonResponse(logApiStream('Engine API /pipeline_read', output, context, startedAt))
+    const output = engine.pipeline_read(
+      pipeline,
+      { state, state_limit, time_limit, signal: ac.signal },
+      input
+    )
+    return ndjsonResponse(logApiStream('Engine API /pipeline_read', output, context, startedAt), {
+      onCancel: () => {
+        if (!ac.signal.aborted) {
+          logger.warn(
+            { elapsed_ms: Date.now() - startedAt, event: 'SYNC_CLIENT_DISCONNECT' },
+            'SYNC_CLIENT_DISCONNECT'
+          )
+          ac.abort()
+        }
+      },
+    })
   })
 
   const pipelineWriteRoute = createRoute({
@@ -577,11 +617,30 @@ export async function createApp(resolver: ConnectorResolver) {
     const state = c.req.valid('header')['x-source-state']
     const { state_limit, time_limit } = c.req.valid('query')
     const context = { path: '/pipeline_sync', ...syncRequestContext(pipeline) }
+    const startedAt = Date.now()
+
+    const ac = new AbortController()
+    wireDisconnect(c, ac, startedAt)
+
     const input = hasBody(c)
       ? verboseInput('pipeline_sync', parseNdjsonStream(c.req.raw.body!))
       : undefined
-    const output = engine.pipeline_sync(pipeline, { state, state_limit, time_limit }, input)
-    return ndjsonResponse(logApiStream('Engine API /pipeline_sync', output, context))
+    const output = engine.pipeline_sync(
+      pipeline,
+      { state, state_limit, time_limit, signal: ac.signal },
+      input
+    )
+    return ndjsonResponse(logApiStream('Engine API /pipeline_sync', output, context, startedAt), {
+      onCancel: () => {
+        if (!ac.signal.aborted) {
+          logger.warn(
+            { elapsed_ms: Date.now() - startedAt, event: 'SYNC_CLIENT_DISCONNECT' },
+            'SYNC_CLIENT_DISCONNECT'
+          )
+          ac.abort()
+        }
+      },
+    })
   })
 
   app.openapi(

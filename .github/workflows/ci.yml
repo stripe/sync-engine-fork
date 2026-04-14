@@ -129,6 +129,23 @@ jobs:
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           GOOGLE_SPREADSHEET_ID: ${{ vars.GOOGLE_SPREADSHEET_ID }}
 
+      - name: Disconnect & time-limit tests (Node)
+        run: |
+          pnpm --filter @stripe/sync-e2e exec vitest run test-disconnect.test.ts
+        env:
+          SKIP_SETUP: '1'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Disconnect & time-limit tests (Bun)
+        run: |
+          pnpm --filter @stripe/sync-e2e exec vitest run test-disconnect.test.ts
+        env:
+          SKIP_SETUP: '1'
+
       - name: Connector loading test
         run: bash e2e/connector-loading.test.sh
 

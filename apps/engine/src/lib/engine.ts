@@ -34,6 +34,8 @@ export const SourceReadOptions = z.object({
   state_limit: z.number().int().positive().optional(),
   /** Wall-clock time limit in seconds; the stream stops after this duration. */
   time_limit: z.number().positive().optional(),
+  /** Abort signal for cancellation (e.g. client disconnect). Not serialized over the wire. */
+  signal: z.instanceof(AbortSignal).optional(),
 })
 export type SourceReadOptions = z.infer<typeof SourceReadOptions>
 
@@ -410,7 +412,10 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       const { catalog } = await discoverCatalog(engine, pipeline)
       const state = opts?.state
 
-      const raw = connector.read({ config: sourceConfig, catalog, state }, input)
+      const raw = connector.read(
+        { config: sourceConfig, catalog, state, signal: opts?.signal },
+        input
+      )
       const logged = withLoggedStream(
         'Engine source read',
         {
@@ -428,6 +433,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       yield* takeLimits({
         state_limit: opts?.state_limit,
         time_limit: opts?.time_limit,
+        signal: opts?.signal,
       })(parsed)
     },
 
@@ -463,8 +469,12 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       const destTag = `destination/${pipeline.destination.type}`
       const now = () => new Date().toISOString()
 
-      // Read from source (pass state but not state_limit — state_limit controls sync output)
-      const readOutput = engine.pipeline_read(pipeline, { state: opts?.state }, input)
+      // Read from source (pass state + signal but not state_limit — state_limit controls sync output)
+      const readOutput = engine.pipeline_read(
+        pipeline,
+        { state: opts?.state, signal: opts?.signal },
+        input
+      )
 
       // Split: data + eof → destination path, source signals → caller
       // Eof from pipeline_read is excluded from source signals (pipeline_sync adds its own)
@@ -504,6 +514,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
       yield* takeLimits<SyncOutput>({
         state_limit: opts?.state_limit,
         time_limit: opts?.time_limit,
+        signal: opts?.signal,
       })(merge(taggedDest, taggedSource))
     },
   }

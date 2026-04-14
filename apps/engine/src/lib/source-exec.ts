@@ -51,6 +51,7 @@ export function createSourceFromExec(cmd: string): Source {
         config: Record<string, unknown>
         catalog: ConfiguredCatalog
         state?: Record<string, unknown>
+        signal?: AbortSignal
       },
       $stdin?: AsyncIterable<unknown>
     ): AsyncIterable<Message> {
@@ -66,9 +67,9 @@ export function createSourceFromExec(cmd: string): Source {
         args.push('--state', JSON.stringify(params.state))
       }
       if ($stdin) {
-        return spawnWithStdin<unknown, Message>(bin, args, $stdin)
+        return spawnWithStdin<unknown, Message>(bin, args, $stdin, params.signal)
       }
-      return spawnAndStream<Message>(bin, args)
+      return spawnAndStream<Message>(bin, args, params.signal)
     },
 
     async *setup(params: {
