@@ -184,36 +184,6 @@ export function getHttpsProxyAgentForTarget(
   return proxyUrl ? getHttpsProxyAgent(proxyUrl) : undefined
 }
 
-/**
- * Asserts that if HTTPS_PROXY/HTTP_PROXY is set, Node's --use-env-proxy flag is
- * also active so that the built-in fetch (undici) actually honours the proxy.
- * Without --use-env-proxy, native fetch bypasses the proxy silently.
- *
- * @param env - process.env or a test-supplied substitute
- * @param execArgv - process.execArgv or a test-supplied substitute
- */
-export function assertUseEnvProxy(
-  env: TransportEnv = process.env,
-  execArgv: string[] = process.execArgv
-): void {
-  const proxyUrl = getProxyUrl(env)
-  if (!proxyUrl) {
-    return
-  }
-
-  const nodeOptions = (env.NODE_OPTIONS ?? '').split(/\s+/)
-  const hasFlag =
-    execArgv.includes('--use-env-proxy') || nodeOptions.includes('--use-env-proxy')
-
-  if (!hasFlag) {
-    throw new Error(
-      `Proxy is configured (${proxyUrl}) but --use-env-proxy is not set. ` +
-        `Node's built-in fetch will bypass the proxy. ` +
-        `Add --use-env-proxy to NODE_OPTIONS or pass it directly to node.`
-    )
-  }
-}
-
 const DANGEROUSLY_VERBOSE_LOGGING = process.env.DANGEROUSLY_VERBOSE_LOGGING === 'true'
 
 type ProxyAwareRequestInit = RequestInit & { dispatcher?: ProxyAgent }
