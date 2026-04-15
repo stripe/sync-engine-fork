@@ -1,16 +1,17 @@
-#!/usr/bin/env node
 /**
  * Assert that if HTTPS_PROXY/HTTP_PROXY is set, --use-env-proxy is also active.
  * Without it, Node's built-in fetch (undici) silently bypasses the proxy.
  *
  * Usage (fail fast at startup):
- *   node --import ./scripts/assert-use-env-proxy.mjs your-script.js
+ *   node --import ./scripts/assert-use-env-proxy.ts your-script.js
  *
  * Or run standalone to check the current environment:
- *   node scripts/assert-use-env-proxy.mjs
+ *   scripts/ts-run scripts/assert-use-env-proxy.ts
  */
 
-function getProxyUrl(env = process.env) {
+type Env = Record<string, string | undefined>
+
+export function getProxyUrl(env: Env): string | undefined {
   for (const key of ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy']) {
     const value = env[key]?.trim()
     if (value) return value
@@ -18,7 +19,7 @@ function getProxyUrl(env = process.env) {
   return undefined
 }
 
-function assertUseEnvProxy(env = process.env, execArgv = process.execArgv) {
+export function assertUseEnvProxy(env: Env = process.env, execArgv: string[] = process.execArgv): void {
   const proxyUrl = getProxyUrl(env)
   if (!proxyUrl) return
 
@@ -35,4 +36,7 @@ function assertUseEnvProxy(env = process.env, execArgv = process.execArgv) {
   }
 }
 
-assertUseEnvProxy()
+// When run directly (not imported as a module)
+if (import.meta.url === `file://${process.argv[1]}`) {
+  assertUseEnvProxy()
+}
