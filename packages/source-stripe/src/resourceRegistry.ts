@@ -119,14 +119,14 @@ export function buildResourceRegistry(
       supportsForwardPagination: isV2 || endpoint.supportsStartingAfter,
       sync: true,
       dependencies: [],
-      listFn: buildSpecAwareListFn((params) => withHttpRetry(() => rawListFn(params), { label: `LIST ${endpoint.apiPath} (${tableName})` }), {
+      listFn: buildSpecAwareListFn((params) => withHttpRetry(() => rawListFn(params)), {
         isV2,
         supportsLimit: endpoint.supportsLimit,
         supportsStartingAfter: endpoint.supportsStartingAfter,
         supportsEndingBefore: endpoint.supportsEndingBefore,
         supportsCreatedFilter: endpoint.supportsCreatedFilter,
       }),
-      retrieveFn: (id) => withHttpRetry(() => rawRetrieveFn(id), { label: `GET ${endpoint.apiPath}/${id} (${tableName})` }),
+      retrieveFn: (id) => withHttpRetry(() => rawRetrieveFn(id)),
       nestedResources: children.length > 0 ? children : undefined,
     }
     registry[tableName] = config
