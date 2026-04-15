@@ -19,8 +19,9 @@ export function writeLine(obj: unknown) {
  * this keeps protocol-specific error shapes out of this generic helper.
  *
  * If `onCancel` is provided it is called when the ReadableStream is cancelled
- * (e.g. client disconnect under Bun.serve()). Use this to trigger an
- * AbortController that propagates through the pipeline.
+ * (e.g. client disconnect under Bun.serve()). Cancellation also calls
+ * `iterator.return()` on the wrapped iterable so normal async-iterator teardown
+ * can propagate upstream.
  */
 export function ndjsonResponse<T>(
   iterable: AsyncIterable<T>,
@@ -29,17 +30,36 @@ export function ndjsonResponse<T>(
     | {
         onError?: (err: unknown) => T
         onCancel?: () => void
+        signal?: AbortSignal
       }
 ): Response {
   const onError = typeof opts === 'function' ? opts : opts?.onError
   const onCancel = typeof opts === 'object' ? opts?.onCancel : undefined
+  const signal = typeof opts === 'object' ? opts?.signal : undefined
 
   const encoder = new TextEncoder()
+  const iterator = iterable[Symbol.asyncIterator]()
+  const stop = async () => {
+    await iterator.return?.()
+  }
 
   const stream = new ReadableStream({
     async start(controller) {
+      if (signal) {
+        if (signal.aborted) {
+          await stop()
+          controller.close()
+          return
+        }
+        signal.addEventListener('abort', () => {
+          void stop()
+        }, { once: true })
+      }
       try {
-        for await (const item of iterable) {
+        while (true) {
+          const { done, value } = await iterator.next()
+          if (done) break
+          const item = value
           controller.enqueue(encoder.encode(JSON.stringify(item) + '\n'))
         }
       } catch (err) {
@@ -50,8 +70,9 @@ export function ndjsonResponse<T>(
         controller.close()
       }
     },
-    cancel() {
+    async cancel() {
       onCancel?.()
+      await stop()
     },
   })
 

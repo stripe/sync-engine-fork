@@ -219,7 +219,7 @@ function formatEof(eof: EofPayload): string {
  * Under @hono/node-server the Node ServerResponse is at `c.env.outgoing` —
  * we listen for `close` while `writableFinished` is still false.
  * Under Bun.serve() the ReadableStream.cancel() callback handles this instead
- * (wired via ndjsonResponse onCancel).
+ * (wired via ndjsonResponse cancel/return propagation).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createConnectionAbort(c: any, onDisconnect?: () => void): AbortController {
@@ -648,14 +648,10 @@ export async function createApp(resolver: ConnectorResolver) {
         input = verboseInput('pipeline_read', parseNdjsonStream(c.req.raw.body!))
       }
     }
-    const output = engine.pipeline_read(
-      pipeline,
-      { state, state_limit, time_limit },
-      input,
-      ac.signal
-    )
+    const output = engine.pipeline_read(pipeline, { state, state_limit, time_limit }, input)
     return ndjsonResponse(logApiStream('Engine API /pipeline_read', output, context, startedAt), {
       onCancel: onDisconnect,
+      signal: ac.signal,
     })
   })
 
@@ -704,11 +700,11 @@ export async function createApp(resolver: ConnectorResolver) {
     return ndjsonResponse(
       logApiStream(
         'Engine API /write',
-        engine.pipeline_write(pipeline, messages, ac.signal),
+        engine.pipeline_write(pipeline, messages),
         context,
         startedAt
       ),
-      { onCancel: onDisconnect }
+      { onCancel: onDisconnect, signal: ac.signal }
     )
   })
 
@@ -756,14 +752,10 @@ export async function createApp(resolver: ConnectorResolver) {
     const input = hasBody(c)
       ? verboseInput('pipeline_sync', parseNdjsonStream(c.req.raw.body!))
       : undefined
-    const output = engine.pipeline_sync(
-      pipeline,
-      { state, state_limit, time_limit },
-      input,
-      ac.signal
-    )
+    const output = engine.pipeline_sync(pipeline, { state, state_limit, time_limit }, input)
     return ndjsonResponse(logApiStream('Engine API /pipeline_sync', output, context, startedAt), {
       onCancel: onDisconnect,
+      signal: ac.signal,
     })
   })
 
