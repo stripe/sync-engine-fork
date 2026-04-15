@@ -89,7 +89,7 @@ export function makeClient(
 
   return {
     async getAccount(): Promise<StripeAccount> {
-      const json = await request('GET', '/v1/account')
+      const json = await requestWithRetry('GET', '/v1/account')
       return StripeAccountSchema.parse(json)
     },
 
