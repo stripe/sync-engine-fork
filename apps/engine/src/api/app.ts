@@ -1,5 +1,9 @@
 import os from 'node:os'
-import { OpenAPIHono, createRoute } from '@stripe/sync-hono-zod-openapi'
+import {
+  OpenAPIHono,
+  createRoute,
+  isApplicationJsonContentType,
+} from '@stripe/sync-hono-zod-openapi'
 import { z } from 'zod'
 import { apiReference } from '@scalar/hono-api-reference'
 import { HTTPException } from 'hono/http-exception'
@@ -352,7 +356,7 @@ export async function createApp(resolver: ConnectorResolver) {
   }
 
   function isJsonBody(c: { req: { header: (name: string) => string | undefined } }): boolean {
-    return c.req.header('content-type')?.includes('application/json') ?? false
+    return isApplicationJsonContentType(c.req.header('content-type'))
   }
 
   // ── Typed header schemas (transform + pipe for runtime validation,

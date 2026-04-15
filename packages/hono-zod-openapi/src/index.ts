@@ -515,6 +515,8 @@ export function createRoute<R extends RouteConfig>(config: R): R {
   return config
 }
 
+export { isApplicationJsonContentType }
+
 // ── Re-exports ───────────────────────────────────────────────────
 
 // zod-openapi types consumers will need for route definitions

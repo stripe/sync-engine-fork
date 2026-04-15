@@ -1066,6 +1066,29 @@ describe('JSON body mode', () => {
     })
     expect(res.status).toBe(200)
   })
+
+  it('mixed-case Content-Type is accepted as JSON body mode', async () => {
+    const app = await createApp(resolver)
+    const res = await app.request('/pipeline_check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'Application/JSON; charset=utf-8' },
+      body: JSON.stringify({ pipeline: syncParamsObj }),
+    })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toBe('application/x-ndjson')
+  })
+
+  it('application/json-seq falls back to header mode, not JSON body', async () => {
+    const app = await createApp(resolver)
+    const res = await app.request('/pipeline_check', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json-seq',
+        'X-Pipeline': syncParams,
+      },
+    })
+    expect(res.status).toBe(200)
+  })
 })
 
 // ---------------------------------------------------------------------------
