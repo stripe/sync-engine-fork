@@ -107,12 +107,16 @@ describe('assertUseEnvProxy (subprocess)', () => {
   })
 
   it('bun: does not throw when HTTPS_PROXY is set (bun always respects proxy env)', () => {
-    const result = spawnSync('bun', ['run', '--smol', '-'],  {
+    const result = spawnSync('bun', ['run', '--smol', '-'], {
       input: BUN_INLINE_SCRIPT,
       env: PROXY_ONLY_ENV,
       encoding: 'utf8',
       cwd: new URL('..', import.meta.url).pathname,
     })
+    if (result.error && (result.error as NodeJS.ErrnoException).code === 'ENOENT') {
+      console.log('bun not found, skipping subprocess test')
+      return
+    }
     expect(result.status).toBe(0)
   })
 })
