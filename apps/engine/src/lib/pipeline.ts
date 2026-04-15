@@ -207,7 +207,7 @@ export function takeLimits<T extends Message>(
     function closeIteratorInBackground() {
       if (iteratorClosed) return
       iteratorClosed = true
-      void iterator.return?.(undefined)
+      void iterator.return?.(undefined)?.catch(() => {})
     }
 
     // Create the abort promise once so we don't leak listeners per iteration

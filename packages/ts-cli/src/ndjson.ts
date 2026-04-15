@@ -49,7 +49,7 @@ export function ndjsonResponse<T>(
           return
         }
         signal.addEventListener('abort', () => {
-          void stop()
+          void stop().catch(() => {})
         }, { once: true })
       }
       try {
