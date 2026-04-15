@@ -15,7 +15,7 @@ export function getProxyUrl(env: Env): string | undefined {
 export function assertUseEnvProxy(
   env: Env = process.env,
   execArgv: string[] = process.execArgv,
-  isBun: boolean = typeof (globalThis as Record<string, unknown>).Bun !== 'undefined',
+  isBun: boolean = typeof (globalThis as Record<string, unknown>).Bun !== 'undefined'
 ): void {
   const proxyUrl = getProxyUrl(env)
   if (!proxyUrl) return
@@ -24,8 +24,7 @@ export function assertUseEnvProxy(
   if (isBun) return
 
   const nodeOptions = (env.NODE_OPTIONS ?? '').split(/\s+/)
-  const hasFlag =
-    execArgv.includes('--use-env-proxy') || nodeOptions.includes('--use-env-proxy')
+  const hasFlag = execArgv.includes('--use-env-proxy') || nodeOptions.includes('--use-env-proxy')
 
   if (!hasFlag) {
     throw new Error(

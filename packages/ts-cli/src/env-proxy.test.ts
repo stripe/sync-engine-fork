@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { describe, it, expect } from 'vitest'
-import { assertUseEnvProxy } from '../proxy.js'
+import { assertUseEnvProxy } from './env-proxy.js'
 
 const PROXY_ENV = { HTTPS_PROXY: 'http://proxy.example.test:8080' }
 
@@ -24,7 +24,7 @@ assertUseEnvProxy();
 
 // Bun-native script: imports directly from TS source (run from package root)
 const BUN_INLINE_SCRIPT = `
-import { assertUseEnvProxy } from './src/proxy.ts';
+import { assertUseEnvProxy } from './src/env-proxy.ts';
 assertUseEnvProxy();
 `
 
@@ -111,7 +111,7 @@ describe('assertUseEnvProxy (subprocess)', () => {
       input: BUN_INLINE_SCRIPT,
       env: PROXY_ONLY_ENV,
       encoding: 'utf8',
-      cwd: new URL('../..', import.meta.url).pathname,
+      cwd: new URL('..', import.meta.url).pathname,
     })
     expect(result.status).toBe(0)
   })

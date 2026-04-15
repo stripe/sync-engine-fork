@@ -24,10 +24,10 @@
       "types": "./dist/openapi/index.d.ts",
       "import": "./dist/openapi/index.js"
     },
-    "./proxy": {
-      "bun": "./src/proxy.ts",
-      "types": "./dist/proxy.d.ts",
-      "import": "./dist/proxy.js"
+    "./env-proxy": {
+      "bun": "./src/env-proxy.ts",
+      "types": "./dist/env-proxy.d.ts",
+      "import": "./dist/env-proxy.js"
     }
   },
   "scripts": {
