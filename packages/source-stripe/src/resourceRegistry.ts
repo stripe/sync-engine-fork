@@ -9,11 +9,11 @@ import {
   resolveTableName,
   OPENAPI_RESOURCE_TABLE_ALIASES,
 } from '@stripe/sync-openapi'
-import { fetchWithProxy } from './transport.js'
+import { tracedFetch } from './transport.js'
 import { withHttpRetry } from './retry.js'
 
 const apiFetch: typeof globalThis.fetch = (input, init) =>
-  fetchWithProxy(input as URL | string, init ?? {})
+  tracedFetch(input as URL | string, init ?? {})
 
 /**
  * Wrap a raw list function so only params the endpoint actually supports are forwarded.

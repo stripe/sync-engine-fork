@@ -30,11 +30,11 @@ import type { ResourceConfig } from './types.js'
 import { makeClient, type StripeClient } from './client.js'
 import type { RateLimiter } from './rate-limiter.js'
 import { createInMemoryRateLimiter, DEFAULT_MAX_RPS } from './rate-limiter.js'
-import { fetchWithProxy } from './transport.js'
+import { tracedFetch } from './transport.js'
 import { stripeEventSchema } from './spec.js'
 
 const apiFetch: typeof globalThis.fetch = (input, init) =>
-  fetchWithProxy(input as URL | string, init ?? {})
+  tracedFetch(input as URL | string, init ?? {})
 
 /** In-memory cache of discover results keyed by api_version. */
 export const discoverCache = new Map<string, CatalogPayload>()
