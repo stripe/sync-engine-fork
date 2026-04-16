@@ -242,6 +242,20 @@ const DEBUG_HEADERS = [
   'stripe-server-environment',
 ]
 
+/**
+ * Extract only the debug-relevant headers from a Response, avoiding
+ * `Object.fromEntries(headers.entries())` which materializes every header
+ * and can silently drop duplicate keys like `set-cookie`.
+ */
+export function pickDebugHeaders(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const key of DEBUG_HEADERS) {
+    const v = headers.get(key)
+    if (v) out[key] = v
+  }
+  return out
+}
+
 function extractErrorMessage(
   body: unknown,
   status: number,
@@ -288,8 +302,7 @@ async function readJson(response: Response): Promise<unknown> {
 
 function assertOk(response: Response, body: unknown, method: string, path: string): void {
   if (!response.ok) {
-    const responseHeaders = Object.fromEntries(response.headers.entries())
-    throw new StripeApiRequestError(response.status, body, method, path, responseHeaders)
+    throw new StripeApiRequestError(response.status, body, method, path, pickDebugHeaders(response.headers))
   }
 }
 
