@@ -263,6 +263,7 @@ export function createDestination(
           if (primaryKey && primaryKey.length > 0 && headers) {
             try {
               map = await buildRowMap(sheets, spreadsheetId!, streamName, headers, primaryKey)
+              rowMapRefreshed.add(streamName)
             } catch {
               map = new Map() // sheet doesn't exist yet or is empty
             }
