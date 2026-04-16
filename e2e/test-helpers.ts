@@ -1,10 +1,16 @@
 import { appendFileSync } from 'node:fs'
-import { describe } from 'vitest'
+import { beforeAll, beforeEach, describe } from 'vitest'
 
 /** File where CI warning annotations are collected during test runs.
  *  A post-test CI step cats this file so GitHub Actions parses the
  *  `::warning` commands without pnpm's per-package output prefix. */
 const WARNINGS_FILE = '/tmp/vitest-skip-warnings.txt'
+
+interface DescribeWithEnvOptions<K extends string> {
+  /** Async check that runs in `beforeAll`. If it throws, every test in the
+   *  suite is auto-skipped with the error message — no per-test boilerplate. */
+  preflight?: (env: { [P in K]: string }) => Promise<void>
+}
 
 /**
  * Like `describe`, but skips the suite when any of the listed env vars
@@ -14,17 +20,31 @@ const WARNINGS_FILE = '/tmp/vitest-skip-warnings.txt'
  * The callback receives a fully-typed object whose keys are exactly the
  * requested env-var names — all guaranteed to be `string`.
  *
+ * An optional `preflight` async check can be provided. It runs in
+ * `beforeAll` — if it throws, all tests are gracefully skipped.
+ *
  * ```ts
  * describeWithEnv('stripe e2e', ['STRIPE_API_KEY'], ({ STRIPE_API_KEY }) => {
  *   it('works', () => { … })
  * })
+ *
+ * describeWithEnv(
+ *   'sheets integration',
+ *   ['GOOGLE_REFRESH_TOKEN'],
+ *   { preflight: async ({ GOOGLE_REFRESH_TOKEN }) => { await checkToken(GOOGLE_REFRESH_TOKEN) } },
+ *   ({ GOOGLE_REFRESH_TOKEN }) => { it('works', () => { … }) }
+ * )
  * ```
  */
 export function describeWithEnv<const K extends string>(
   name: string,
   envVars: K[],
-  fn: (env: { [P in K]: string }) => void
+  fnOrOpts: ((env: { [P in K]: string }) => void) | DescribeWithEnvOptions<K>,
+  maybeFn?: (env: { [P in K]: string }) => void
 ): void {
+  const opts = typeof fnOrOpts === 'function' ? {} : fnOrOpts
+  const fn = typeof fnOrOpts === 'function' ? fnOrOpts : maybeFn!
+
   const missing = envVars.filter((k) => !process.env[k])
 
   if (missing.length > 0) {
@@ -48,7 +68,27 @@ export function describeWithEnv<const K extends string>(
   for (const k of envVars) {
     ;(env as Record<string, string>)[k] = process.env[k]!
   }
-  describe(name, () => fn(env))
+
+  describe(name, () => {
+    let skipReason = ''
+
+    if (opts.preflight) {
+      beforeAll(async () => {
+        try {
+          await opts.preflight!(env)
+        } catch (err: unknown) {
+          skipReason = err instanceof Error ? err.message : String(err)
+          console.warn(`Preflight failed for "${name}" — skipping: ${skipReason}`)
+        }
+      })
+
+      beforeEach((ctx) => {
+        if (skipReason) ctx.skip()
+      })
+    }
+
+    fn(env)
+  })
 }
 
 /** Walk the stack to find the file that called `describeWithEnv`. */
