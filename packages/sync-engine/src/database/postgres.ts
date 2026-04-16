@@ -770,18 +770,20 @@ export class PostgresClient {
     intervalSeconds: number
   ): Promise<{ accountId: string; runStartedAt: Date } | null> {
     const result = await this.query(
-      `SELECT r."_account_id", r.started_at
-       FROM "${this.syncSchema}"."_sync_runs" r
-       WHERE r."_account_id" = $1
+      `SELECT r.account_id, r.started_at
+       FROM "${this.syncSchema}"."sync_runs" r
+       WHERE r.account_id = $1
          AND r.closed_at IS NOT NULL
          AND r.closed_at >= now() - make_interval(secs => $2)
+         AND r.status = 'complete'
+       ORDER BY r.closed_at DESC
        LIMIT 1`,
       [accountId, intervalSeconds]
     )
 
     if (result.rows.length === 0) return null
     const row = result.rows[0]
-    return { accountId: row._account_id, runStartedAt: row.started_at }
+    return { accountId: row.account_id, runStartedAt: row.started_at }
   }
 
   /**
