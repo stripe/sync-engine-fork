@@ -225,6 +225,16 @@ const RESOURCE_MAP: Record<string, ResourceDef> = {
     supportsCreatedFilter: true,
     sync: false,
   },
+  payout: {
+    order: 20,
+    tableName: 'payouts',
+    list: (s) => (p) => s.payouts.list(p),
+    retrieve: (s) => (id) => s.payouts.retrieve(id),
+    supportsCreatedFilter: true,
+    sync: true,
+    isFinalState: (p: Stripe.Payout) =>
+      p.status === 'paid' || p.status === 'failed' || p.status === 'canceled',
+  },
 } satisfies Record<string, ResourceDef>
 
 // Union of all object keys defined in RESOURCE_MAP. Used as the canonical object-name type across sync and registry helpers.
@@ -349,6 +359,7 @@ export const PREFIX_RESOURCE_MAP: Record<string, StripeObject> = {
   re_: 'refund',
   feat_: 'active_entitlements',
   cs_: 'checkout_sessions',
+  po_: 'payout',
 }
 
 // Prefixes sorted longest-first to avoid partial-prefix collisions.
