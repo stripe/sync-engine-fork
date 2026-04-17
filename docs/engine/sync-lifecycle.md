@@ -196,12 +196,9 @@ before passing to the source.
 
 ```ts
 type ConfiguredStream = {
-  stream: {
-    name: string // e.g. "customers", "invoices"
-    primary_key: string[][] // e.g. [["id"]]
-    json_schema?: Record<string, unknown>
-    metadata?: Record<string, unknown> // e.g. { api_version, account_id, live_mode }
-  }
+  name: string // e.g. "customers", "invoices"
+  primary_key: string[][] // e.g. [["id"]]
+  json_schema?: Record<string, unknown>
   sync_mode: 'full_refresh' | 'incremental'
   destination_sync_mode: 'append' | 'overwrite' | 'append_dedup'
   cursor_field?: string[]
@@ -213,6 +210,9 @@ type ConfiguredStream = {
     lt: string // exclusive upper bound (ISO 8601)
   }
 }
+// TODO: metadata (api_version, account_id, live_mode) currently lives on
+// Stream.metadata. It should move to source_config or be injected by the
+// destination — it's per-source, not per-stream.
 
 type ConfiguredCatalog = {
   streams: ConfiguredStream[]
