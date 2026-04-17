@@ -70,7 +70,9 @@ Sources are iterators that yield these message types:
 { type: 'record', record: { stream: string, data: Record<string, unknown>, emitted_at: string } }
 
 // Checkpoint (per-stream — most common)
-{ type: 'source_state', source_state: { state_type: 'stream', stream: string, data: unknown } }
+// time_range tells the engine which range this checkpoint belongs to.
+// When data has no cursor (pagination done), engine marks this range as synced.
+{ type: 'source_state', source_state: { state_type: 'stream', stream: string, time_range?: { gte: string, lt: string }, data: unknown } }
 
 // Checkpoint (global — e.g. events cursor shared across all streams)
 { type: 'source_state', source_state: { state_type: 'global', data: unknown } }
@@ -78,8 +80,8 @@ Sources are iterators that yield these message types:
 // Lifecycle signal
 { type: 'trace', trace: { trace_type: 'stream_status', stream_status: { stream: string, status: 'started' | 'complete' } } }
 
-// Error — discriminated union on error_level (see Error Handling section)
-{ type: 'trace', trace: { trace_type: 'error', error: SyncError } }
+// Error — discriminated union on error_level (see Error Handling)
+{ type: 'trace', trace: { trace_type: 'error', error: SyncError & { stack_trace?: string } } }
 
 // Diagnostic log
 { type: 'log', log: { level: 'debug' | 'info' | 'warn' | 'error', message: string } }
@@ -99,9 +101,12 @@ The engine emits three message types: `progress`, `record`, and `end`.
   progress: {
     elapsed_ms: number,                       // wall-clock since run started (across all requests)
     global_state_count: number,               // total checkpoints this run (all streams)
-    records_per_second: number,               // run-level throughput
-    states_per_second: number,                // run-level checkpoint rate
-    streams: Record<string, StreamProgress>
+    rates: {
+      records_per_second: number,
+      states_per_second: number,
+    },
+    streams: Record<string, StreamProgress>,
+    errors: SyncError[]
   }
 }
 
@@ -127,7 +132,7 @@ The engine emits three message types: `progress`, `record`, and `end`.
 | Between two progress msgs | Client diffs consecutive `progress` messages  |
 | This request              | `end.request_progress` (ProgressPayload)      |
 | This run (across requests)| Latest `progress` message (ProgressPayload)   |
-| All time (across runs)    | Sum of `synced_ranges` coverage + segment counts |
+| All time (across runs)    | Sum of `completed_ranges` coverage + segment counts |
 
 The engine does NOT emit trace messages to the client. Errors are included
 per-segment inside `progress`. Source traces and logs are consumed by the engine
@@ -135,28 +140,17 @@ and distilled into `progress`.
 
 ---
 
-## Segment Status
+## Stream Status
 
-Four states per segment. Two on the wire from the source, two derived by engine.
+Source emits `stream_status` trace messages with `started` and `complete` per
+stream. The engine uses these to know when a stream is active.
 
-| Status        | Set by           | Meaning                                       |
-| ------------- | ---------------- | --------------------------------------------- |
-| `pending`     | Engine           | Segment created but source hasn't started it   |
-| `started`     | Source (emitted) | Source has begun reading this segment          |
-| `complete`    | Source (emitted) | Source finished this segment successfully      |
-| `incomplete`  | Engine (derived) | Source exhausted without emitting `complete`   |
+A stream's backfill is done when `completed_ranges` covers the full range
+`[0, started_at)`.
 
-Source emits `started` and `complete` as `stream_status` trace messages scoped
-to a stream. The engine maps these to the corresponding segment based on which
-`time_range` the source is currently working on.
-
-A stream is done when `segments` is empty and `synced_ranges` covers the full
-range `[0, started_at)`.
-
-The engine guarantees: every stream that received `started` gets exactly one
-terminal status (`complete` or `incomplete`). The source's `complete` is
-optional — if omitted, the engine marks the stream `incomplete` when the source
-iterator exhausts.
+The source manages segments internally — the engine doesn't see or track them.
+The engine learns about completed ranges from `source_state` messages that
+include a `time_range` and have no remaining cursor.
 
 Errors are orthogonal to lifecycle. A stream can be `complete` with errors
 (some pages failed but the stream moved past them) or `incomplete` without
@@ -227,33 +221,25 @@ message is a complete snapshot of run-level progress — the client never needs
 a reducer.
 
 ```ts
-// Errors are a discriminated union on error_level. Each level carries the
-// context that makes sense for that blast radius.
+// Errors are a discriminated union on error_level.
 type SyncError =
   | { error_level: 'global';    message: string }
   | { error_level: 'stream';    message: string; stream: string }
-  | { error_level: 'segment';   message: string; stream: string; segment: { gte: string; lt: string } }
-  | { error_level: 'transient'; message: string; stream?: string; segment?: { gte: string; lt: string } }
-
-type Segment = {
-  gte: string                                 // ISO 8601
-  lt: string                                  // ISO 8601
-  cursor?: string                             // source pagination cursor for resume
-  record_count: number                        // records synced in this segment this run
-  state_count: number                         // checkpoints in this segment this run
-  status: 'pending' | 'started' | 'complete' | 'incomplete'
-}
+  | { error_level: 'transient'; message: string; stream?: string }
 
 type StreamProgress = {
-  synced_ranges: Array<{ gte: string; lt: string }>   // merged completed ranges
-  segments: Segment[]                         // active segments (in-flight or pending)
+  completed_ranges?: Array<{ gte: string; lt: string }>  // merged completed time ranges
+  record_count: number                                    // records this run (across requests)
+  state_count: number                                     // checkpoints this run for this stream
 }
 
 type ProgressPayload = {
   elapsed_ms: number                          // wall-clock since run started (across requests)
   global_state_count: number                  // total checkpoints this run (all streams)
-  records_per_second: number                  // run-level throughput
-  states_per_second: number                   // run-level checkpoint rate
+  rates: {                                    // derived, computed by engine
+    records_per_second: number
+    states_per_second: number
+  }
   streams: Record<string, StreamProgress>     // keyed by stream name
   errors: SyncError[]                         // all errors accumulated this run
 }
@@ -295,7 +281,7 @@ type StripeStreamState = {
 
 The source receives `time_range` from the catalog and paginates within it.
 The engine tracks which ranges are complete and which need work via
-`synced_ranges` and `pending_ranges` in engine state.
+`completed_ranges` and `pending_ranges` in engine state.
 
 **Example — two streams mid-sync:**
 ```jsonc
@@ -337,33 +323,19 @@ type EngineState = ProgressPayload & {
     "states_per_second": 2.9,
     "streams": {
       "customers": {
-        "synced_ranges": [{ "gte": "2018-01-01T00:00:00Z", "lt": "2024-04-17T00:00:00Z" }],
-        "segments": []
+        "completed_ranges": [{ "gte": "2018-01-01T00:00:00Z", "lt": "2024-04-17T00:00:00Z" }],
+        "record_count": 45000,
+        "state_count": 16
       },
       "invoices": {
-        "synced_ranges": [{ "gte": "2018-01-01T00:00:00Z", "lt": "2021-06-01T00:00:00Z" }],
-        "segments": [
-          {
-            "gte": "2021-06-01T00:00:00Z", "lt": "2024-04-17T00:00:00Z",
-            "cursor": "inv_xyz", "record_count": 1200, "state_count": 8,
-            "status": "started", "errors": []
-          }
-        ]
+        "completed_ranges": [{ "gte": "2018-01-01T00:00:00Z", "lt": "2021-06-01T00:00:00Z" }],
+        "record_count": 1200,
+        "state_count": 8
       },
       "big_table": {
-        "synced_ranges": [],
-        "segments": [
-          {
-            "gte": "2011-01-01T00:00:00Z", "lt": "2017-09-01T00:00:00Z",
-            "record_count": 0, "state_count": 0,
-            "status": "incomplete"
-          },
-          {
-            "gte": "2017-09-01T00:00:00Z", "lt": "2024-04-17T00:00:00Z",
-            "record_count": 0, "state_count": 0,
-            "status": "pending", "errors": []
-          }
-        ]
+        "completed_ranges": [],
+        "record_count": 0,
+        "state_count": 0
       }
     }
   }
@@ -383,7 +355,7 @@ A sync run is identified by `sync_run_id`. Within a run, the upper time bound
 2. Engine freezes `started_at = now()` and stores it in engine state.
 3. Engine computes `time_range` for each stream:
    - Upper bound: `started_at`
-   - Lower bound: end of last `synced_ranges` entry (or account creation for
+   - Lower bound: end of last `completed_ranges` entry (or account creation for
      first backfill)
 4. Engine injects `time_range` into configured catalog before passing to source.
 5. Source syncs within the given range, yields messages, exhausts.
@@ -400,7 +372,7 @@ A sync run is identified by `sync_run_id`. Within a run, the upper time bound
 
 When `has_more: false`:
 - All streams completed their ranges or were marked `incomplete`.
-- Engine promotes completed `pending_range` entries to `synced_ranges`.
+- Engine promotes completed `pending_range` entries to `completed_ranges`.
 - Client should use a new `sync_run_id` for the next sync.
 
 ### Example
@@ -412,7 +384,7 @@ sync_run_id: "sr_1"
               customers [2021, 2024)          → timed out → end { has_more: true }
   request 3:  customers [2021, 2022.5)        → completed
               customers [2022.5, 2024)        → completed → end { has_more: false }
-              synced_ranges merges to [2018, 2024) ✓
+              completed_ranges merges to [2018, 2024) ✓
 ```
 
 Each run's upper bound is frozen. Ranges that don't complete get subdivided.
@@ -422,8 +394,8 @@ Completed adjacent ranges merge.
 
 ## Time Ranges
 
-Time is a first-class concept. The engine manages ranges via binary search
-subdivision; the source just paginates whatever range it's given.
+Time is a first-class concept. The engine sets the outer bounds; the source
+manages pagination and segmentation within them.
 
 ### Flow
 
@@ -431,59 +403,34 @@ subdivision; the source just paginates whatever range it's given.
 Client catalog:     { stream: "customers", sync_mode: "incremental" }
                     (no time_range — client doesn't set this)
                                 ↓
-Engine subdivides:  The catalog passed to the source may have MULTIPLE entries
-                    for the same stream, each with a different time_range:
-
-                    [
-                      { stream: "customers", time_range: { gte: "2018-01-01", lt: "2021-01-01" } },
-                      { stream: "customers", time_range: { gte: "2021-01-01", lt: "2024-04-17" } },
-                    ]
+Engine sets range:  { stream: "customers", sync_mode: "incremental",
+                      time_range: { gte: "2021-01-01T00:00:00Z", lt: "2024-04-17T00:00:00Z" } }
+                    (computed from completed_ranges + started_at)
                                 ↓
-Source receives:    Each entry independently. Paginates within each range.
-                    Emits stream_status and state per range segment.
+Source receives:    time_range on configured stream.
+                    Manages its own segments/subdivision/parallelism within it.
+                    Emits source_state with time_range to report range completion.
 ```
 
-### Binary search subdivision
+### How the engine tracks completed ranges
 
-The engine starts with one range per stream covering `[0, started_at)`.
-If a range doesn't complete within a request, the engine splits it in half
-for the next request.
-
-```
-Request 1:  pending_ranges: [{ gte: "2018", lt: "2024" }]
-            source times out on this range
-
-Request 2:  pending_ranges: [{ gte: "2018", lt: "2021" }, { gte: "2021", lt: "2024" }]
-            left half completes, right half gets cursor
-
-Request 3:  pending_ranges: [{ gte: "2021", lt: "2024", cursor: "cus_abc" }]
-            resumes from cursor, completes
-
-Final:      synced_ranges: [{ gte: "2018", lt: "2024" }]   (merged)
-            pending_ranges: []
-```
-
-Up to N ranges can be in flight per stream (initially N=2). When one completes,
-the engine can subdivide another stream's incomplete range.
-
-### Range merging
-
-Adjacent completed ranges merge to keep state compact:
+The engine observes `source_state` messages. When a state message includes
+`time_range` and has no remaining cursor, the engine knows that range is done
+and adds it to `completed_ranges`, merging adjacent ranges:
 
 ```
-synced_ranges: [{ gte: "2018", lt: "2021" }]
-+ completed:  { gte: "2021", lt: "2024" }
-= merged:     [{ gte: "2018", lt: "2024" }]
+completed_ranges: [{ gte: "2018", lt: "2021" }]
++ source_state with time_range [2021, 2024), cursor: null
+= completed_ranges: [{ gte: "2018", lt: "2024" }]   (merged)
 ```
 
-### Engine range tracking
+### Engine range computation
 
-| After request...                          | Engine action                                   |
-| ----------------------------------------- | ----------------------------------------------- |
-| Range completed (no cursor)               | Move to `synced_ranges`, merge adjacent         |
-| Range didn't finish (cursor remains)      | Keep in `pending_ranges` with cursor            |
-| Range too large (timed out, no cursor)    | Split in half → two new `pending_ranges`        |
-| Range errored                             | Keep in `pending_ranges`                        |
+On each request, the engine computes the `time_range` to assign:
+
+1. Upper bound: `started_at` (frozen for the run)
+2. Lower bound: end of last `completed_ranges` entry (or account start for first backfill)
+3. If `completed_ranges` has gaps, fill the first gap
 
 ### Why this matters
 
@@ -501,8 +448,7 @@ The engine derives `has_more` at end of run:
 ```
 has_more = true if any catalog stream where:
   - source state has a page_cursor (mid-pagination), OR
-  - engine has a pending_range the source didn't complete, OR
-  - engine synced_ranges don't cover [0, started_at)
+  - completed_ranges don't cover [0, started_at)
 ```
 
 ---
@@ -511,14 +457,13 @@ has_more = true if any catalog stream where:
 
 ### Error levels
 
-Errors carry their blast radius. The level determines the engine's action:
+Errors carry their blast radius. The `error_level` determines the engine's action:
 
 | `error_level` | Blast radius | Engine action | Example |
 |---|---|---|---|
 | `global` | Entire sync | Abort all streams, `has_more: false` | Invalid API key, bad source config |
 | `stream` | One stream | Skip stream, continue others | Resource not available, permission denied |
-| `segment` | One time range | Mark segment incomplete, subdivide next request | Timeout after retries, too much data |
-| `transient` | One request | Informational (request succeeded after retry) | Rate limited, retried 3x in 4.2s |
+| `transient` | One request | Informational | Rate limited, retried 3x in 4.2s |
 
 ### Source → engine error flow
 
@@ -529,31 +474,24 @@ Errors carry their blast radius. The level determines the engine's action:
 // Examples:
 { error: { error_level: 'global', message: 'Invalid API key' } }
 { error: { error_level: 'stream', message: 'Not available in test mode', stream: 'invoices' } }
-{ error: { error_level: 'segment', message: 'Timeout after 5 retries', stream: 'customers', segment: { gte: '2021-01-01T00:00:00Z', lt: '2024-04-17T00:00:00Z' } } }
 { error: { error_level: 'transient', message: 'Rate limited, retried 3x', stream: 'customers' } }
 ```
 
 The source decides the `error_level`:
-- **Transient**: HTTP retry succeeded — emit for observability, no action needed.
-- **Segment**: All retries exhausted for a request within a range — emit with
-  `stream` and `segment`, move on to next segment/stream.
-- **Stream**: Stream-level failure (e.g. resource not enabled) — emit with
-  `stream`, skip this stream entirely.
-- **Global**: Unrecoverable (e.g. invalid credentials) — emit, stop.
+- **Transient**: Request failed and retried — emit for observability.
+- **Stream**: Stream-level failure (e.g. resource not enabled) — skip stream.
+- **Global**: Unrecoverable (e.g. invalid credentials) — stop everything.
 
 ### Engine behavior
 
 The engine accumulates errors into `progress.errors[]` and acts on them:
 
 - **`global`**: Stop the source, emit `end { has_more: false }`.
-- **`stream`**: Mark all segments for that stream as `incomplete`, continue
-  other streams.
-- **`segment`**: Mark that segment `incomplete`. On the next request, the engine
-  subdivides it (binary search).
+- **`stream`**: Skip that stream, continue others.
 - **`transient`**: No action. Included in `progress.errors` for observability.
 
-Errors are NOT stored in source state. The source does not skip streams or
-segments based on previous errors — that is the engine's job.
+Errors are NOT stored in source state. Segment-level concerns (subdivision,
+retries, timeouts) are managed internally by the source.
 
 ---
 
@@ -563,11 +501,11 @@ NDJSON. One message per line.
 
 ```
 →  {"type":"start","sync_run_id":"sr_abc","source_config":{...},"configured_catalog":{...}}
-←  {"type":"progress","progress":{"elapsed_ms":100,"global_state_count":0,"records_per_second":0,"states_per_second":0,"streams":{"customers":{"synced_ranges":[],"segments":[{"gte":"2018-01-01T00:00:00Z","lt":"2024-04-17T00:00:00Z","record_count":0,"state_count":0,"status":"started","errors":[]}]}}}}
+←  {"type":"progress","progress":{"elapsed_ms":100,"global_state_count":0,"records_per_second":0,"states_per_second":0,"streams":{"customers":{"completed_ranges":[],"record_count":0,"state_count":0}},"errors":[]}}
 ←  {"type":"record","record":{"stream":"customers","data":{...}}}
-←  {"type":"progress","progress":{"elapsed_ms":1600,"global_state_count":1,"records_per_second":1562,"states_per_second":0.6,"streams":{"customers":{"synced_ranges":[],"segments":[{"gte":"2018-01-01T00:00:00Z","lt":"2024-04-17T00:00:00Z","cursor":"cus_abc","record_count":2500,"state_count":1,"status":"started","errors":[]}]}}}}
+←  {"type":"progress","progress":{"elapsed_ms":1600,"global_state_count":1,"records_per_second":1562,"states_per_second":0.6,"streams":{"customers":{"completed_ranges":[],"record_count":2500,"state_count":1}},"errors":[]}}
 ←  {"type":"record","record":{"stream":"customers","data":{...}}}
-←  {"type":"progress","progress":{"elapsed_ms":3200,"global_state_count":2,"records_per_second":1562,"states_per_second":0.6,"streams":{"customers":{"synced_ranges":[{"gte":"2018-01-01T00:00:00Z","lt":"2024-04-17T00:00:00Z"}],"segments":[]}}}}
+←  {"type":"progress","progress":{"elapsed_ms":3200,"global_state_count":2,"records_per_second":1562,"states_per_second":0.6,"streams":{"customers":{"completed_ranges":[{"gte":"2018-01-01T00:00:00Z","lt":"2024-04-17T00:00:00Z"}],"record_count":5000,"state_count":2}},"errors":[]}}
 ←  {"type":"end","has_more":false,"state":{"source":{...},"engine":{...}}}
 ```
 
