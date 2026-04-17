@@ -143,15 +143,22 @@ Shows the messages emitted by the source during a two-request backfill of
 
 ### Request 1 — full range, doesn't complete
 
+Stripe returns max 100 records per page. Each page = 1 API request = 1 state
+checkpoint.
+
 ```
 Source initializes: remaining: [{ gte: "2018", lt: "2024", cursor: null }]
 
 ← trace   { stream_status: { stream: "customers", status: "start" } }
 ← record  { stream: "customers", data: { id: "cus_001", ... } }
-← record  { stream: "customers", data: { id: "cus_002", ... } }
-  ... 5000 records ...
+  ... 100 records (page 1) ...
+← state   { stream: "customers", data: { remaining: [{ gte: "2018", lt: "2024", cursor: "cus_100" }] } }
+← record  { stream: "customers", data: { ... } }
+  ... 100 records (page 2) ...
+← state   { stream: "customers", data: { remaining: [{ gte: "2018", lt: "2024", cursor: "cus_200" }] } }
+  ... pages 3-50 (5000 records total) ...
 ← state   { stream: "customers", data: { remaining: [{ gte: "2018", lt: "2024", cursor: "cus_5000" }] } }
-  ... source iterator cut off (time limit / state limit) ...
+  ... source cut off (time limit / state limit) ...
 
 ← end     { has_more: true }
 ```
@@ -162,25 +169,26 @@ Range didn't complete in one request → source will subdivide on next request.
 
 ```
 Source resumes, sees remaining: [{ gte: "2018", lt: "2024", cursor: "cus_5000" }]
-Last record seen was created=2019-03. Range didn't complete last request → subdivide:
+Last record had created=2019-03. Range didn't complete → subdivide:
   remaining: [
-    { gte: "2018", lt: "2019-03", cursor: "cus_5000" },   // current work (has cursor)
+    { gte: "2018", lt: "2019-03", cursor: "cus_5000" },   // current (has cursor)
     { gte: "2019-03", lt: "2021-09", cursor: null },        // new
     { gte: "2021-09", lt: "2024", cursor: null }             // new
   ]
 
 ← record  { stream: "customers", data: { ... } }
-  ... finishes [2018, 2019-03) ...
+  ... 100 records (page) ...
+← state   { ... }
+  ... finishes [2018, 2019-03) after a few more pages ...
 ← trace   { stream_status: { stream: "customers", status: "range_complete",
               range_complete: { gte: "2018", lt: "2019-03" } } }
 ← state   { stream: "customers", data: { remaining: [
               { gte: "2019-03", lt: "2021-09", cursor: null },
               { gte: "2021-09", lt: "2024", cursor: null }
            ] } }
-← record  { stream: "customers", data: { ... } }
-  ... starts [2019-03, 2021-09), gets partway through ...
+  ... starts [2019-03, 2021-09), paginates several pages ...
 ← state   { stream: "customers", data: { remaining: [
-              { gte: "2019-03", lt: "2021-09", cursor: "cus_12000" },
+              { gte: "2019-03", lt: "2021-09", cursor: "cus_8000" },
               { gte: "2021-09", lt: "2024", cursor: null }
            ] } }
   ... cut off ...
@@ -192,18 +200,15 @@ Last record seen was created=2019-03. Range didn't complete last request → sub
 
 ```
 Source resumes: remaining: [
-  { gte: "2019-03", lt: "2021-09", cursor: "cus_12000" },
+  { gte: "2019-03", lt: "2021-09", cursor: "cus_8000" },
   { gte: "2021-09", lt: "2024", cursor: null }
 ]
-These ranges completed last request partially — no further subdivision needed,
-just resume from cursors.
+These ranges made progress last request — no further subdivision, resume.
 
-← record  { stream: "customers", data: { ... } }
-  ... finishes [2019-03, 2021-09) ...
+  ... paginates [2019-03, 2021-09) page by page ...
 ← trace   { stream_status: { stream: "customers", status: "range_complete",
               range_complete: { gte: "2019-03", lt: "2021-09" } } }
-← record  { stream: "customers", data: { ... } }
-  ... finishes [2021-09, 2024) ...
+  ... paginates [2021-09, 2024) page by page ...
 ← trace   { stream_status: { stream: "customers", status: "range_complete",
               range_complete: { gte: "2021-09", lt: "2024" } } }
 ← state   { stream: "customers", data: { remaining: [] } }
