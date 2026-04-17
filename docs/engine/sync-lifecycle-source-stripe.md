@@ -76,49 +76,33 @@ state: {
 
 ### 3. Subdivision (n-ary search)
 
-If a range is too large to complete within the request budget (too many
-records, approaching time limit), the source subdivides it. The remaining
-unpaginated portion of the range is split into N smaller ranges:
+If a range didn't complete in the previous request, the source subdivides it
+at the start of the next request. The source knows the `created` timestamp of
+the last record it paginated (from the cursor). It splits the unpaginated
+portion into N parts (where N = `max_segments_per_stream`):
 
 ```
-Before — range is too large, source has paginated up to created=2020-06-15
-via cursor but there's much more:
+Previous request ended with:
+  remaining: [{ gte: "2018-01-01", lt: "2024-04-17", cursor: "cus_xyz" }]
 
-state: {
-  remaining: [
-    { gte: "2018-01-01", lt: "2024-04-17", cursor: "cus_xyz" }
-  ]
-}
+Last record seen had created=2020-06-15. Range didn't complete → subdivide.
+The paginated portion [2018, 2020-06-15) keeps its cursor.
+The unpaginated portion [2020-06-15, 2024-04-17) splits into N=2:
 
-Source decides to subdivide. It knows it has paginated records up to
-created=2020-06-15 (from the last record seen). It splits the remaining
-unpaginated portion [2020-06-15, 2024-04-17) into N=2 parts:
-
-state: {
   remaining: [
     { gte: "2018-01-01", lt: "2020-06-15", cursor: "cus_xyz" },
     { gte: "2020-06-15", lt: "2022-05-16", cursor: null },
     { gte: "2022-05-16", lt: "2024-04-17", cursor: null }
   ]
-}
-→ emit source_state
 ```
 
-The original range narrows to `[2018-01-01, 2020-06-15)` (the portion being
-paginated with a cursor), and the rest becomes new ranges with `cursor: null`.
+**When to subdivide:** At the start of a request, if any range in `remaining`
+has a cursor (meaning it was in progress last request but didn't complete).
+Subdivision happens between requests, not mid-request.
 
-This is the n-ary search: large ranges get split, small ranges complete
-directly. The source adapts to data density without upfront probing.
-
-**When to subdivide:**
-
-- The source can track pagination speed (records/second, pages/second).
-- If a range is progressing too slowly relative to the time budget, subdivide.
-- Only the unpaginated portion is split — the cursor range continues as-is.
-
-**Recursive subdivision:** If a subdivided range is still too large, it gets
-split again on the next pass. Each iteration narrows the ranges until they're
-small enough to complete.
+**Recursive:** If a subdivided range still doesn't complete in one request,
+it gets split again next time. Each pass narrows the ranges until they're
+small enough to complete in a single request.
 
 ### 4. Resumption (existing state)
 
@@ -139,63 +123,102 @@ Existing state: {
 
 ### 5. Completion
 
-When `remaining` is empty:
+When a sub-range is exhausted, the source removes it from `remaining` and
+emits a `stream_status: range_complete`:
 
 ```
-state: { remaining: [] }
-→ emit source_state with time_range
+→ emit trace { stream_status: { stream: 'customers', status: 'range_complete',
+    range_complete: { gte: '2018-01-01', lt: '2019-06-01' } } }
 ```
 
-The engine observes empty `remaining` and marks this `time_range` as complete
-in `completed_ranges`.
+The engine merges this into `completed_ranges`.
+
+When all sub-ranges are done (`remaining: []`), the source emits
+`stream_status: complete` for the stream.
 
 ## Full Example
 
+Shows the messages emitted by the source during a two-request backfill of
+`customers` with `time_range: [2018, 2024)`.
+
+### Request 1 — full range, doesn't complete
+
 ```
-Request 1:
-  Engine assigns time_range [2018, 2024) to customers
+Source initializes: remaining: [{ gte: "2018", lt: "2024", cursor: null }]
 
-  remaining: [{ gte: "2018", lt: "2024", cursor: null }]
-  → paginate... got 10K records, up to created=2019-03
-  remaining: [{ gte: "2018", lt: "2024", cursor: "cus_5000" }]
-  → still going... approaching time limit, subdivide
-  remaining: [
-    { gte: "2018", lt: "2019-03", cursor: "cus_5000" },  // finishing current
-    { gte: "2019-03", lt: "2021-09", cursor: null },       // new
-    { gte: "2021-09", lt: "2024", cursor: null }            // new
-  ]
-  → first range completes
-  remaining: [
-    { gte: "2019-03", lt: "2021-09", cursor: null },
-    { gte: "2021-09", lt: "2024", cursor: null }
-  ]
-  → time limit hit, emit source_state, stop
+← trace   { stream_status: { stream: "customers", status: "start" } }
+← record  { stream: "customers", data: { id: "cus_001", ... } }
+← record  { stream: "customers", data: { id: "cus_002", ... } }
+  ... 5000 records ...
+← state   { stream: "customers", data: { remaining: [{ gte: "2018", lt: "2024", cursor: "cus_5000" }] } }
+  ... source iterator cut off (time limit / state limit) ...
 
-  end { has_more: true }
-
-Request 2 (continuation, same sync_run_id):
-  Source resumes with remaining from state
-
-  remaining: [
-    { gte: "2019-03", lt: "2021-09", cursor: null },
-    { gte: "2021-09", lt: "2024", cursor: null }
-  ]
-  → paginate first range... completes
-  remaining: [
-    { gte: "2021-09", lt: "2024", cursor: null }
-  ]
-  → paginate second range... completes
-  remaining: []
-
-  end { has_more: false }
-
-  Engine marks [2018, 2024) as completed.
+← end     { has_more: true }
 ```
+
+Range didn't complete in one request → source will subdivide on next request.
+
+### Request 2 — source subdivides, finishes first sub-range
+
+```
+Source resumes, sees remaining: [{ gte: "2018", lt: "2024", cursor: "cus_5000" }]
+Last record seen was created=2019-03. Range didn't complete last request → subdivide:
+  remaining: [
+    { gte: "2018", lt: "2019-03", cursor: "cus_5000" },   // current work (has cursor)
+    { gte: "2019-03", lt: "2021-09", cursor: null },        // new
+    { gte: "2021-09", lt: "2024", cursor: null }             // new
+  ]
+
+← record  { stream: "customers", data: { ... } }
+  ... finishes [2018, 2019-03) ...
+← trace   { stream_status: { stream: "customers", status: "range_complete",
+              range_complete: { gte: "2018", lt: "2019-03" } } }
+← state   { stream: "customers", data: { remaining: [
+              { gte: "2019-03", lt: "2021-09", cursor: null },
+              { gte: "2021-09", lt: "2024", cursor: null }
+           ] } }
+← record  { stream: "customers", data: { ... } }
+  ... starts [2019-03, 2021-09), gets partway through ...
+← state   { stream: "customers", data: { remaining: [
+              { gte: "2019-03", lt: "2021-09", cursor: "cus_12000" },
+              { gte: "2021-09", lt: "2024", cursor: null }
+           ] } }
+  ... cut off ...
+
+← end     { has_more: true }
+```
+
+### Request 3 — finishes remaining ranges
+
+```
+Source resumes: remaining: [
+  { gte: "2019-03", lt: "2021-09", cursor: "cus_12000" },
+  { gte: "2021-09", lt: "2024", cursor: null }
+]
+These ranges completed last request partially — no further subdivision needed,
+just resume from cursors.
+
+← record  { stream: "customers", data: { ... } }
+  ... finishes [2019-03, 2021-09) ...
+← trace   { stream_status: { stream: "customers", status: "range_complete",
+              range_complete: { gte: "2019-03", lt: "2021-09" } } }
+← record  { stream: "customers", data: { ... } }
+  ... finishes [2021-09, 2024) ...
+← trace   { stream_status: { stream: "customers", status: "range_complete",
+              range_complete: { gte: "2021-09", lt: "2024" } } }
+← state   { stream: "customers", data: { remaining: [] } }
+← trace   { stream_status: { stream: "customers", status: "complete" } }
+
+← end     { has_more: false }
+```
+
+Engine's `completed_ranges` for customers after merging all `range_complete` messages:
+`[{ gte: "2018", lt: "2024" }]`
 
 ## State on the Wire
 
-The source emits `source_state` messages with `time_range` so the engine
-can track which range this state belongs to:
+Source state is opaque to the engine. The engine learns about range completion
+via `stream_status: range_complete` messages, not by inspecting source state:
 
 ```ts
 {

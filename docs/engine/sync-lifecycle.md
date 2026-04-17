@@ -69,16 +69,19 @@ Sources are iterators that yield these message types:
 // Data record
 { type: 'record', record: { stream: string, data: Record<string, unknown>, emitted_at: string } }
 
-// Checkpoint (per-stream — most common)
-// time_range tells the engine which range this checkpoint belongs to.
-// When data has no cursor (pagination done), engine marks this range as synced.
-{ type: 'source_state', source_state: { state_type: 'stream', stream: string, time_range?: { gte: string, lt: string }, data: unknown } }
+// Checkpoint (per-stream — most common). Data is opaque to the engine.
+{ type: 'source_state', source_state: { state_type: 'stream', stream: string, data: unknown } }
 
 // Checkpoint (global — e.g. events cursor shared across all streams)
 { type: 'source_state', source_state: { state_type: 'global', data: unknown } }
 
-// Lifecycle signal
-{ type: 'trace', trace: { trace_type: 'stream_status', stream_status: { stream: string, status: 'started' | 'complete' } } }
+// Stream status — discriminated union on status (Stripe polymorphism pattern)
+{ type: 'trace', trace: { trace_type: 'stream_status', stream_status: StreamStatus } }
+
+// where StreamStatus is:
+//   { stream: string, status: 'start' }
+//   { stream: string, status: 'range_complete', range_complete: { gte: string, lt: string } }
+//   { stream: string, status: 'complete' }
 
 // Error — discriminated union on error_level (see Error Handling)
 { type: 'trace', trace: { trace_type: 'error', error: SyncError & { stack_trace?: string } } }
@@ -152,15 +155,28 @@ and distilled into `progress`.
 
 ## Stream Status
 
-Source emits `stream_status` trace messages with `started` and `complete` per
-stream. The engine uses these to know when a stream is active.
+`stream_status` is a discriminated union on `status` (Stripe polymorphism
+pattern — the status value names the payload key):
+
+```ts
+type StreamStatus =
+  | { stream: string; status: 'start' }
+  | { stream: string; status: 'range_complete'; range_complete: { gte: string; lt: string } }
+  | { stream: string; status: 'complete' }
+```
+
+| Status | Emitted by | Engine action |
+|---|---|---|
+| `start` | Source | Stream is active |
+| `range_complete` | Source | Merge range into `completed_ranges` |
+| `complete` | Source (optional) | Stream is done; engine derives this if source exhausts without it |
 
 A stream's backfill is done when `completed_ranges` covers the full range
 `[0, started_at)`.
 
-The source manages sub-ranges internally — the engine doesn't see or track them.
-The engine learns about completed ranges from `source_state` messages that
-include a `time_range` and have no remaining cursor.
+The source manages sub-ranges internally — the engine doesn't see or track
+them. The engine learns about completed ranges via `range_complete` status
+messages.
 
 Errors are orthogonal to lifecycle. A stream can be `complete` with errors
 (some pages failed but the stream moved past them) or `incomplete` without
