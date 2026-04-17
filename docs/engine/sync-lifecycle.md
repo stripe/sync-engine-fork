@@ -258,9 +258,9 @@ type SyncError =
 type StreamProgress = {
   completed_ranges?: Array<{ gte: string; lt: string }> // merged completed time ranges
   state_count: number // checkpoints this run for this stream
-  // Either change_count (when breakdown unavailable) or the three counts (when
+  // Either record_count (when breakdown unavailable) or the three counts (when
   // destination reports). If breakdown is present, total = insert + update + delete.
-  change_count?: number // total records processed
+  record_count?: number // record messages processed
   insert_count?: number // records inserted
   update_count?: number // records updated
   delete_count?: number // records deleted
