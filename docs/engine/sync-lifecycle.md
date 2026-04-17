@@ -259,8 +259,9 @@ type StreamProgress = {
   completed_ranges?: Array<{ gte: string; lt: string }> // merged completed time ranges
   record_count: number // records this run (across requests)
   state_count: number // checkpoints this run for this stream
-  // TODO: destination can enrich with write_stats: { inserted, updated, deleted }
-  // when supported (e.g. Postgres upsert knows which rows were new vs changed).
+  inserted: number // records inserted (for now, same as record_count)
+  updated: number // records updated (0 until destination supports upsert tracking)
+  deleted: number // records deleted (0 until destination supports delete tracking)
 }
 
 type ProgressPayload = {
