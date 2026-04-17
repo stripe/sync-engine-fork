@@ -17,9 +17,9 @@ the right granularity by doing the work.
 ```ts
 type StripeStreamState = {
   remaining: Array<{
-    gte: string            // ISO 8601 — inclusive lower bound
-    lt: string             // ISO 8601 — exclusive upper bound
-    cursor: string | null  // Stripe pagination cursor; null = not yet started
+    gte: string // ISO 8601 — inclusive lower bound
+    lt: string // ISO 8601 — exclusive upper bound
+    cursor: string | null // Stripe pagination cursor; null = not yet started
   }>
 }
 ```
@@ -111,6 +111,7 @@ This is the n-ary search: large ranges get split, small ranges complete
 directly. The source adapts to data density without upfront probing.
 
 **When to subdivide:**
+
 - The source can track pagination speed (records/second, pages/second).
 - If a range is progressing too slowly relative to the time budget, subdivide.
 - Only the unpaginated portion is split — the cursor range continues as-is.
@@ -221,7 +222,7 @@ Three controls govern how the source uses the Stripe API:
 type StripeSourceConfig = {
   api_key: string
   account_id?: string
-  max_concurrent_streams?: number       // default 5
+  max_concurrent_streams?: number // default 5
 }
 
 // Derived internally by the source:
@@ -231,21 +232,21 @@ type StripeSourceConfig = {
 // max_segments_per_stream = floor(max_requests_per_second / effective_streams)
 ```
 
-| Control | What it controls | How it's set |
-|---|---|---|
-| `max_concurrent_streams` | Streams paginating in parallel | Config (default 5), capped at catalog size |
-| `max_requests_per_second` | Global rate limit across all activity | Inferred from API key mode |
-| `max_segments_per_stream` | Sub-ranges per stream (n-ary search fan-out) | Derived: rps / concurrent streams |
+| Control                   | What it controls                             | How it's set                               |
+| ------------------------- | -------------------------------------------- | ------------------------------------------ |
+| `max_concurrent_streams`  | Streams paginating in parallel               | Config (default 5), capped at catalog size |
+| `max_requests_per_second` | Global rate limit across all activity        | Inferred from API key mode                 |
+| `max_segments_per_stream` | Sub-ranges per stream (n-ary search fan-out) | Derived: rps / concurrent streams          |
 
 ### Examples
 
-| Scenario | Mode | Streams | `effective_streams` | `rps` | `max_segments_per_stream` | Max concurrent requests |
-|---|---|---|---|---|---|---|
-| 20 streams, live | live | 20 | 5 | 20 | 4 | 20 |
-| 20 streams, test | test | 20 | 5 | 10 | 2 | 10 |
-| 3 streams, live | live | 3 | 3 | 20 | 6 | 18 |
-| 1 stream, live | live | 1 | 1 | 20 | 20 | 20 |
-| 1 stream, test | test | 1 | 1 | 10 | 10 | 10 |
+| Scenario         | Mode | Streams | `effective_streams` | `rps` | `max_segments_per_stream` | Max concurrent requests |
+| ---------------- | ---- | ------- | ------------------- | ----- | ------------------------- | ----------------------- |
+| 20 streams, live | live | 20      | 5                   | 20    | 4                         | 20                      |
+| 20 streams, test | test | 20      | 5                   | 10    | 2                         | 10                      |
+| 3 streams, live  | live | 3       | 3                   | 20    | 6                         | 18                      |
+| 1 stream, live   | live | 1       | 1                   | 20    | 20                        | 20                      |
+| 1 stream, test   | test | 1       | 1                   | 10    | 10                        | 10                      |
 
 When fewer streams are configured, each stream gets more segments — the full
 rate limit budget is distributed across whatever streams exist. A single-stream
@@ -274,18 +275,13 @@ regardless of which stream or segment they belong to.
 The source does not store error state. If a range fails after all retries,
 the range stays in `remaining` with its cursor for the next attempt.
 
-## Events / Incremental Sync
+## Events
 
-After backfill completes (`remaining: []`), the source switches to
-incremental mode using Stripe's `/events` API or WebSocket. This is outside
-the `time_range` model — events are a live stream, not a bounded range.
+The `/events` endpoint is treated as just another stream in the catalog —
+same `time_range` model, same `remaining`-based pagination. No special
+incremental mode or live polling by default.
 
-The global state stores an `events_cursor` for resumption:
-
-```ts
-// source.global
-{ events_cursor: "2024-04-16T23:50:00Z" }
-```
-
-Events and backfill can run concurrently — backfill covers historical data
-within `time_range`, events cover real-time changes.
+For experimental live event polling (using events as a webhook replacement),
+an opt-in flag stores cursor state in `source.global`, which is completely
+separate from the per-stream backfill cursor logic. This is not enabled by
+default.
