@@ -6,7 +6,7 @@ import sheetsDestination from '@stripe/sync-destination-google-sheets'
 import { createConnectorResolver } from '../lib/index.js'
 import { createApp } from './app.js'
 import { logger } from '../logger.js'
-import { ENGINE_SERVER_OPTIONS } from '../http-server-options.js'
+import { startServer } from '../server.js'
 
 const port = Number(process.env.PORT || 3001)
 
@@ -22,34 +22,7 @@ async function main() {
     destinations: { postgres: pgDestination, google_sheets: sheetsDestination },
   })
   const app = await createApp(resolver)
-
-  // Use the web-standard fetch handler with the runtime's native server.
-  // Bun.serve() properly cancels ReadableStreams on client disconnect;
-  // @hono/node-server is the fallback for Node.js / tsx.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (typeof (globalThis as any).Bun !== 'undefined') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(globalThis as any).Bun.serve({ fetch: app.fetch, port, idleTimeout: 60 })
-    logger.warn(
-      { port, server: 'Bun.serve' },
-      `Sync Engine API listening on http://localhost:${port}`
-    )
-  } else {
-    const { serve } = await import('@hono/node-server')
-    serve(
-      {
-        fetch: app.fetch,
-        port,
-        serverOptions: ENGINE_SERVER_OPTIONS,
-      },
-      (info) => {
-        logger.info(
-          { port: info.port },
-          `Sync Engine API listening on http://localhost:${info.port}`
-        )
-      }
-    )
-  }
+  await startServer(app, port)
 }
 
 main()

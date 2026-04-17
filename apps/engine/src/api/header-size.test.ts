@@ -89,7 +89,7 @@ async function probeHeaderSize(baseUrl: string, bytes: number): Promise<number |
 // Tests: production config (50 MB maxHeaderSize)
 // ---------------------------------------------------------------------------
 
-describe('X-Pipeline header size (maxHeaderSize: 50 MB)', () => {
+describe('X-Pipeline header size (production config)', () => {
   let server: Server
   let baseUrl: string
 

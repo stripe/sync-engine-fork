@@ -1,9 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it } from 'vitest'
 import { spawn } from 'node:child_process'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 import { BUNDLED_API_VERSION } from '@stripe/sync-openapi'
+import { describeWithEnv } from './test-helpers.js'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 const DEFAULT_NODE_MAX_HEADER_SIZE = 16 * 1024
@@ -171,15 +172,8 @@ async function waitForServer(url: string, timeout = 60_000): Promise<void> {
   throw new Error(`Server at ${url} did not become healthy in ${timeout}ms`)
 }
 
-async function startEngineDocker(port: number): Promise<EngineContainer> {
-  const image = process.env.ENGINE_IMAGE ?? 'sync-engine:header-size-test'
+async function startEngineDocker(port: number, image: string): Promise<EngineContainer> {
   const containerName = `header-size-test-${port}`
-
-  if (!process.env.ENGINE_IMAGE) {
-    await runCommand('docker', ['build', '--target', 'engine', '-t', image, '.'], {
-      cwd: REPO_ROOT,
-    })
-  }
 
   try {
     await runCommand(
@@ -219,17 +213,17 @@ async function startEngineDocker(port: number): Promise<EngineContainer> {
   }
 }
 
-describe('docker serve header size', () => {
+describeWithEnv('docker serve header size', ['ENGINE_IMAGE'], ({ ENGINE_IMAGE }) => {
   let mockStripe: MockStripeServer
   let engine: EngineContainer
+  let dockerAvailable = false
 
   beforeAll(async () => {
-    if (!(await hasDocker())) {
-      throw new Error('Docker is required for header-size docker e2e tests')
-    }
+    dockerAvailable = await hasDocker()
+    if (!dockerAvailable) return
 
     mockStripe = await startMockStripeApi()
-    engine = await startEngineDocker(getPort())
+    engine = await startEngineDocker(getPort(), ENGINE_IMAGE)
   }, 180_000)
 
   afterAll(async () => {
@@ -237,7 +231,11 @@ describe('docker serve header size', () => {
     await mockStripe?.close()
   })
 
-  it('accepts a pipeline header larger than Node default when run via the CLI serve command', async () => {
+  it('accepts a pipeline header larger than Node default when run via the CLI serve command', async ({
+    skip,
+  }) => {
+    if (!dockerAvailable) skip()
+
     const pipelineHeader = makePipelineHeader(TEST_HEADER_SIZE, dockerVisibleUrl(mockStripe.url))
     expect(Buffer.byteLength(pipelineHeader)).toBeGreaterThan(DEFAULT_NODE_MAX_HEADER_SIZE)
 

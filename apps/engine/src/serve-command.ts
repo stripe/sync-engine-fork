@@ -1,10 +1,8 @@
-import { serve } from '@hono/node-server'
 import { createConnectorResolver } from './lib/index.js'
 import { createApp } from './api/app.js'
 import { parseJsonOrFile } from '@stripe/sync-ts-cli'
 import { defaultConnectors } from './lib/default-connectors.js'
-import { logger } from './logger.js'
-import { ENGINE_SERVER_OPTIONS } from './http-server-options.js'
+import { startServer } from './server.js'
 
 export async function serveAction(opts: {
   port?: number
@@ -21,14 +19,5 @@ export async function serveAction(opts: {
     npm: opts.connectorsFromNpm ?? false,
   })
   const app = await createApp(resolver)
-  serve(
-    {
-      fetch: app.fetch,
-      port,
-      serverOptions: ENGINE_SERVER_OPTIONS,
-    },
-    (info) => {
-      logger.info({ port: info.port }, `Sync Engine listening on http://localhost:${info.port}`)
-    }
-  )
+  await startServer(app, port)
 }
