@@ -57,9 +57,9 @@ Begins or continues a sync run. See [Types](#types) for `StartPayload`.
 
 The run is done. See [Types](#types) for `EndPayload`.
 
-`has_more: true` — send another `start` with the same `sync_run_id` and the
-returned `state`. `has_more: false` — this run is complete; use a new
-`sync_run_id` for the next sync.
+`has_more: true` — send another `start` with the same `sync_run_id` and
+`ending_state` as the next `starting_state`. `has_more: false` — this run is
+complete; use a new `sync_run_id` for the next sync.
 
 ### Source → engine
 
@@ -227,7 +227,7 @@ type StartPayload = {
   source_config: Record<string, unknown> // source-specific (e.g. Stripe API key, account)
   destination_config: Record<string, unknown> // destination-specific (e.g. Postgres connection)
   configured_catalog: ConfiguredCatalog
-  state?: SyncState // from previous end; omit on first sync
+  starting_state?: SyncState // from previous end.ending_state; omit on first sync
 }
 ```
 
@@ -236,16 +236,17 @@ type StartPayload = {
 ```ts
 type EndPayload = {
   has_more: boolean
-  state: SyncState // round-trip into next start
-  request: ProgressPayload // stats for this request only (same shape as progress)
+  ending_state: SyncState // round-trip into next start.starting_state
+  request_progress: ProgressPayload // stats for this request only
 }
 ```
 
 ### Progress message (engine → client)
 
 Emitted on every `source_state` checkpoint and `stream_status` change. Each
-message is a complete snapshot of run-level progress — the client never needs
-a reducer.
+message is a complete snapshot of run-level progress — the client generally
+doesn't need a reducer. To get real-time deltas, the client can diff two
+consecutive progress messages.
 
 ```ts
 // Errors are a discriminated union on error_level.
@@ -401,7 +402,7 @@ A sync run is identified by `sync_run_id`. Within a run, the upper time bound
 
 ### Continuation
 
-1. Client sends `start` with the same `sync_run_id` and `state` from previous `end`.
+1. Client sends `start` with the same `sync_run_id` and `starting_state` from previous `end.ending_state`.
 2. Engine sees same ID — preserves `started_at` from engine state.
 3. Engine sets the same `time_range` (same frozen upper bound).
 4. Source resumes from its cursor state within the same range.
@@ -574,7 +575,7 @@ NDJSON. One message per line.
 ←  {"type":"progress","progress":{"elapsed_ms":1600,"global_state_count":1,"records_per_second":1562,"states_per_second":0.6,"streams":{"customers":{"completed_ranges":[],"record_count":2500,"state_count":1}},"errors":[]}}
 ←  {"type":"record","record":{"stream":"customers","data":{...}}}
 ←  {"type":"progress","progress":{"elapsed_ms":3200,"global_state_count":2,"records_per_second":1562,"states_per_second":0.6,"streams":{"customers":{"completed_ranges":[{"gte":"2018-01-01T00:00:00Z","lt":"2024-04-17T00:00:00Z"}],"record_count":5000,"state_count":2}},"errors":[]}}
-←  {"type":"end","has_more":false,"state":{"source":{...},"engine":{...}}}
+←  {"type":"end","has_more":false,"ending_state":{"source":{...},"engine":{...}}}
 ```
 
 Over HTTP: POST with NDJSON body (one `start` line), NDJSON response stream.
@@ -594,9 +595,9 @@ do {
     source_config,
     destination_config,
     configured_catalog,
-    state,
+    starting_state: state,
   })
-  state = end.state
+  state = end.ending_state
 } while (end.has_more)
 
 // Backfill complete. Schedule next sync with a new sync_run_id.
