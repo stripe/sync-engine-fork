@@ -212,12 +212,55 @@ can track which range this state belongs to:
 }
 ```
 
+## Concurrency
+
+Three controls govern how the source uses the Stripe API:
+
+```ts
+// Source config — only max_concurrent_streams is user-configurable
+type StripeSourceConfig = {
+  api_key: string
+  account_id?: string
+  max_concurrent_streams?: number       // default 5
+}
+
+// Derived internally by the source:
+// live_mode              = inferred from api_key prefix (sk_live_ vs sk_test_)
+// max_requests_per_second = live_mode ? 20 : 10
+// effective_streams       = min(max_concurrent_streams, configured_stream_count)
+// max_segments_per_stream = floor(max_requests_per_second / effective_streams)
+```
+
+| Control | What it controls | How it's set |
+|---|---|---|
+| `max_concurrent_streams` | Streams paginating in parallel | Config (default 5), capped at catalog size |
+| `max_requests_per_second` | Global rate limit across all activity | Inferred from API key mode |
+| `max_segments_per_stream` | Sub-ranges per stream (n-ary search fan-out) | Derived: rps / concurrent streams |
+
+### Examples
+
+| Scenario | Mode | Streams | `effective_streams` | `rps` | `max_segments_per_stream` | Max concurrent requests |
+|---|---|---|---|---|---|---|
+| 20 streams, live | live | 20 | 5 | 20 | 4 | 20 |
+| 20 streams, test | test | 20 | 5 | 10 | 2 | 10 |
+| 3 streams, live | live | 3 | 3 | 20 | 6 | 18 |
+| 1 stream, live | live | 1 | 1 | 20 | 20 | 20 |
+| 1 stream, test | test | 1 | 1 | 10 | 10 | 10 |
+
+When fewer streams are configured, each stream gets more segments — the full
+rate limit budget is distributed across whatever streams exist. A single-stream
+sync gets the entire budget.
+
 ## Parallel Pagination
 
-The source can paginate multiple ranges from `remaining` concurrently.
-Records from different ranges are interleaved on the output stream. State
-checkpoints are emitted after each page, reflecting the current state of
-all ranges. This ensures resumability if the source is cut off mid-run.
+The source paginates up to `max_segments_per_stream` ranges from `remaining`
+concurrently per stream, and up to `effective_streams` streams in parallel.
+Records from different ranges/streams are interleaved on the output stream.
+State checkpoints are emitted after each page, reflecting the current state
+of all ranges. This ensures resumability if the source is cut off mid-run.
+
+The global rate limiter (`max_requests_per_second`) governs all API calls
+regardless of which stream or segment they belong to.
 
 ## Error Handling
 
