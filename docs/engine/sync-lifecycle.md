@@ -13,8 +13,8 @@ creates several problems:
    upper bound, so high-volume accounts chase a moving target and never converge.
 2. **No run identity.** Multiple calls that form one logical backfill have no
    shared context. The engine cannot distinguish "continuation" from "new sync."
-3. **Source owns retry policy.** Error types (`auth_error`, `transient_error`)
-   are baked into source state, mixing cursor data with skip-on-resume decisions.
+3. **Source owns retry policy.** Error types are baked into source state, mixing
+   cursor data with skip-on-resume decisions.
 4. **Engine duplicates source bookkeeping.** Stream status and errors are tracked
    independently by source and engine, with divergent representations.
 5. **Stalled streams are invisible.** A non-incremental stream that restarts
@@ -78,7 +78,7 @@ Sources are iterators that yield these message types:
 // Lifecycle signal
 { type: 'trace', trace: { trace_type: 'stream_status', stream_status: { stream: string, status: 'started' | 'complete' } } }
 
-// Error — discriminated union on level (see Error Handling section)
+// Error — discriminated union on error_level (see Error Handling section)
 { type: 'trace', trace: { trace_type: 'error', error: SyncError } }
 
 // Diagnostic log
@@ -356,7 +356,7 @@ type EngineState = ProgressPayload & {
           {
             "gte": "2011-01-01T00:00:00Z", "lt": "2017-09-01T00:00:00Z",
             "record_count": 0, "state_count": 0,
-            "status": "incomplete", "errors": [{ "failure_type": "transient_error", "message": "Rate limit" }]
+            "status": "incomplete"
           },
           {
             "gte": "2017-09-01T00:00:00Z", "lt": "2024-04-17T00:00:00Z",
@@ -513,7 +513,7 @@ has_more = true if any catalog stream where:
 
 Errors carry their blast radius. The level determines the engine's action:
 
-| Level | Blast radius | Engine action | Example |
+| `error_level` | Blast radius | Engine action | Example |
 |---|---|---|---|
 | `global` | Entire sync | Abort all streams, `has_more: false` | Invalid API key, bad source config |
 | `stream` | One stream | Skip stream, continue others | Resource not available, permission denied |
@@ -533,7 +533,7 @@ Errors carry their blast radius. The level determines the engine's action:
 { error: { error_level: 'transient', message: 'Rate limited, retried 3x', stream: 'customers' } }
 ```
 
-The source decides the level:
+The source decides the `error_level`:
 - **Transient**: HTTP retry succeeded — emit for observability, no action needed.
 - **Segment**: All retries exhausted for a request within a range — emit with
   `stream` and `segment`, move on to next segment/stream.
