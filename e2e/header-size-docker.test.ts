@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import path from 'node:path'
@@ -16,13 +16,54 @@ interface MockStripeServer {
 
 interface EngineContainer {
   url: string
-  logs: () => string
-  kill: () => void
+  logs: () => Promise<string>
+  kill: () => Promise<void>
 }
 
-function hasDocker(): boolean {
+async function runCommand(
+  command: string,
+  args: string[],
+  options: {
+    cwd?: string
+    allowFailure?: boolean
+  } = {}
+): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+  return await new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString()
+    })
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+    })
+    child.on('error', reject)
+    child.on('close', (exitCode) => {
+      if (exitCode === 0 || options.allowFailure) {
+        resolve({ stdout, stderr, exitCode })
+        return
+      }
+
+      reject(
+        new Error(
+          [`Command failed: ${command} ${args.join(' ')}`, stdout.trim(), stderr.trim()]
+            .filter(Boolean)
+            .join('\n\n')
+        )
+      )
+    })
+  })
+}
+
+async function hasDocker(): Promise<boolean> {
   try {
-    execFileSync('docker', ['info'], { stdio: 'ignore' })
+    await runCommand('docker', ['info'])
     return true
   } catch {
     return false
@@ -33,9 +74,13 @@ function getPort(): number {
   return 10_000 + Math.floor(Math.random() * 50_000)
 }
 
-function getContainerLogs(containerName: string): string {
-  const result = spawnSync('docker', ['logs', containerName], { encoding: 'utf8' })
-  return `${result.stdout ?? ''}${result.stderr ?? ''}`.trim()
+async function getContainerLogs(containerName: string): Promise<string> {
+  const result = await runCommand('docker', ['logs', containerName], { allowFailure: true })
+  return `${result.stdout}${result.stderr}`.trim()
+}
+
+async function removeContainer(containerName: string): Promise<void> {
+  await runCommand('docker', ['rm', '-f', containerName], { allowFailure: true })
 }
 
 async function startMockStripeApi(): Promise<MockStripeServer> {
@@ -131,14 +176,13 @@ async function startEngineDocker(port: number): Promise<EngineContainer> {
   const containerName = `header-size-test-${port}`
 
   if (!process.env.ENGINE_IMAGE) {
-    execFileSync('docker', ['build', '--target', 'engine', '-t', image, '.'], {
+    await runCommand('docker', ['build', '--target', 'engine', '-t', image, '.'], {
       cwd: REPO_ROOT,
-      stdio: 'inherit',
     })
   }
 
   try {
-    execFileSync(
+    await runCommand(
       'docker',
       [
         'run',
@@ -159,30 +203,19 @@ async function startEngineDocker(port: number): Promise<EngineContainer> {
       ],
       {
         cwd: REPO_ROOT,
-        stdio: 'ignore',
       }
     )
     await waitForServer(`http://localhost:${port}`)
   } catch (error) {
-    const logs = getContainerLogs(containerName)
-    try {
-      execFileSync('docker', ['rm', '-f', containerName], { stdio: 'ignore' })
-    } catch {
-      // ignore cleanup failures
-    }
+    const logs = await getContainerLogs(containerName)
+    await removeContainer(containerName)
     throw new Error(`Failed to start engine container.\n\n${logs || String(error)}`)
   }
 
   return {
     url: `http://localhost:${port}`,
     logs: () => getContainerLogs(containerName),
-    kill: () => {
-      try {
-        execFileSync('docker', ['rm', '-f', containerName], { stdio: 'ignore' })
-      } catch {
-        // ignore cleanup failures
-      }
-    },
+    kill: () => removeContainer(containerName),
   }
 }
 
@@ -191,7 +224,7 @@ describe('docker serve header size', () => {
   let engine: EngineContainer
 
   beforeAll(async () => {
-    if (!hasDocker()) {
+    if (!(await hasDocker())) {
       throw new Error('Docker is required for header-size docker e2e tests')
     }
 
@@ -200,7 +233,7 @@ describe('docker serve header size', () => {
   }, 180_000)
 
   afterAll(async () => {
-    engine?.kill()
+    await engine?.kill()
     await mockStripe?.close()
   })
 
@@ -213,8 +246,9 @@ describe('docker serve header size', () => {
       headers: { 'X-Pipeline': pipelineHeader },
     })
     const body = await res.text()
+    const logs = res.status === 200 ? '' : await engine.logs()
 
-    expect(res.status, engine.logs()).toBe(200)
+    expect(res.status, logs).toBe(200)
     expect(res.headers.get('content-type')).toContain('application/x-ndjson')
     expect(body).toContain('"type":"connection_status"')
   }, 30_000)
