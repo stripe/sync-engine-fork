@@ -143,7 +143,14 @@ jobs:
         env:
           STRIPE_API_KEY: ${{ secrets.GOLDI_LIVE_KEY }}
           DATABASE_URL: ${{ steps.create-db.outputs.db_string }}
-        run: node scripts/reconcile-sigma-vs-postgres.js
+        run: |
+          set +e
+          node scripts/reconcile-sigma-vs-postgres.js
+          STATUS=$?
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::warning title=Sigma reconciliation::Postgres is missing rows that exist in Sigma. See the job log for the per-table diff and the list of missing IDs with their created timestamps."
+            exit "$STATUS"
+          fi
 
       - name: Delete Stripe database
         if: always() && steps.create-db.outputs.db_id

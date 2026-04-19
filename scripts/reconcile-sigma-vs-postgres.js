@@ -180,13 +180,14 @@ function sleep(ms) {
 }
 
 /**
- * Build a Sigma query that returns (resource, id) rows for the given tables.
+ * Build a Sigma query that returns (id[, created]) rows for the given table.
  * Tables in `tablesWithDeletedCol` get a WHERE clause that excludes deleted
  * rows so results match what Stripe's `list` endpoints return.
  */
-function buildSigmaIdsSql(table, hasDeletedCol) {
+function buildSigmaIdsSql(table, { withCreated, hasDeletedCol }) {
   const where = hasDeletedCol ? ' WHERE NOT COALESCE(deleted, false)' : ''
-  return `SELECT id FROM "${table}"${where}`
+  const cols = withCreated ? 'id, created' : 'id'
+  return `SELECT ${cols} FROM "${table}"${where}`
 }
 
 function parseMissingTables(errorMessage) {
@@ -235,41 +236,58 @@ async function downloadSigmaResult(apiKey, completed) {
 }
 
 async function runIdsQuery(apiKey, sql, table) {
-  const created = await stripePost(apiKey, '/v1/sigma/query_runs', { sql })
-  const completed = await pollSigmaRun(apiKey, created.id)
+  const queryRun = await stripePost(apiKey, '/v1/sigma/query_runs', { sql })
+  const completed = await pollSigmaRun(apiKey, queryRun.id)
   const csv = await downloadSigmaResult(apiKey, completed)
   const rows = parseCsv(csv)
-  if (rows.length < 2) return new Set()
+  if (rows.length < 2) return { ids: new Set(), createdById: new Map() }
   const header = rows[0]
   const idIdx = header.indexOf('id')
   if (idIdx === -1) throw new Error(`Sigma result for ${table} missing "id" column`)
-  return new Set(
-    rows
-      .slice(1)
-      .map((r) => r[idIdx]?.trim())
-      .filter(Boolean)
-  )
+  const createdIdx = header.indexOf('created')
+  const ids = new Set()
+  const createdById = new Map()
+  for (const r of rows.slice(1)) {
+    const id = r[idIdx]?.trim()
+    if (!id) continue
+    ids.add(id)
+    if (createdIdx !== -1) {
+      const created = r[createdIdx]?.trim()
+      if (created) createdById.set(id, created)
+    }
+  }
+  return { ids, createdById }
+}
+
+function isMissingColumnError(err) {
+  const msg = err.errorMessage ?? err.message ?? ''
+  return /column|invalid identifier/i.test(msg)
 }
 
 /**
- * Fetch all IDs for a Sigma table. If the table is expected to have a
- * `deleted` column, filter those out; if the filter fails (column doesn't
- * exist after all), retry without it so the run still produces results.
+ * Fetch IDs (with `created` where available) for a Sigma table. Retries
+ * progressively stripping columns/filters when Sigma reports they don't
+ * exist on that particular table.
  */
 async function fetchSigmaIds(apiKey, table, hasDeletedCol) {
-  if (!hasDeletedCol) {
-    return runIdsQuery(apiKey, buildSigmaIdsSql(table, false), table)
+  const variants = [
+    { withCreated: true, hasDeletedCol },
+    { withCreated: false, hasDeletedCol },
+  ]
+  if (hasDeletedCol) {
+    variants.push({ withCreated: true, hasDeletedCol: false })
+    variants.push({ withCreated: false, hasDeletedCol: false })
   }
-  try {
-    return await runIdsQuery(apiKey, buildSigmaIdsSql(table, true), table)
-  } catch (err) {
-    // If the deleted column turned out not to exist, retry without the filter.
-    const msg = err.errorMessage ?? err.message ?? ''
-    if (/column.*deleted|invalid identifier/i.test(msg)) {
-      return runIdsQuery(apiKey, buildSigmaIdsSql(table, false), table)
+  let lastErr
+  for (const variant of variants) {
+    try {
+      return await runIdsQuery(apiKey, buildSigmaIdsSql(table, variant), table)
+    } catch (err) {
+      if (!isMissingColumnError(err)) throw err
+      lastErr = err
     }
-    throw err
   }
+  throw lastErr
 }
 
 /** Try to detect a missing-table error from either POST or poll response. */
@@ -312,7 +330,7 @@ const SIGMA_ALIAS = {
  */
 async function runSigmaForResources(apiKey, resources) {
   const skipped = []
-  const idsByTable = new Map() // pgTable → Set<id>
+  const dataByTable = new Map() // pgTable → { ids: Set<id>, createdById: Map<id, created> }
   let done = 0
 
   // Sigma doesn't expose information_schema, so we can't discover its tables
@@ -333,8 +351,12 @@ async function runSigmaForResources(apiKey, resources) {
 
   async function runOne({ pgTable, sigmaTable }) {
     try {
-      const ids = await fetchSigmaIds(apiKey, sigmaTable, SIGMA_TABLES_WITH_DELETED.has(sigmaTable))
-      idsByTable.set(pgTable, ids)
+      const data = await fetchSigmaIds(
+        apiKey,
+        sigmaTable,
+        SIGMA_TABLES_WITH_DELETED.has(sigmaTable)
+      )
+      dataByTable.set(pgTable, data)
     } catch (err) {
       const missing = detectMissingTables(err)
       if (!missing || !missing.includes(sigmaTable)) {
@@ -367,7 +389,7 @@ async function runSigmaForResources(apiKey, resources) {
     for (const e of unexpectedErrors) console.error(`    ${e}`)
   }
 
-  return { idsByTable, skipped }
+  return { dataByTable, skipped }
 }
 
 // ---------------------------------------------------------------------------
@@ -425,46 +447,77 @@ function parseCsv(text) {
 
 // We only care about IDs that exist in Sigma but are missing from Postgres.
 // Rows present in Postgres but absent from Sigma are disregarded.
-function diffSets(sigmaIds, pgIds) {
+function diffSets(sigmaData, pgIds) {
   const common = new Set()
-  const postgresMissing = new Set()
-  for (const id of sigmaIds) {
-    if (pgIds.has(id)) common.add(id)
-    else postgresMissing.add(id)
+  const postgresMissing = []
+  for (const id of sigmaData.ids) {
+    if (pgIds.has(id)) {
+      common.add(id)
+    } else {
+      postgresMissing.push({
+        id,
+        created: sigmaData.createdById.get(id) ?? null,
+      })
+    }
   }
+  postgresMissing.sort((a, b) => {
+    const ac = Number(a.created)
+    const bc = Number(b.created)
+    const aValid = Number.isFinite(ac)
+    const bValid = Number.isFinite(bc)
+    if (aValid && bValid) return bc - ac
+    if (aValid) return -1
+    if (bValid) return 1
+    return 0
+  })
   return { common, postgresMissing }
 }
 
-function buildComparisonRows(sigmaIdsByTable, postgresIdsByTable, skippedTables) {
+function formatCreated(raw) {
+  if (!raw) return 'unknown'
+  const n = Number(raw)
+  // Sigma stores `created` as unix seconds for most resources. Sanity-check
+  // the range so we don't mis-render a numeric column that isn't a timestamp.
+  if (Number.isFinite(n) && n > 946_684_800 && n < 4_102_444_800) {
+    return new Date(n * 1000).toISOString()
+  }
+  const d = new Date(raw)
+  if (!Number.isNaN(d.getTime())) return d.toISOString()
+  return String(raw)
+}
+
+function buildComparisonRows(sigmaDataByTable, postgresIdsByTable, skippedTables) {
   const skippedSet = new Set(skippedTables)
-  const resources = new Set([...sigmaIdsByTable.keys(), ...postgresIdsByTable.keys()])
+  const resources = new Set([...sigmaDataByTable.keys(), ...postgresIdsByTable.keys()])
 
   return [...resources]
     .sort((a, b) => a.localeCompare(b))
     .map((resource) => {
-      const sigmaIds = sigmaIdsByTable.get(resource)
+      const sigmaData = sigmaDataByTable.get(resource)
       const pgIds = postgresIdsByTable.get(resource) ?? new Set()
 
-      if (skippedSet.has(resource) || sigmaIds === undefined) {
+      if (skippedSet.has(resource) || sigmaData === undefined) {
         return {
           resource,
           sigmaCount: null,
           postgresCount: pgIds.size,
           matches: null,
           postgresMissing: null,
+          missingRows: [],
           status: 'skipped_in_sigma',
         }
       }
 
-      const { common, postgresMissing } = diffSets(sigmaIds, pgIds)
-      const status = postgresMissing.size === 0 ? 'match' : 'diff'
+      const { common, postgresMissing } = diffSets(sigmaData, pgIds)
+      const status = postgresMissing.length === 0 ? 'match' : 'diff'
 
       return {
         resource,
-        sigmaCount: sigmaIds.size,
+        sigmaCount: sigmaData.ids.size,
         postgresCount: pgIds.size,
         matches: common.size,
-        postgresMissing: postgresMissing.size,
+        postgresMissing: postgresMissing.length,
+        missingRows: postgresMissing,
         status,
       }
     })
@@ -533,14 +586,15 @@ async function main() {
   process.stderr.write('\n')
 
   // Step 3: fetch IDs from Sigma for tables that exist there
-  const { idsByTable: sigmaIdsByTable, skipped } = await runSigmaForResources(apiKey, pgTables)
+  const { dataByTable: sigmaDataByTable, skipped } = await runSigmaForResources(apiKey, pgTables)
 
   // Step 4: compare + print
-  const rows = buildComparisonRows(sigmaIdsByTable, postgresIdsByTable, skipped)
+  const rows = buildComparisonRows(sigmaDataByTable, postgresIdsByTable, skipped)
   const matchCount = rows.filter((r) => r.status === 'match').length
   const diffCount = rows.filter((r) => r.status === 'diff').length
   const skippedCount = rows.filter((r) => r.status === 'skipped_in_sigma').length
   const skippedRows = rows.filter((r) => r.status === 'skipped_in_sigma')
+  const diffRows = rows.filter((r) => r.status === 'diff')
 
   console.log('')
   console.log(
@@ -570,7 +624,18 @@ async function main() {
   console.log('')
   console.log(JSON.stringify(summary, null, 2))
 
-  if (diffCount > 0) process.exitCode = 1
+  if (diffRows.length > 0) {
+    console.log('')
+    console.log('Missing rows (present in Sigma, absent in Postgres):')
+    for (const r of diffRows) {
+      console.log(`  ${r.resource} (${r.postgresMissing} missing):`)
+      for (const m of r.missingRows) {
+        console.log(`    ${m.id}  ${formatCreated(m.created)}`)
+      }
+    }
+  }
+
+  if (diffCount > 0) process.exit(1)
 }
 
 try {
