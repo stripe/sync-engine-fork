@@ -132,6 +132,15 @@ const SKIPPABLE_ERROR_MESSAGES = [
   //  https://dashboard.stripe.com/acct_1DfwS2ClCIKljWvs/settings/connect/platform-setup.
   //  [GET /v2/core/accounts (400)] {request-id=req_v2HaQWYCiDgV6xQZ7, stripe-should-retry=false}"
   'Accounts v2 is not enabled for your platform',
+  // Variant 2 (test mode sandbox):
+  // "Accounts v2 isn't available in test mode. Switch to a sandbox to test.
+  //  [GET /v2/core/accounts (400)] {request-id=req_x, stripe-should-retry=false}"
+  "Accounts v2 isn't available in test mode",
+
+  // sigma_scheduled_query_runs
+  // "This API surface is not enabled for testmode usage.
+  //  [GET /v1/sigma/scheduled_query_runs (400)] {request-id=req_y}"
+  'This API surface is not enabled for testmode usage',
 
   // issuing_authorizations, issuing_cardholders, issuing_cards, issuing_disputes, issuing_transactions
   // "Your account is not set up to use Issuing. Please visit
