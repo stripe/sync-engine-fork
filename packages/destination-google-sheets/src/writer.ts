@@ -13,6 +13,9 @@ const BACKOFF_BASE_MS = 1000
 const BACKOFF_MAX_MS = 32000
 const MAX_RETRIES = 5
 
+// Per-spreadsheet hard cap (https://support.google.com/drive/answer/37603); enforce locally for a clear error.
+export const MAX_CELLS_PER_SPREADSHEET = 10_000_000
+
 async function withRetry<T>(fn: () => Promise<T>, label?: string): Promise<T> {
   let delay = BACKOFF_BASE_MS
   const overallStart = Date.now()
@@ -49,7 +52,6 @@ async function withRetry<T>(fn: () => Promise<T>, label?: string): Promise<T> {
         if (label) {
           log.warn(
             {
-              err,
               label,
               attempt: attempt + 1,
               maxRetries: MAX_RETRIES,
@@ -714,7 +716,7 @@ export async function applyBatch(
   }
   const phase1Start = Date.now()
   await Promise.all(probes)
-  log.warn(
+  log.debug(
     { parallelCalls: probes.length, durationMs: Date.now() - phase1Start },
     'phase1 (reads) done'
   )
@@ -730,6 +732,7 @@ export async function applyBatch(
 
   // 2a) appendDimension — only for grids that don't already fit.
   const phase2aStart = Date.now()
+  const projectedGridBySheet = new Map<number, { rowCount: number; columnCount: number }>()
   for (const [, ops] of opsByStream) {
     const maxUpdateRow = ops.updates.reduce((m, u) => Math.max(m, u.rowNumber), 0)
     const maxAppendRow = ops.appends.length > 0 ? ops.existingRowCount + ops.appends.length : 0
@@ -758,6 +761,13 @@ export async function applyBatch(
           dimension: 'COLUMNS',
           length: neededCols - current.columnCount,
         },
+      })
+    }
+    // Track projected post-expansion grid so the cap check below sees column growth.
+    if (neededRows > current.rowCount || neededCols > current.columnCount) {
+      projectedGridBySheet.set(ops.sheetId, {
+        rowCount: neededRows > current.rowCount ? neededRows + EXPAND_ROW_BUFFER : current.rowCount,
+        columnCount: neededCols > current.columnCount ? neededCols : current.columnCount,
       })
     }
   }
@@ -838,7 +848,7 @@ export async function applyBatch(
     appendStartRows.set(streamName, { appendStartRow: startRow })
     appendRowCount += ops.appends.length
   }
-  log.warn(
+  log.debug(
     {
       streams: appendStartRows.size,
       rows: appendRowCount,
@@ -854,6 +864,31 @@ export async function applyBatch(
   const totalCells = updateCellCount + appendCellCount
   const totalBytesEstimate = updateBytesEstimate + appendBytesEstimate
 
+  // Reject a batch that alone exceeds the per-spreadsheet cap — no grid state can save it.
+  if (totalCells > MAX_CELLS_PER_SPREADSHEET) {
+    throw new Error(
+      `Google Sheets destination: refusing to flush ${totalCells.toLocaleString()} cells in a single batch (exceeds the ${MAX_CELLS_PER_SPREADSHEET.toLocaleString()}-cell-per-spreadsheet limit)`
+    )
+  }
+
+  // Skip when gridInfo is empty (probe failed) and let the API respond.
+  if (gridInfo.size > 0) {
+    let currentGridCells = 0
+    let projectedGridCells = 0
+    for (const [sheetId, info] of gridInfo) {
+      currentGridCells += info.rowCount * info.columnCount
+      const p = projectedGridBySheet.get(sheetId) ?? info
+      projectedGridCells += p.rowCount * p.columnCount
+    }
+    // max() catches both near-cap append and column expansion growing all rows.
+    const worstCaseCells = Math.max(currentGridCells + appendCellCount, projectedGridCells)
+    if (worstCaseCells > MAX_CELLS_PER_SPREADSHEET) {
+      throw new Error(
+        `Google Sheets destination: ${worstCaseCells.toLocaleString()} cells would exceed the ${MAX_CELLS_PER_SPREADSHEET.toLocaleString()}-cell-per-spreadsheet limit (current grid: ${currentGridCells.toLocaleString()}, projected grid: ${projectedGridCells.toLocaleString()}, append payload: ${appendCellCount.toLocaleString()})`
+      )
+    }
+  }
+
   // ── Phase 3a (grid expansion — runs first, only if needed) ─────
   if (expansionRequests.length > 0) {
     const expandStart = Date.now()
@@ -866,7 +901,7 @@ export async function applyBatch(
           }),
         'gridExpansion'
       )
-      log.warn(
+      log.debug(
         {
           status: res.status,
           requests: expansionRequests.length,
@@ -886,7 +921,7 @@ export async function applyBatch(
   // ── Phase 3b (single batchUpdate with all data writes) ──────────
   if (dataRequests.length === 0) return appendStartRows
 
-  log.warn(
+  log.debug(
     {
       streams: opsByStream.size,
       totalRequests: dataRequests.length,
