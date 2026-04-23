@@ -351,6 +351,10 @@ export async function ensureIntroSheet(
     [''],
     [`Last setup: ${now}`],
     [''],
+    ['ℹ️  Deleted records: Stripe objects are never removed from this spreadsheet. When a record is'],
+    ['   deleted in Stripe, its row remains and the "deleted" column is set to TRUE. You can filter'],
+    ['   these out in formulas, e.g. =FILTER(A2:Z, D2:D<>TRUE) where D is the "deleted" column.'],
+    [''],
     ['⚠️  Do not edit data in the synced tabs. Changes will be overwritten on the next sync.'],
   ]
 
