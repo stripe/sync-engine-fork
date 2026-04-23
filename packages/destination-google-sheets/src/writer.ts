@@ -889,42 +889,16 @@ export async function applyBatch(
     }
   }
 
-  // ── Phase 3a (grid expansion — runs first, only if needed) ─────
-  if (expansionRequests.length > 0) {
-    const expandStart = Date.now()
-    try {
-      const res = await withRetry(
-        () =>
-          sheets.spreadsheets.batchUpdate({
-            spreadsheetId,
-            requestBody: { requests: expansionRequests },
-          }),
-        'gridExpansion'
-      )
-      log.debug(
-        {
-          status: res.status,
-          requests: expansionRequests.length,
-          durationMs: Date.now() - expandStart,
-        },
-        'gridExpansion OK'
-      )
-    } catch (err) {
-      log.error(
-        { err, requests: expansionRequests.length, durationMs: Date.now() - expandStart },
-        'gridExpansion FAILED'
-      )
-      throw err
-    }
-  }
-
-  // ── Phase 3b (single batchUpdate with all data writes) ──────────
-  if (dataRequests.length === 0) return appendStartRows
+  // ── Phase 3 (single batchUpdate: expansions first, then data writes) ──
+  // Requests within a batchUpdate are applied in order, so appendDimension
+  // runs before pasteData and the grid is guaranteed to fit.
+  const allRequests = [...expansionRequests, ...dataRequests]
+  if (allRequests.length === 0) return appendStartRows
 
   log.debug(
     {
       streams: opsByStream.size,
-      totalRequests: dataRequests.length,
+      totalRequests: allRequests.length,
       expansions: expansionCount,
       updateRows: updateRowCount,
       appendRows: appendRowCount,
@@ -940,14 +914,14 @@ export async function applyBatch(
       () =>
         sheets.spreadsheets.batchUpdate({
           spreadsheetId,
-          requestBody: { requests: dataRequests },
+          requestBody: { requests: allRequests },
         }),
       'batchUpdate'
     )
     log.debug(
       {
         status: res.status,
-        requests: dataRequests.length,
+        requests: allRequests.length,
         cells: totalCells,
         replies: res.data.replies?.length ?? 0,
         wallClockMs: Date.now() - httpStart,
@@ -959,7 +933,7 @@ export async function applyBatch(
     log.error(
       {
         err,
-        totalRequests: dataRequests.length,
+        totalRequests: allRequests.length,
         expansions: expansionCount,
         updateRows: updateRowCount,
         appendRows: appendRowCount,
