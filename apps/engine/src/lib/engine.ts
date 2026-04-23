@@ -530,6 +530,7 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
           const parsed = map(raw, (msg) => Message.parse(msg))
           yield* takeLimits({
             time_limit: opts?.time_limit,
+            soft_time_limit: opts?.time_limit ? opts?.time_limit - 1 : undefined,
             signal,
           })(parsed) as AsyncIterable<Message>
         })()
