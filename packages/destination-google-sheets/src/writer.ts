@@ -459,22 +459,30 @@ export async function deleteSpreadsheet(
   await withRetry(() => drive.files.delete({ fileId: spreadsheetId }))
 }
 
+export interface RowMapEntry {
+  rowNumber: number
+  /** Value of the newer_than_field column from the existing sheet row, if requested. */
+  newerThanValue: unknown
+}
+
 /**
- * Pure: serialized primary key → 1-based sheet row number, from rows you've
+ * Pure: serialized primary key → { rowNumber, newerThanValue }, from rows you've
  * already fetched. `headers` must be known. Prefer this over `buildRowMap`
  * when you also need the row data; avoids a second read.
  */
 export function buildRowMapFromRows(
   allRows: unknown[][],
   headers: string[],
-  primaryKey: string[][]
-): Map<string, number> {
+  primaryKey: string[][],
+  newerThanField?: string
+): Map<string, RowMapEntry> {
   const pkFields = primaryKey.map((path) => path[0])
   const pkIndices = pkFields.map((field) => headers.indexOf(field))
   if (pkIndices.some((i) => i === -1)) return new Map()
+  const newerThanIndex = newerThanField ? headers.indexOf(newerThanField) : -1
 
   // Skip header row (index 0), data starts at index 1
-  const map = new Map<string, number>()
+  const map = new Map<string, RowMapEntry>()
   for (let i = 1; i < allRows.length; i++) {
     const row = allRows[i] as string[]
     const data: Record<string, unknown> = {}
@@ -483,7 +491,8 @@ export function buildRowMapFromRows(
     }
     const rowKey = serializeRowKey(primaryKey, data)
     if (rowKey === '[""]' || rowKey === '[null]') continue
-    map.set(rowKey, i + 1) // 1-based: row 1 = headers, so data row at index i → row i+1
+    const newerThanValue = newerThanIndex >= 0 ? row[newerThanIndex] : undefined
+    map.set(rowKey, { rowNumber: i + 1, newerThanValue }) // 1-based: row 1 = headers, so data row at index i → row i+1
   }
   return map
 }
@@ -491,13 +500,17 @@ export function buildRowMapFromRows(
 /**
  * Like `buildRowMapFromRows` but for a header-less PK-only slice
  * (see `batchReadSheets` with `columnCount`). Row i → sheet row i + 2.
+ *
+ * `newerThanColIndex` is the 0-based absolute column index in the sheet
+ * (matches the index in the row array since reads always start from column A).
  */
 export function buildRowMapFromPkColumns(
   pkRows: unknown[][],
-  primaryKey: string[][]
-): Map<string, number> {
+  primaryKey: string[][],
+  newerThanColIndex?: number
+): Map<string, RowMapEntry> {
   const pkFields = primaryKey.map((path) => path[0])
-  const map = new Map<string, number>()
+  const map = new Map<string, RowMapEntry>()
   for (let i = 0; i < pkRows.length; i++) {
     const row = pkRows[i] as string[]
     const data: Record<string, unknown> = {}
@@ -506,7 +519,8 @@ export function buildRowMapFromPkColumns(
     }
     const rowKey = serializeRowKey(primaryKey, data)
     if (rowKey === '[""]' || rowKey === '[null]') continue
-    map.set(rowKey, i + 2)
+    const newerThanValue = newerThanColIndex !== undefined ? row[newerThanColIndex] : undefined
+    map.set(rowKey, { rowNumber: i + 2, newerThanValue })
   }
   return map
 }
@@ -525,7 +539,8 @@ export async function buildRowMap(
   primaryKey: string[][]
 ): Promise<Map<string, number>> {
   const allRows = await readSheet(sheets, spreadsheetId, sheetName)
-  return buildRowMapFromRows(allRows, headers, primaryKey)
+  const richMap = buildRowMapFromRows(allRows, headers, primaryKey)
+  return new Map([...richMap.entries()].map(([k, v]) => [k, v.rowNumber]))
 }
 
 /** Read all values from a sheet tab. Used for verification in tests. */

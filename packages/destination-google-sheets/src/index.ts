@@ -95,6 +95,18 @@ function stringify(value: unknown): string {
   return JSON.stringify(value)
 }
 
+/**
+ * Returns true if `incoming` is strictly newer than `existing`.
+ * Compares numerically when both parse as numbers (Unix timestamps),
+ * falls back to string comparison otherwise.
+ */
+function isNewerThan(incoming: unknown, existing: unknown): boolean {
+  const a = Number(incoming)
+  const b = Number(existing)
+  if (!isNaN(a) && !isNaN(b)) return a > b
+  return String(incoming) > String(existing)
+}
+
 /** Check if an error looks transient (rate limit or server error). */
 function isTransient(err: unknown): boolean {
   if (!(err instanceof Error) || !('code' in err)) return false
@@ -238,6 +250,11 @@ export function createDestination(
           configuredStream.stream.primary_key,
         ])
       )
+      const newerThanFields = new Map<string, string>(
+        catalog.streams
+          .filter((cs) => cs.stream.newer_than_field)
+          .map((cs) => [cs.stream.name, cs.stream.newer_than_field!])
+      )
 
       const spreadsheetId = config.spreadsheet_id
         ? config.spreadsheet_id
@@ -324,6 +341,7 @@ export function createDestination(
           sheetId: number
           headers: string[]
           primaryKey: string[][] | undefined
+          newerThanField: string | undefined
           appends: Array<{ row: string[]; rowKey?: string }>
           bufferedUpdates: Array<{ rowNumber: number; values: string[] }>
           needsRead: boolean
@@ -339,6 +357,7 @@ export function createDestination(
 
           const headers = streamHeaders.get(streamName) ?? []
           const primaryKey = primaryKeys.get(streamName)
+          const newerThanField = newerThanFields.get(streamName)
           const needsRead =
             !!primaryKey &&
             primaryKey.length > 0 &&
@@ -350,6 +369,7 @@ export function createDestination(
             sheetId,
             headers,
             primaryKey,
+            newerThanField,
             appends: bufferedAppends.slice(),
             bufferedUpdates,
             needsRead,
@@ -367,9 +387,19 @@ export function createDestination(
           const pkFields = prep.primaryKey.map((p) => p[0])
           const pkIsFirstN = pkFields.every((field, i) => prep.headers[i] === field)
           narrowByStream.set(prep.streamName, pkIsFirstN)
+          let columnCount: number | undefined
+          if (pkIsFirstN) {
+            const newerThanColIndex = prep.newerThanField
+              ? prep.headers.indexOf(prep.newerThanField)
+              : -1
+            columnCount =
+              newerThanColIndex >= 0
+                ? Math.max(pkFields.length, newerThanColIndex + 1)
+                : pkFields.length
+          }
           streamsToRead.push({
             name: prep.streamName,
-            ...(pkIsFirstN ? { columnCount: pkFields.length } : {}),
+            ...(pkIsFirstN ? { columnCount } : {}),
           })
         }
 
@@ -400,7 +430,7 @@ export function createDestination(
         // Per-stream prep from pre-fetched rows. Stream order is preserved
         // so row_assignments tracking matches the previous sequential impl.
         for (const prep of prepInputs) {
-          const { streamName, sheetId, headers, primaryKey, bufferedUpdates, needsRead } = prep
+          const { streamName, sheetId, headers, primaryKey, newerThanField, bufferedUpdates, needsRead } = prep
           let appends = prep.appends
           let existingRowCount = 0
 
@@ -410,28 +440,49 @@ export function createDestination(
               const isNarrow = narrowByStream.get(streamName) === true
               // Narrow reads skip the header row; add 1 so append startRow is correct.
               existingRowCount = isNarrow ? allRows.length + 1 : allRows.length
+              const newerThanColIndex =
+                isNarrow && newerThanField ? headers.indexOf(newerThanField) : -1
               const freshMap = isNarrow
-                ? buildRowMapFromPkColumns(allRows, primaryKey)
-                : buildRowMapFromRows(allRows, headers, primaryKey)
+                ? buildRowMapFromPkColumns(
+                    allRows,
+                    primaryKey,
+                    newerThanColIndex >= 0 ? newerThanColIndex : undefined
+                  )
+                : buildRowMapFromRows(allRows, headers, primaryKey, newerThanField)
+              const newerThanHeaderIndex =
+                newerThanField ? headers.indexOf(newerThanField) : -1
               const remaining: typeof appends = []
               let converted = 0
+              let staleSkipped = 0
               for (const entry of appends) {
                 const existing = entry.rowKey ? freshMap.get(entry.rowKey) : undefined
                 if (existing !== undefined) {
-                  bufferedUpdates.push({ rowNumber: existing, values: entry.row })
+                  if (
+                    newerThanField &&
+                    newerThanHeaderIndex >= 0 &&
+                    existing.newerThanValue !== undefined
+                  ) {
+                    const incomingValue = entry.row[newerThanHeaderIndex]
+                    if (!isNewerThan(incomingValue, existing.newerThanValue)) {
+                      staleSkipped++
+                      continue
+                    }
+                  }
+                  bufferedUpdates.push({ rowNumber: existing.rowNumber, values: entry.row })
                   converted++
                 } else {
                   remaining.push(entry)
                 }
               }
               appends = remaining
-              if (converted > 0) {
+              if (converted > 0 || staleSkipped > 0) {
                 log.debug(
                   {
                     streamName,
                     existingRows: existingRowCount,
                     keys: freshMap.size,
                     converted,
+                    staleSkipped,
                   },
                   'dedup: converted appends to updates'
                 )

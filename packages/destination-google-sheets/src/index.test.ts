@@ -788,6 +788,162 @@ describe('native upsert', () => {
   })
 })
 
+describe('newer_than_field stale write prevention', () => {
+  function catalogWithNewerThan(): ConfiguredCatalog {
+    return {
+      streams: [
+        {
+          stream: {
+            name: 'customers',
+            primary_key: [['id']],
+            newer_than_field: 'updated',
+            json_schema: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+                updated: { type: 'integer' },
+              },
+            },
+          },
+          sync_mode: 'full_refresh',
+          destination_sync_mode: 'append',
+        },
+      ],
+    }
+  }
+
+  it('rejects a stale update (incoming updated < existing)', async () => {
+    const { sheets, getData, getSpreadsheetIds } = createMemorySheets()
+    const dest = createDestination(sheets)
+    const cat = catalogWithNewerThan()
+
+    await collect(
+      dest.write(
+        { config: cfg(), catalog: cat },
+        toAsyncIter([record('customers', { id: 'cus_1', name: 'Alice v2', updated: 200 })])
+      )
+    )
+
+    await collect(
+      dest.write(
+        { config: cfg({ spreadsheet_id: getSpreadsheetIds()[0] }), catalog: cat },
+        toAsyncIter([record('customers', { id: 'cus_1', name: 'Alice v1 (stale)', updated: 100 })])
+      )
+    )
+
+    const rows = getData(getSpreadsheetIds()[0], 'customers')!
+    expect(rows[1]?.[1]).toBe('Alice v2') // name unchanged — stale write rejected
+    expect(rows[1]?.[2]).toBe('200') // updated unchanged
+  })
+
+  it('applies a newer update (incoming updated > existing)', async () => {
+    const { sheets, getData, getSpreadsheetIds } = createMemorySheets()
+    const dest = createDestination(sheets)
+    const cat = catalogWithNewerThan()
+
+    await collect(
+      dest.write(
+        { config: cfg(), catalog: cat },
+        toAsyncIter([record('customers', { id: 'cus_1', name: 'Alice v1', updated: 100 })])
+      )
+    )
+
+    await collect(
+      dest.write(
+        { config: cfg({ spreadsheet_id: getSpreadsheetIds()[0] }), catalog: cat },
+        toAsyncIter([record('customers', { id: 'cus_1', name: 'Alice v2', updated: 200 })])
+      )
+    )
+
+    const rows = getData(getSpreadsheetIds()[0], 'customers')!
+    expect(rows[1]?.[1]).toBe('Alice v2') // name updated
+    expect(rows[1]?.[2]).toBe('200') // updated updated
+  })
+
+  it('rejects equal timestamp — treated as stale for idempotency', async () => {
+    const { sheets, getData, getSpreadsheetIds } = createMemorySheets()
+    const dest = createDestination(sheets)
+    const cat = catalogWithNewerThan()
+
+    await collect(
+      dest.write(
+        { config: cfg(), catalog: cat },
+        toAsyncIter([record('customers', { id: 'cus_1', name: 'Alice', updated: 100 })])
+      )
+    )
+
+    await collect(
+      dest.write(
+        { config: cfg({ spreadsheet_id: getSpreadsheetIds()[0] }), catalog: cat },
+        toAsyncIter([record('customers', { id: 'cus_1', name: 'Alice again', updated: 100 })])
+      )
+    )
+
+    const rows = getData(getSpreadsheetIds()[0], 'customers')!
+    expect(rows[1]?.[1]).toBe('Alice') // name unchanged — equal timestamp not newer
+  })
+
+  it('without newer_than_field — stale-looking write still overwrites', async () => {
+    const { sheets, getData, getSpreadsheetIds } = createMemorySheets()
+    const dest = createDestination(sheets)
+    const cat: ConfiguredCatalog = {
+      streams: [
+        {
+          stream: { name: 'customers', primary_key: [['id']] },
+          sync_mode: 'full_refresh',
+          destination_sync_mode: 'append',
+        },
+      ],
+    }
+
+    await collect(
+      dest.write(
+        { config: cfg(), catalog: cat },
+        toAsyncIter([record('customers', { id: 'cus_1', name: 'Alice v2', updated: 200 })])
+      )
+    )
+
+    await collect(
+      dest.write(
+        { config: cfg({ spreadsheet_id: getSpreadsheetIds()[0] }), catalog: cat },
+        toAsyncIter([record('customers', { id: 'cus_1', name: 'Alice v1', updated: 100 })])
+      )
+    )
+
+    const rows = getData(getSpreadsheetIds()[0], 'customers')!
+    expect(rows[1]?.[1]).toBe('Alice v1') // overwritten — no staleness guard
+  })
+
+  it('new key alongside stale — stale skipped, new row appended', async () => {
+    const { sheets, getData, getSpreadsheetIds } = createMemorySheets()
+    const dest = createDestination(sheets)
+    const cat = catalogWithNewerThan()
+
+    await collect(
+      dest.write(
+        { config: cfg(), catalog: cat },
+        toAsyncIter([record('customers', { id: 'cus_1', name: 'Alice', updated: 200 })])
+      )
+    )
+
+    await collect(
+      dest.write(
+        { config: cfg({ spreadsheet_id: getSpreadsheetIds()[0] }), catalog: cat },
+        toAsyncIter([
+          record('customers', { id: 'cus_1', name: 'Alice stale', updated: 100 }),
+          record('customers', { id: 'cus_2', name: 'Bob', updated: 300 }),
+        ])
+      )
+    )
+
+    const rows = getData(getSpreadsheetIds()[0], 'customers')!
+    expect(rows).toHaveLength(3) // header + cus_1 (unchanged) + cus_2 (new)
+    expect(rows[1]?.[1]).toBe('Alice') // cus_1 unchanged
+    expect(rows[2]?.[1]).toBe('Bob') // cus_2 appended
+  })
+})
+
 describe('envVars', () => {
   it('exports env var mapping', () => {
     expect(envVars.client_id).toBe('GOOGLE_CLIENT_ID')
