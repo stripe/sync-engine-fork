@@ -362,6 +362,7 @@ async function* paginateSequential(opts: {
       if (supportsForwardPagination && supportsLimit) nextParams.limit = 100
       if (supportsForwardPagination) nextParams.starting_after = nextCursor
       prefetchedResponse = listFn(nextParams as Parameters<typeof listFn>[0])
+      prefetchedResponse.catch(() => {})
     }
 
     log.trace({
