@@ -20,8 +20,8 @@ jobs:
       matrix:
         include:
           - env: prod
-            api_key: GOLDI_LIVE_KEY
-            api_base: ''
+            api_key: STRIPE_SK_GOLDILOCKS_PROD
+            api_base: https://api.stripe.com
           - env: qa
             api_key: STRIPE_SK_GOLDILOCKS_QA
             api_base: https://qa-api.stripe.com
@@ -50,13 +50,8 @@ jobs:
       - name: Create Stripe database
         id: create-db
         run: |
-          STRIPE_FLAGS="--live"
-          if [ -n "${{ matrix.api_base }}" ]; then
-            STRIPE_FLAGS="$STRIPE_FLAGS --api-base ${{ matrix.api_base }}"
-          fi
-
           echo "Creating Stripe database..."
-          RESULT=$(stripe databases create $STRIPE_FLAGS)
+          RESULT=$(stripe databases create --live --api-base ${{ matrix.api_base }})
 
           DB_ID=$(echo "$RESULT" | grep -oE 'db_[A-Za-z0-9]+' | head -1)
           DB_STRING=$(echo "$RESULT" | grep -oE 'postgresql://[^[:space:]]+')
@@ -106,9 +101,5 @@ jobs:
       - name: Delete Stripe database
         if: always() && steps.create-db.outputs.db_id
         run: |
-          STRIPE_FLAGS=""
-          if [ -n "${{ matrix.api_base }}" ]; then
-            STRIPE_FLAGS="--api-base ${{ matrix.api_base }}"
-          fi
           echo "Deleting database ${{ steps.create-db.outputs.db_id }}..."
-          stripe databases delete ${{ steps.create-db.outputs.db_id }} --yes $STRIPE_FLAGS
+          stripe databases delete ${{ steps.create-db.outputs.db_id }} --yes --api-base ${{ matrix.api_base }}

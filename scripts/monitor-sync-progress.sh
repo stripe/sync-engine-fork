@@ -7,10 +7,7 @@ set -euo pipefail
 : "${DB_STRING:?DB_STRING is required}"
 : "${DB_ID:?DB_ID is required}"
 
-STRIPE_FLAGS=""
-if [ -n "${STRIPE_API_BASE:-}" ]; then
-  STRIPE_FLAGS="--api-base $STRIPE_API_BASE"
-fi
+STRIPE_FLAGS="--api-base ${STRIPE_API_BASE:?STRIPE_API_BASE is required}"
 
 POLL_INTERVAL=15
 MAX_POLLS=240
