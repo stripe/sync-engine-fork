@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# Each matrix leg gets its own concurrency slot so runs don't cancel each other.
+concurrency:
+  group: e2e-monitor-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
 jobs:
   monitor:
     name: E2E — ${{ matrix.env }}
