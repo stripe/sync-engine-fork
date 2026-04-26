@@ -85,7 +85,11 @@ beforeEach(() => {
 describe('protocol schemas', () => {
   describe('Stream', () => {
     it('parses a valid stream', () => {
-      const result = Stream.parse({ name: 'customers', primary_key: [['id']] })
+      const result = Stream.parse({
+        name: 'customers',
+        primary_key: [['id']],
+        newer_than_field: '_updated_at',
+      })
       expect(result).toEqual({
         name: 'customers',
         primary_key: [['id']],
@@ -97,6 +101,7 @@ describe('protocol schemas', () => {
       const result = Stream.parse({
         name: 'users',
         primary_key: [['id']],
+        newer_than_field: '_updated_at',
         json_schema: { type: 'object' },
         metadata: { account_id: 'acct_123' },
       })
@@ -105,18 +110,20 @@ describe('protocol schemas', () => {
     })
 
     it('rejects missing name', () => {
-      expect(() => Stream.parse({ primary_key: [['id']] })).toThrow()
+      expect(() =>
+        Stream.parse({ primary_key: [['id']], newer_than_field: '_updated_at' })
+      ).toThrow()
     })
 
     it('rejects missing primary_key', () => {
-      expect(() => Stream.parse({ name: 'test' })).toThrow()
+      expect(() => Stream.parse({ name: 'test', newer_than_field: '_updated_at' })).toThrow()
     })
   })
 
   describe('ConfiguredStream', () => {
     it('parses a valid configured stream', () => {
       const result = ConfiguredStream.parse({
-        stream: { name: 'customers', primary_key: [['id']] },
+        stream: { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
         sync_mode: 'incremental',
         destination_sync_mode: 'append_dedup',
         cursor_field: ['updated_at'],
@@ -128,7 +135,7 @@ describe('protocol schemas', () => {
     it('rejects invalid sync_mode', () => {
       expect(() =>
         ConfiguredStream.parse({
-          stream: { name: 'test', primary_key: [['id']] },
+          stream: { name: 'test', primary_key: [['id']], newer_than_field: '_updated_at' },
           sync_mode: 'invalid',
           destination_sync_mode: 'append',
         })
@@ -141,7 +148,7 @@ describe('protocol schemas', () => {
       const result = ConfiguredCatalog.parse({
         streams: [
           {
-            stream: { name: 'customers', primary_key: [['id']] },
+            stream: { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
             sync_mode: 'full_refresh',
             destination_sync_mode: 'overwrite',
           },
@@ -216,7 +223,7 @@ describe('protocol schemas', () => {
       const msg = CatalogMessage.parse({
         type: 'catalog',
         catalog: {
-          streams: [{ name: 'users', primary_key: [['id']] }],
+          streams: [{ name: 'users', primary_key: [['id']], newer_than_field: '_updated_at' }],
         },
       })
       expect(msg.catalog.streams).toHaveLength(1)
@@ -261,7 +268,12 @@ describe('protocol schemas', () => {
           record: { stream: 's', data: {}, emitted_at: '2024-01-01T00:00:00.000Z' },
         },
         { type: 'source_state', source_state: { stream: 's', data: null } },
-        { type: 'catalog', catalog: { streams: [{ name: 's', primary_key: [['id']] }] } },
+        {
+          type: 'catalog',
+          catalog: {
+            streams: [{ name: 's', primary_key: [['id']], newer_than_field: '_updated_at' }],
+          },
+        },
         { type: 'log', log: { level: 'info', message: 'hi' } },
         {
           type: 'connection_status',
@@ -514,7 +526,9 @@ describe('engine message validation', () => {
         yield {
           type: 'catalog',
           catalog: {
-            streams: [{ name: 'customers', primary_key: [['id']] }],
+            streams: [
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+            ],
           },
         }
       },
@@ -624,7 +638,9 @@ describe('engine stream membership validation', () => {
         yield {
           type: 'catalog',
           catalog: {
-            streams: [{ name: 'customers', primary_key: [['id']] }],
+            streams: [
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+            ],
           },
         }
       },
@@ -687,7 +703,11 @@ describe('engine.pipeline_sync() pipeline', () => {
       async *discover() {
         yield {
           type: 'catalog',
-          catalog: { streams: [{ name: 'customers', primary_key: [['id']] }] },
+          catalog: {
+            streams: [
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+            ],
+          },
         }
       },
       async *read(params) {
@@ -737,7 +757,11 @@ describe('engine.pipeline_sync() pipeline', () => {
       async *discover() {
         yield {
           type: 'catalog',
-          catalog: { streams: [{ name: 'customers', primary_key: [['id']] }] },
+          catalog: {
+            streams: [
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+            ],
+          },
         }
       },
       async *read(params) {
@@ -787,7 +811,11 @@ describe('engine.pipeline_sync() pipeline', () => {
       async *discover() {
         yield {
           type: 'catalog',
-          catalog: { streams: [{ name: 'customers', primary_key: [['id']] }] },
+          catalog: {
+            streams: [
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+            ],
+          },
         }
       },
       async *read(params) {
@@ -834,7 +862,11 @@ describe('engine.pipeline_sync() pipeline', () => {
       async *discover() {
         yield {
           type: 'catalog',
-          catalog: { streams: [{ name: 'customers', primary_key: [['id']] }] },
+          catalog: {
+            streams: [
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+            ],
+          },
         }
       },
       async *read() {
@@ -888,7 +920,11 @@ describe('engine.pipeline_sync() pipeline', () => {
       async *discover() {
         yield {
           type: 'catalog',
-          catalog: { streams: [{ name: 'customers', primary_key: [['id']] }] },
+          catalog: {
+            streams: [
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+            ],
+          },
         }
       },
       async *read() {
@@ -940,9 +976,9 @@ describe('engine.pipeline_sync() pipeline', () => {
           type: 'catalog',
           catalog: {
             streams: [
-              { name: 'customers', primary_key: [['id']] },
-              { name: 'charges', primary_key: [['id']] },
-              { name: 'invoices', primary_key: [['id']] },
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+              { name: 'charges', primary_key: [['id']], newer_than_field: '_updated_at' },
+              { name: 'invoices', primary_key: [['id']], newer_than_field: '_updated_at' },
             ],
           },
         }
@@ -1032,8 +1068,8 @@ describe('engine.pipeline_sync() pipeline', () => {
           type: 'catalog',
           catalog: {
             streams: [
-              { name: 'customers', primary_key: [['id']] },
-              { name: 'charges', primary_key: [['id']] },
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+              { name: 'charges', primary_key: [['id']], newer_than_field: '_updated_at' },
             ],
           },
         }
@@ -1114,8 +1150,8 @@ describe('engine.pipeline_sync() pipeline', () => {
           type: 'catalog',
           catalog: {
             streams: [
-              { name: 'customers', primary_key: [['id']] },
-              { name: 'charges', primary_key: [['id']] },
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+              { name: 'charges', primary_key: [['id']], newer_than_field: '_updated_at' },
             ],
           },
         }
@@ -1209,8 +1245,8 @@ describe('engine.pipeline_sync() pipeline', () => {
           type: 'catalog',
           catalog: {
             streams: [
-              { name: 'customers', primary_key: [['id']] },
-              { name: 'invoices', primary_key: [['id']] },
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+              { name: 'invoices', primary_key: [['id']], newer_than_field: '_updated_at' },
             ],
           },
         }
@@ -1295,7 +1331,11 @@ describe('engine.pipeline_sync() pipeline', () => {
       async *discover() {
         yield {
           type: 'catalog',
-          catalog: { streams: [{ name: 'customers', primary_key: [['id']] }] },
+          catalog: {
+            streams: [
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+            ],
+          },
         }
       },
       async *read() {},
@@ -1341,7 +1381,11 @@ describe('engine.pipeline_sync() pipeline', () => {
       async *discover() {
         yield {
           type: 'catalog',
-          catalog: { streams: [{ name: 'customers', primary_key: [['id']] }] },
+          catalog: {
+            streams: [
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+            ],
+          },
         }
       },
       async *read() {
@@ -1413,8 +1457,8 @@ describe('engine.pipeline_sync() pipeline', () => {
           type: 'catalog',
           catalog: {
             streams: [
-              { name: 'customers', primary_key: [['id']] },
-              { name: 'products', primary_key: [['id']] },
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+              { name: 'products', primary_key: [['id']], newer_than_field: '_updated_at' },
             ],
           },
         }
@@ -1473,8 +1517,8 @@ describe('engine.pipeline_sync() pipeline', () => {
           type: 'catalog',
           catalog: {
             streams: [
-              { name: 'customers', primary_key: [['id']] },
-              { name: 'products', primary_key: [['id']] },
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+              { name: 'products', primary_key: [['id']], newer_than_field: '_updated_at' },
             ],
           },
         }
@@ -1643,7 +1687,9 @@ describe('engine.pipeline_sync() pipeline', () => {
         yield {
           type: 'catalog',
           catalog: {
-            streams: [{ name: 'customers', primary_key: [['id']] }],
+            streams: [
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+            ],
           },
         }
       },
@@ -1738,7 +1784,11 @@ describe('engine.pipeline_sync() graceful close', () => {
       async *discover() {
         yield {
           type: 'catalog',
-          catalog: { streams: [{ name: 'customers', primary_key: [['id']] }] },
+          catalog: {
+            streams: [
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+            ],
+          },
         } as CatalogMessage
       },
       async *read() {
@@ -1888,7 +1938,11 @@ describe('engine cancellation integration', () => {
       async *discover() {
         yield {
           type: 'catalog',
-          catalog: { streams: [{ name: 'customers', primary_key: [['id']] }] },
+          catalog: {
+            streams: [
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+            ],
+          },
         } as CatalogMessage
       },
       read() {
@@ -1968,7 +2022,11 @@ describe('engine cancellation integration', () => {
       async *discover() {
         yield {
           type: 'catalog',
-          catalog: { streams: [{ name: 'customers', primary_key: [['id']] }] },
+          catalog: {
+            streams: [
+              { name: 'customers', primary_key: [['id']], newer_than_field: '_updated_at' },
+            ],
+          },
         } as CatalogMessage
       },
       read() {
@@ -2091,7 +2149,9 @@ describe('engine cancellation integration', () => {
 
 describe('withTimeRanges', () => {
   function mkCatalog(streamNames: string[]) {
-    return buildCatalog(streamNames.map((name) => ({ name, primary_key: [['id']] })))
+    return buildCatalog(
+      streamNames.map((name) => ({ name, primary_key: [['id']], newer_than_field: '_updated_at' }))
+    )
   }
 
   it('returns same catalog when timeCeiling is undefined', () => {
@@ -2191,7 +2251,7 @@ describe('engine.pipeline_setup() timeout', () => {
         yield {
           type: 'catalog',
           catalog: {
-            streams: [{ name: 'items', primary_key: [['id']] }],
+            streams: [{ name: 'items', primary_key: [['id']], newer_than_field: '_updated_at' }],
           },
         }
       },

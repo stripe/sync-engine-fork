@@ -209,14 +209,16 @@ export async function* processStripeEvent(
   })
 
   // 7. Yield subscription items if applicable.
-  // Reuse the parent's `newer_than_field` since subscription_items may not be in the catalog.
   if (objectType === 'subscriptions' && (data as { items?: { data?: unknown[] } }).items?.data) {
+    const subscriptionItemsNewerThanField =
+      catalog.streams.find((cs) => cs.stream.name === 'subscription_items')?.stream
+        .newer_than_field ?? newerThanField(resourceConfig.tableName)
     for (const item of (data as { items: { data: Record<string, unknown>[] } }).items.data) {
       yield msg.record({
         stream: 'subscription_items',
         data: {
           ...item,
-          [newerThanField(resourceConfig.tableName)]: _updated_at,
+          [subscriptionItemsNewerThanField]: _updated_at,
           ...(accountId ? { _account_id: accountId } : {}),
         },
         emitted_at: new Date().toISOString(),
