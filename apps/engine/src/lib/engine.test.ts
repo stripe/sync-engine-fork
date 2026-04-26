@@ -86,7 +86,11 @@ describe('protocol schemas', () => {
   describe('Stream', () => {
     it('parses a valid stream', () => {
       const result = Stream.parse({ name: 'customers', primary_key: [['id']] })
-      expect(result).toEqual({ name: 'customers', primary_key: [['id']] })
+      expect(result).toEqual({
+        name: 'customers',
+        primary_key: [['id']],
+        newer_than_field: '_updated_at',
+      })
     })
 
     it('parses with optional fields', () => {

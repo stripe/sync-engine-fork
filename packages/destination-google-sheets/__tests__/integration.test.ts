@@ -168,6 +168,7 @@ describeWithEnv(
             stream: {
               name: streamName,
               primary_key: [['id']],
+              newer_than_field: '_updated_at',
               json_schema: {
                 type: 'object',
                 properties: {

@@ -295,7 +295,13 @@ async function fetchPageForRange(opts: {
 
   range.cursor = hasMore ? nextCursor : null
 
-  return { range, data: response.data as Record<string, unknown>[], hasMore, lastObserved }
+  return {
+    range,
+    data: response.data as Record<string, unknown>[],
+    hasMore,
+    lastObserved,
+    responseAt: response.responseAt,
+  }
 }
 
 // MARK: - Sequential pagination (no subdivision)
@@ -309,6 +315,7 @@ async function* paginateSequential(opts: {
   accountedRange: { gte: string; lt: string }
   listFn: ListFn
   streamName: string
+  newerThanField: string
   accountId: string
   supportsLimit: boolean
   supportsForwardPagination: boolean
@@ -322,6 +329,7 @@ async function* paginateSequential(opts: {
     accountedRange,
     listFn,
     streamName,
+    newerThanField,
     accountId,
     supportsLimit,
     supportsForwardPagination,
@@ -345,6 +353,8 @@ async function* paginateSequential(opts: {
     const response = prefetchedResponse
       ? await prefetchedResponse
       : await listFn(params as Parameters<typeof listFn>[0])
+    // Use Stripe's HTTP Date as the per-page fallback timestamp, then local now().
+    const responseAt = response.responseAt
     prefetchedResponse = null
     totalApiCalls.count++
 
@@ -376,9 +386,15 @@ async function* paginateSequential(opts: {
     })
 
     for (const item of response.data) {
+      const record = item as Record<string, unknown>
+      const _updated_at = typeof record.updated === 'number' ? record.updated : responseAt
       yield msg.record({
         stream: streamName,
-        data: { ...(item as Record<string, unknown>), _account_id: accountId },
+        data: {
+          ...record,
+          [newerThanField]: _updated_at,
+          _account_id: accountId,
+        },
         emitted_at: new Date().toISOString(),
       })
       totalEmitted.count++
@@ -411,6 +427,8 @@ async function* paginateSequential(opts: {
 
 async function* iterateStream(opts: {
   streamName: string
+  /** Catalog-declared staleness column (cs.stream.newer_than_field). */
+  newerThanField: string
   timeRange: { gte: string; lt: string }
   streamState: StreamState | undefined
   resourceConfig: ResourceConfig & { listFn: ListFn }
@@ -423,6 +441,7 @@ async function* iterateStream(opts: {
 }): AsyncGenerator<Message> {
   const {
     streamName,
+    newerThanField,
     timeRange,
     resourceConfig,
     accountId,
@@ -509,10 +528,18 @@ async function* iterateStream(opts: {
 
       if (drainQueue) yield* drainQueue()
 
+      // Use Stripe's HTTP Date as the per-page fallback timestamp,
+      // then local now().
+      const responseAt = event.responseAt
       for (const item of event.data) {
+        const _updated_at = typeof item.updated === 'number' ? item.updated : responseAt
         yield msg.record({
           stream: streamName,
-          data: { ...item, _account_id: accountId },
+          data: {
+            ...item,
+            [newerThanField]: _updated_at,
+            _account_id: accountId,
+          },
           emitted_at: new Date().toISOString(),
         })
         totalEmitted.count++
@@ -558,6 +585,7 @@ async function* iterateStream(opts: {
       accountedRange,
       listFn: rateLimitedListFn,
       streamName,
+      newerThanField,
       accountId,
       supportsLimit,
       supportsForwardPagination,
@@ -596,7 +624,7 @@ async function* iterateStream(opts: {
 export async function* listApiBackfill(opts: {
   catalog: {
     streams: Array<{
-      stream: { name: string }
+      stream: { name: string; newer_than_field: string }
       backfill_limit?: number | undefined
       time_range?: { gte?: string; lt?: string } | undefined
     }>
@@ -670,6 +698,7 @@ export async function* listApiBackfill(opts: {
         try {
           yield* iterateStream({
             streamName: stream.name,
+            newerThanField: stream.newer_than_field,
             timeRange,
             streamState,
             resourceConfig: { ...resourceConfig, listFn: resourceConfig.listFn! },

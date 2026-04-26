@@ -58,7 +58,7 @@ export const Stream = z
 
     newer_than_field: z
       .string()
-      .optional()
+      .default('_updated_at')
       .describe(
         'Field whose value increases monotonically. Destination uses it to skip stale writes (e.g. "updated").'
       ),

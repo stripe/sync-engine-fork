@@ -42,10 +42,17 @@ function isDeleteEvent(event: StripeEvent): boolean {
  *
  * This is the building block for live mode. The orchestrator/webhook server
  * pushes events in; this method converts them to protocol messages.
+ *
+ * `newerThanField` is the catalog-declared staleness column for the stream
+ * (see catalog.ts). The record gets stamped with a unix-seconds timestamp
+ * on this column so destinations can gate out-of-order writes: the
+ * record's native `.updated` field is preferred when present, falling
+ * back to `event.created` otherwise (see {@link pickRecordTimestamp}).
  */
 export function fromStripeEvent(
   event: StripeEvent,
   registry: Record<string, ResourceConfig>,
+  newerThanField: string,
   accountId?: string
 ): { record: RecordMessage; state: SourceStateMessage } | null {
   const dataObject = event.data?.object as unknown as
@@ -59,10 +66,14 @@ export function fromStripeEvent(
 
   // Skip objects without an id (preview/draft objects like invoice.upcoming)
   if (!dataObject.id) return null
-
-  const data = accountId
-    ? { ...(dataObject as Record<string, unknown>), _account_id: accountId }
-    : (dataObject as Record<string, unknown>)
+  const updated = dataObject.updated
+  const _updated_at = typeof updated === 'number' ? updated : event.created
+  const baseData = dataObject as Record<string, unknown>
+  const data: Record<string, unknown> = {
+    ...baseData,
+    [newerThanField]: _updated_at,
+    ...(accountId ? { _account_id: accountId } : {}),
+  }
   const record = msg.record({
     stream: config.tableName,
     data,
@@ -104,6 +115,9 @@ export async function* processStripeEvent(
     | undefined
   if (!dataObject?.object) return
 
+  const newerThanField = (streamName: string) =>
+    catalog.streams.find((cs) => cs.stream.name === streamName)!.stream.newer_than_field
+
   // 2. Entitlements special case — the summary object type doesn't map to a
   //    registry entry, so we must handle it before the registry lookup.
   if (event.type === 'entitlements.active_entitlement_summary.updated') {
@@ -117,6 +131,7 @@ export async function* processStripeEvent(
           feature: string | { id: string }
           livemode: boolean
           lookup_key: string
+          updated?: number
         }>
       }
     }
@@ -131,6 +146,8 @@ export async function* processStripeEvent(
           customer: summary.customer,
           livemode: e.livemode,
           lookup_key: e.lookup_key,
+          [newerThanField('active_entitlements')]:
+            typeof e.updated === 'number' ? e.updated : event.created,
           ...(accountId ? { _account_id: accountId } : {}),
         },
       })
@@ -150,6 +167,8 @@ export async function* processStripeEvent(
   if (!dataObject.id) return // skip preview/draft objects
   if (!streamNames.has(resourceConfig.tableName)) return
 
+  const _updated_at = typeof dataObject.updated === 'number' ? dataObject.updated : event.created
+
   // 4. Delete events — yield record with deleted: true
   if (isDeleteEvent(event)) {
     yield msg.record({
@@ -158,6 +177,7 @@ export async function* processStripeEvent(
       data: {
         ...dataObject,
         deleted: true,
+        [newerThanField(resourceConfig.tableName)]: _updated_at,
         ...(accountId ? { _account_id: accountId } : {}),
       },
     })
@@ -180,19 +200,28 @@ export async function* processStripeEvent(
   }
 
   // 6. Yield main record
-  const recordData = accountId ? { ...data, _account_id: accountId } : data
+  const recordData: Record<string, unknown> = {
+    ...data,
+    [newerThanField(resourceConfig.tableName)]: _updated_at,
+    ...(accountId ? { _account_id: accountId } : {}),
+  }
   yield msg.record({
     stream: resourceConfig.tableName,
     data: recordData,
     emitted_at: new Date().toISOString(),
   })
 
-  // 7. Yield subscription items if applicable
+  // 7. Yield subscription items if applicable.
+  // Reuse the parent's `newer_than_field` since subscription_items may not be in the catalog.
   if (objectType === 'subscriptions' && (data as { items?: { data?: unknown[] } }).items?.data) {
     for (const item of (data as { items: { data: Record<string, unknown>[] } }).items.data) {
       yield msg.record({
         stream: 'subscription_items',
-        data: accountId ? { ...item, _account_id: accountId } : item,
+        data: {
+          ...item,
+          [newerThanField(resourceConfig.tableName)]: _updated_at,
+          ...(accountId ? { _account_id: accountId } : {}),
+        },
         emitted_at: new Date().toISOString(),
       })
     }
