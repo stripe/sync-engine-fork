@@ -87,8 +87,13 @@ describe('Engine OpenAPI spec', () => {
     for (const path of ['/pipeline_read', '/pipeline_sync']) {
       const op = (spec.paths as Record<string, any>)[path]?.post
       expect(op, `${path} should exist`).toBeDefined()
-      const body = op.requestBody?.content?.['application/json']?.schema
-      expect(body, `${path} should have JSON body`).toBeDefined()
+      const bodySchema = op.requestBody?.content?.['application/json']?.schema
+      expect(bodySchema, `${path} should have JSON body schema`).toBeDefined()
+      // state field should $ref SyncState
+      const stateField = bodySchema?.properties?.state
+      expect(stateField, `${path} state should reference SyncState`).toMatchObject({
+        $ref: '#/components/schemas/SyncState',
+      })
     }
     // SyncState should still be a named component
     expect(spec.components.schemas).toHaveProperty('SyncState')
