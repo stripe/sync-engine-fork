@@ -566,7 +566,9 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
 
           const isContinuation = opts?.run_id != null && p.state?.sync_run.run_id === opts.run_id
           const activeFilteredCatalog = isContinuation
-            ? excludeTerminalStreams(p.filteredCatalog, p.state?.sync_run.progress)
+            ? excludeTerminalStreams(p.filteredCatalog, p.state?.sync_run.progress, {
+                keepCompleted: true,
+              })
             : p.filteredCatalog
 
           // Run reducer first so time_ceiling is correct for a new run_id.
@@ -580,7 +582,9 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
 
           const catalogWithRanges = withTimeRanges(p.catalog, syncState.sync_run.time_ceiling)
           const activeCatalog = isContinuation
-            ? excludeTerminalStreams(catalogWithRanges, p.state?.sync_run.progress)
+            ? excludeTerminalStreams(catalogWithRanges, p.state?.sync_run.progress, {
+                keepCompleted: true,
+              })
             : catalogWithRanges
 
           // Source → destination pipeline. The destination is the sole consumer,

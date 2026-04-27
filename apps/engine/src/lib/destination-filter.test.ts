@@ -142,4 +142,28 @@ describe('excludeTerminalStreams()', () => {
 
     expect(filtered.streams.map((stream) => stream.stream.name)).toEqual(['customers', 'charges'])
   })
+
+  it('keeps completed streams when keepCompleted is true (for live-event routing)', () => {
+    const catalog = makeCatalog([
+      { name: 'customers' },
+      { name: 'charges' },
+      { name: 'invoices' },
+      { name: 'products' },
+    ])
+
+    const filtered = excludeTerminalStreams(
+      catalog,
+      {
+        streams: {
+          customers: { status: 'completed', state_count: 0, record_count: 0 },
+          charges: { status: 'skipped', state_count: 0, record_count: 0 },
+          invoices: { status: 'errored', state_count: 0, record_count: 0 },
+          products: { status: 'started', state_count: 0, record_count: 0 },
+        },
+      },
+      { keepCompleted: true }
+    )
+
+    expect(filtered.streams.map((stream) => stream.stream.name)).toEqual(['customers', 'products'])
+  })
 })

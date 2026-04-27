@@ -962,7 +962,7 @@ describe('engine.pipeline_sync() pipeline', () => {
     expect(eof.eof.ending_state?.sync_run.progress?.elapsed_ms).toBeGreaterThan(5000)
   })
 
-  it('skips previously terminal streams on same-run continuation', async () => {
+  it('skips skipped/errored streams but keeps completed streams on same-run continuation', async () => {
     let receivedCatalogNames: string[] = []
     const source: Source = {
       async *spec() {
@@ -1041,9 +1041,10 @@ describe('engine.pipeline_sync() pipeline', () => {
     )
 
     const eof = output.find((m) => m.type === 'eof')!
-    expect(receivedCatalogNames).toEqual(['customers'])
+    expect(receivedCatalogNames).toEqual(['customers', 'invoices'])
     expect(eof.eof.request_progress?.streams).toEqual({
       customers: expect.objectContaining({ status: 'completed' }),
+      invoices: expect.objectContaining({ status: 'completed' }),
     })
     expect(eof.eof.ending_state?.sync_run.progress?.streams.charges).toEqual(
       expect.objectContaining({ status: 'skipped', message: 'not available' })

@@ -31,19 +31,29 @@ export function applySelection(catalog: ConfiguredCatalog): ConfiguredCatalog {
   }
 }
 
-/** Exclude streams that already reached a terminal state in prior run progress. */
+/**
+ * Exclude streams that already reached a terminal state in prior run progress.
+ *
+ * When `keepCompleted` is true, only errored/skipped streams are excluded —
+ * completed streams stay in the catalog. This is load-bearing for live-event
+ * sources (webhooks, websocket): completed means "backfill done", not "stop
+ * routing events", so live events must continue to reach the stream. Source
+ * backfill implementations short-circuit completed streams via state
+ * (e.g. `remaining: []`), so there's no cost to keeping them in the catalog.
+ */
 export function excludeTerminalStreams(
   catalog: ConfiguredCatalog,
-  progress?: Pick<ProgressPayload, 'streams'>
+  progress?: Pick<ProgressPayload, 'streams'>,
+  opts?: { keepCompleted?: boolean }
 ): ConfiguredCatalog {
+  const keepCompleted = opts?.keepCompleted ?? false
   const terminalStreams = new Set(
     Object.entries(progress?.streams ?? {})
-      .filter(
-        ([, stream]) =>
-          stream.status === 'completed' ||
-          stream.status === 'skipped' ||
-          stream.status === 'errored'
-      )
+      .filter(([, stream]) => {
+        if (stream.status === 'skipped' || stream.status === 'errored') return true
+        if (stream.status === 'completed') return !keepCompleted
+        return false
+      })
       .map(([name]) => name)
   )
 
