@@ -238,6 +238,7 @@ const destination = {
             buildCreateTableDDL(config.schema, cs.stream.name, cs.stream.json_schema ?? {}, {
               system_columns: cs.system_columns,
               primary_key: cs.stream.primary_key,
+              allowed_account_ids: catalog.allowed_account_ids,
             })
           )
         })

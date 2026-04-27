@@ -529,6 +529,72 @@ describe('upsertMany standalone', () => {
   })
 })
 
+describe('schema-driven CHECK constraints', () => {
+  function catalogWith(allowedAccountIds: string[]): ConfiguredCatalog {
+    return {
+      streams: [
+        {
+          stream: {
+            name: 'charges',
+            primary_key: [['id'], ['_account_id']],
+            json_schema: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                _account_id: { type: 'string' },
+              },
+            },
+          },
+          sync_mode: 'full_refresh',
+          destination_sync_mode: 'overwrite',
+        },
+      ],
+      allowed_account_ids: allowedAccountIds,
+    }
+  }
+
+  async function constraintDefs(): Promise<string[]> {
+    const { rows } = await pool.query(
+      `SELECT pg_get_constraintdef(c.oid) AS def
+       FROM pg_constraint c
+       JOIN pg_class t ON t.oid = c.conrelid
+       JOIN pg_namespace n ON n.oid = t.relnamespace
+       WHERE n.nspname = $1 AND t.relname = $2 AND c.contype = 'c'`,
+      [SCHEMA, 'charges']
+    )
+    return rows.map((r) => r.def as string)
+  }
+
+  it('enforces multi-account allow-list and replaces changed predicates', async () => {
+    await drain(
+      destination.setup!({
+        config: makeConfig(),
+        catalog: catalogWith(['acct_a', 'acct_b']),
+      })
+    )
+    await expect(
+      pool.query(
+        `INSERT INTO "${SCHEMA}".charges (_raw_data) VALUES ('{"id":"x","_account_id":"acct_other"}'::jsonb)`
+      )
+    ).rejects.toMatchObject({ code: '23514' })
+    await expect(
+      pool.query(`INSERT INTO "${SCHEMA}".charges (_raw_data) VALUES ('{"id":"missing"}'::jsonb)`)
+    ).rejects.toMatchObject({ code: '23502' })
+    await pool.query(
+      `INSERT INTO "${SCHEMA}".charges (_raw_data) VALUES ('{"id":"a","_account_id":"acct_a"}'::jsonb)`
+    )
+
+    await drain(destination.setup!({ config: makeConfig(), catalog: catalogWith(['acct_a']) }))
+    await drain(destination.setup!({ config: makeConfig(), catalog: catalogWith(['acct_a']) }))
+    expect(await constraintDefs()).toEqual([expect.stringContaining(`'acct_a'`)])
+    await expect(
+      pool.query(
+        `INSERT INTO "${SCHEMA}".charges (_raw_data) VALUES ('{"id":"b","_account_id":"acct_b"}'::jsonb)`
+      )
+    ).rejects.toMatchObject({ code: '23514' })
+  })
+})
+
 describe('architecture purity', () => {
   it('destination never imports from or references any source module', async () => {
     const fs = await import('fs')

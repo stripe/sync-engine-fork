@@ -176,7 +176,8 @@ export interface Engine {
  */
 export function buildCatalog(
   discovered: Stream[],
-  configStreams?: PipelineConfig['streams']
+  configStreams?: PipelineConfig['streams'],
+  allowedAccountIds?: string[]
 ): ConfiguredCatalog {
   let streams: ConfiguredStream[]
 
@@ -203,7 +204,7 @@ export function buildCatalog(
     }))
   }
 
-  return { streams }
+  return allowedAccountIds ? { streams, allowed_account_ids: allowedAccountIds } : { streams }
 }
 
 /** Extract the connector-specific config from a nested { type, [type]: payload } envelope. */
@@ -237,7 +238,11 @@ async function discoverCatalog(
   pipeline: PipelineConfig
 ): Promise<{ catalog: ConfiguredCatalog; filteredCatalog: ConfiguredCatalog }> {
   const catalogMsg = await collectFirst(engine.source_discover(pipeline.source), 'catalog')
-  const catalog = buildCatalog(catalogMsg.catalog.streams, pipeline.streams)
+  const catalog = buildCatalog(
+    catalogMsg.catalog.streams,
+    pipeline.streams,
+    catalogMsg.catalog.allowed_account_ids
+  )
   const filteredCatalog = applySelection(catalog)
   return { catalog, filteredCatalog }
 }

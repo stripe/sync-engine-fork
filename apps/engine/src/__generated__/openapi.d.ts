@@ -342,6 +342,8 @@ export interface components {
                     /** @description Field in record data that signals a soft delete (e.g. "deleted"). Destination uses this to classify upserts as deletes when the field is truthy. */
                     soft_delete_field?: string;
                 }[];
+                /** @description Pipeline-wide allow-list of account IDs the source will produce. When present it must contain at least one account ID. Destinations may use this to enforce write-time tenancy constraints (e.g. Postgres CHECK on `_account_id`). */
+                allowed_account_ids?: string[];
             };
         };
         LogMessage: {
@@ -701,6 +703,8 @@ export interface components {
             account_id?: string;
             /** @description Stripe account creation timestamp in unix seconds (resolved from API if omitted) */
             account_created?: number;
+            /** @description Extra allowed Stripe account IDs */
+            additional_allowed_account_ids?: string[];
             /** @description Whether this is a live mode sync */
             livemode?: boolean;
             /** @enum {string} */

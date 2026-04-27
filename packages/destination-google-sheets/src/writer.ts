@@ -290,6 +290,8 @@ function parseUpdatedRows(updatedRange: string): { startRow: number; endRow: num
   }
 }
 
+const ALLOWED_ACCOUNT_IDS_MARKER = '__allowed_account_ids__'
+
 /**
  * Create or update an "Overview" intro tab at index 0.
  * Lists the synced streams and warns users not to edit data tabs.
@@ -298,7 +300,8 @@ export async function ensureIntroSheet(
   sheets: sheets_v4.Sheets,
   spreadsheetId: string,
   meta: SpreadsheetMeta,
-  streamNames: string[]
+  streamNames: string[],
+  allowedAccountIds?: string[]
 ): Promise<void> {
   const TITLE = 'Overview'
   const hasOverview = meta.sheets.some((s) => s.title === TITLE)
@@ -354,6 +357,14 @@ export async function ensureIntroSheet(
     ['⚠️  Do not edit data in the synced tabs. Changes will be overwritten on the next sync.'],
   ]
 
+  if (allowedAccountIds) {
+    rows.push(
+      [''],
+      [ALLOWED_ACCOUNT_IDS_MARKER],
+      ['Allowed account IDs', JSON.stringify(allowedAccountIds)]
+    )
+  }
+
   await withRetry(() =>
     sheets.spreadsheets.values.update({
       spreadsheetId,
@@ -362,6 +373,33 @@ export async function ensureIntroSheet(
       requestBody: { values: rows },
     })
   )
+}
+
+/**
+ * Read the pipeline-wide `_account_id` allow-list from the Overview sheet.
+ * Returns `undefined` when no allow-list has been written.
+ */
+export async function readAllowedValues(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string
+): Promise<Set<string> | undefined> {
+  const res = await sheets.spreadsheets.values
+    .get({ spreadsheetId, range: `'Overview'!A:B` })
+    .catch(() => undefined)
+  const values = (res?.data.values ?? []) as unknown[][]
+  const markerIdx = values.findIndex((r) => r?.[0] === ALLOWED_ACCOUNT_IDS_MARKER)
+  if (markerIdx < 0) return undefined
+  const row = values[markerIdx + 1] ?? []
+  const joined = typeof row[1] === 'string' ? row[1] : ''
+  try {
+    const parsed = JSON.parse(joined) as unknown
+    if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string') && parsed.length > 0) {
+      return new Set(parsed as string[])
+    }
+  } catch {
+    // ignore malformed payload
+  }
+  return undefined
 }
 
 /**

@@ -134,7 +134,7 @@ that destinations can rely on without per-resource branching.
    exemption.
 2. **Postgres column shape** (`destination-postgres/src/schemaProjection.ts`):
    `_updated_at` is a hardcoded non-generated `timestamptz NOT NULL
-   DEFAULT now()` column at the top of every table. This shape is kept
+DEFAULT now()` column at the top of every table. This shape is kept
    for backward compat: existing deployments need no column migration.
    `jsonSchemaToColumns` skips `_updated_at` so it's never also emitted
    as a generated column on top of the hardcoded one. The
@@ -170,3 +170,15 @@ that destinations can rely on without per-resource branching.
 - `_updated_at` is part of the published wire schema. Tools that
   consume the catalog (introspection, OpenAPI generation, custom
   destinations) see the field and can decide their own projection.
+
+## DDR-010: `_account_id` enforcement in destinations
+
+**Decision:** `CatalogPayload.allowed_account_ids: string[]` carries a pipeline-wide allow-list of account IDs from the source to destinations. Destinations translate it into native write-time constraints. Scoped to `_account_id` only — not a generic `const`/`enum` mechanism.
+
+**Rationale:** Defense-in-depth. Stamping `_account_id` on records is not enough — a bug could let one account's `_raw_data` land in another account's table. With a destination-side enforcement, the storage layer itself rejects the insert. Carrying the allow-list as a single top-level field on the catalog avoids the JSON Schema overlay / per-stream duplication / cache-clone complexity that an `enum`-based wire format would have introduced.
+
+**Mapping:** Postgres uses `CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN (…))`; existing tables use `DROP CONSTRAINT IF EXISTS … ADD CONSTRAINT … NOT VALID`. Google Sheets writes a single JSON-encoded `__allowed_account_ids__` row to the Overview sheet during `setup()` and validates `write()` against that read-back set.
+
+**Source side:** Stripe's `discover()` resolves the live account from the API key (verifying that any configured `account_id` matches), then publishes `[account.accountId, ...config.additional_allowed_account_ids]` as `catalog.allowed_account_ids`.
+
+See [docs/plans/2026-04-26-schema-const-enum-constraints.md](../plans/2026-04-26-schema-const-enum-constraints.md) for the rollout plan.

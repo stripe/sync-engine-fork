@@ -50,8 +50,29 @@ function makeApiFetch(signal?: AbortSignal): typeof globalThis.fetch {
     })
 }
 
-/** In-memory cache of discover results keyed by api_version. */
+/** In-memory cache of discover results. */
 export const discoverCache = new Map<string, CatalogPayload>()
+
+function deepFreeze<T>(obj: T, seen = new WeakSet<object>()): T {
+  if (obj === null || typeof obj !== 'object') {
+    return obj
+  }
+
+  if (seen.has(obj)) {
+    return obj
+  }
+  seen.add(obj)
+
+  for (const key of Reflect.ownKeys(obj)) {
+    deepFreeze((obj as Record<PropertyKey, unknown>)[key], seen)
+  }
+
+  return Object.freeze(obj)
+}
+
+function resolveAllowedAccountIds(accountId: string, config: Config): string[] {
+  return [...new Set([accountId, ...(config.additional_allowed_account_ids ?? [])])]
+}
 
 // MARK: - Spec
 
@@ -93,7 +114,7 @@ export const msg = createSourceMessageFactory<
 // MARK: - Account ID resolution
 
 export async function resolveAccountId(config: Config, client: StripeClient): Promise<string> {
-  return (await resolveAccountMetadata(config, client)).accountId
+  return (await resolveAccountMetadata(config, client, { forceFetch: true })).accountId
 }
 
 // MARK: - Source
@@ -128,19 +149,25 @@ export function createStripeSource(
       }
     },
 
-    // For the default api_version (bundled), discover is CPU-only — no HTTP.
-    // resolveOpenApiSpec serves the bundled spec from the filesystem, so the
-    // cost is SpecParser.parse + catalogFromOpenApi (pure computation). We
-    // cache the result in-memory keyed by api_version so that pipeline_sync
-    // (which calls discover twice — once in pipeline_read, once in
-    // pipeline_write) doesn't repeat the work.
+    // Discover resolves the Stripe account first so the catalog carries
+    // `allowed_account_ids` (consumed by destinations as a write-time tenancy
+    // constraint). The OpenAPI parse/catalog build is cached by api_version;
+    // the allow-list is stamped per call on a fresh shallow copy.
     // TODO: Custom objects (not yet supported) would require a more specific cache
     // since they aren't discoverable from the OpenAPI spec alone.
     async *discover({ config }): AsyncGenerator<DiscoverOutput> {
       const apiVersion = config.api_version ?? BUNDLED_API_VERSION
+      const cfg = { ...config, api_version: apiVersion }
+      const client = makeClient(cfg)
+      const account = await resolveAccountMetadata(cfg, client, { forceFetch: true })
+      const allowedAccountIds = resolveAllowedAccountIds(account.accountId, cfg)
+
       const cached = discoverCache.get(apiVersion)
       if (cached) {
-        yield { type: 'catalog' as const, catalog: cached }
+        yield {
+          type: 'catalog' as const,
+          catalog: { ...cached, allowed_account_ids: allowedAccountIds },
+        }
         return
       }
 
@@ -156,8 +183,12 @@ export function createStripeSource(
         resourceAliases: OPENAPI_RESOURCE_TABLE_ALIASES,
       })
       const catalog = catalogFromOpenApi(parsed.tables, registry)
-      discoverCache.set(apiVersion, catalog)
-      yield { type: 'catalog' as const, catalog }
+      const frozenCatalog = deepFreeze(catalog)
+      discoverCache.set(apiVersion, frozenCatalog)
+      yield {
+        type: 'catalog' as const,
+        catalog: { ...frozenCatalog, allowed_account_ids: allowedAccountIds },
+      }
     },
 
     async *setup({ config, catalog: _catalog }): AsyncGenerator<SetupOutput> {
@@ -174,6 +205,12 @@ export function createStripeSource(
           if (!config.account_id) updates.account_id = resolved.accountId
           if (config.account_created == null) updates.account_created = resolved.accountCreated
         } catch (err) {
+          if (
+            err instanceof Error &&
+            err.message.includes('does not match Stripe API key account')
+          ) {
+            throw err
+          }
           // Non-fatal: fall back to defaults. account_id may be derived from the API key later,
           // and account_created defaults to Stripe's launch date (2011-01-01).
           log.warn(
@@ -279,7 +316,9 @@ export function createStripeSource(
           let accountId: string
           let accountCreated: number
           try {
-            const resolvedAccount = await resolveAccountMetadata(config, client)
+            const resolvedAccount = await resolveAccountMetadata(config, client, {
+              forceFetch: true,
+            })
             accountId = resolvedAccount.accountId
             accountCreated = resolvedAccount.accountCreated
           } catch (err) {
@@ -301,14 +340,7 @@ export function createStripeSource(
                 )
               } else {
                 const event = stripeEventSchema.parse(input)
-                yield* processStripeEvent(
-                  event,
-                  config,
-                  catalog,
-                  registry,
-                  streamNames,
-                  accountId
-                )
+                yield* processStripeEvent(event, config, catalog, registry, streamNames, accountId)
               }
             }
             return

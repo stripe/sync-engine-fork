@@ -30,6 +30,7 @@ import {
   createSpreadsheet,
   findSheetId,
   protectSheets,
+  readAllowedValues,
   readHeaderRow,
   type BatchReadRequest,
   type StreamBatchOps,
@@ -193,7 +194,13 @@ export function createDestination(
 
       const streamNames = catalog.streams.map((s) => s.stream.name)
       const metaAfterEnsure = await getSpreadsheetMeta(sheets, spreadsheetId)
-      await ensureIntroSheet(sheets, spreadsheetId, metaAfterEnsure, streamNames)
+      await ensureIntroSheet(
+        sheets,
+        spreadsheetId,
+        metaAfterEnsure,
+        streamNames,
+        catalog.allowed_account_ids
+      )
 
       await protectSheets(sheets, spreadsheetId, metaAfterEnsure, sheetIds)
 
@@ -248,6 +255,8 @@ export function createDestination(
       const spreadsheetId = config.spreadsheet_id
         ? config.spreadsheet_id
         : await createSpreadsheet(sheets, config.spreadsheet_title)
+
+      const allowedAccountIds = await readAllowedValues(sheets, spreadsheetId)
 
       // Per-stream state: column headers plus buffered appends/updates/deletes.
       const streamHeaders = new Map<string, string[]>()
@@ -684,6 +693,20 @@ export function createDestination(
                 `stream "${stream}" record missing newer_than_field "${newerThanField}"; source must stamp this field on every record per DDR-009`
               )
             }
+
+            if (allowedAccountIds) {
+              const value =
+                Object.prototype.hasOwnProperty.call(cleanData, '_account_id') &&
+                cleanData._account_id !== undefined
+                  ? String(cleanData._account_id ?? '')
+                  : undefined
+              if (value === undefined || !allowedAccountIds.has(value)) {
+                throw new Error(
+                  `Sheets rejected ${stream}._account_id=${JSON.stringify(value)} (not in ${[...allowedAccountIds].join(',')})`
+                )
+              }
+            }
+
             const headers = await ensureHeadersForRecord(stream, cleanData)
             const row = headers.map((header) => stringify(cleanData[header]))
             const rowNumber =

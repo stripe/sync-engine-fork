@@ -146,6 +146,13 @@ export type ConfiguredStream = z.infer<typeof ConfiguredStream>
 export const ConfiguredCatalog = z
   .object({
     streams: z.array(ConfiguredStream),
+    allowed_account_ids: z
+      .array(z.string())
+      .min(1)
+      .optional()
+      .describe(
+        'Pipeline-wide allow-list of account IDs (carried over from CatalogPayload). When present it must contain at least one account ID. Destinations may use this to enforce write-time tenancy constraints.'
+      ),
   })
   .describe(
     "The user's selected and configured streams. Persisted on the Sync resource. Passed to read() and write()."
@@ -229,6 +236,13 @@ export type StatePayload = z.infer<typeof StatePayload>
 export const CatalogPayload = z
   .object({
     streams: z.array(Stream).describe('All streams available from this source.'),
+    allowed_account_ids: z
+      .array(z.string())
+      .min(1)
+      .optional()
+      .describe(
+        'Pipeline-wide allow-list of account IDs the source will produce. When present it must contain at least one account ID. Destinations may use this to enforce write-time tenancy constraints (e.g. Postgres CHECK on `_account_id`).'
+      ),
   })
   .describe('Catalog of available streams.')
 export type CatalogPayload = z.infer<typeof CatalogPayload>

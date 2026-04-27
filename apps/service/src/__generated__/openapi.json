@@ -1069,6 +1069,13 @@
             "maximum": 9007199254740991,
             "description": "Stripe account creation timestamp in unix seconds (resolved from API if omitted)"
           },
+          "additional_allowed_account_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Extra allowed Stripe account IDs"
+          },
           "livemode": {
             "type": "boolean",
             "description": "Whether this is a live mode sync"

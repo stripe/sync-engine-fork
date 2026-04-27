@@ -214,6 +214,8 @@ export interface components {
             account_id?: string;
             /** @description Stripe account creation timestamp in unix seconds (resolved from API if omitted) */
             account_created?: number;
+            /** @description Extra allowed Stripe account IDs */
+            additional_allowed_account_ids?: string[];
             /** @description Whether this is a live mode sync */
             livemode?: boolean;
             /** @enum {string} */

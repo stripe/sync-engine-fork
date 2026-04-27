@@ -18,6 +18,10 @@ function quoteIdent(value: string): string {
   return `"${value.replaceAll('"', '""')}"`
 }
 
+function quoteLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`
+}
+
 function safeIdentifier(name: string): string {
   if (Buffer.byteLength(name) <= PG_IDENTIFIER_MAX_BYTES) {
     return name
@@ -102,6 +106,8 @@ export type BuildTableOptions = {
   system_columns?: SystemColumn[]
   /** Primary key paths from the stream (e.g. [['id'], ['_account_id']]). Defaults to [['id']]. */
   primary_key?: string[][]
+  /** Pipeline-wide allow-list of account IDs. When set, emits a CHECK constraint on `_account_id`. */
+  allowed_account_ids?: string[]
 }
 
 /**
@@ -136,6 +142,7 @@ export function buildCreateTableWithSchema(
     return `${quoteIdent(field)} text GENERATED ALWAYS AS ((_raw_data->>'${escapedField}')::text) STORED`
   })
   // `_updated_at` kept as legacy non-generated timestamptz for BC; upsertMany writes it (DDR-009).
+
   const columnDefs = [
     '"_raw_data" jsonb NOT NULL',
     '"_last_synced_at" timestamptz',
@@ -153,6 +160,17 @@ export function buildCreateTableWithSchema(
   if (generatedColumnDefs.length > 0) {
     const addClauses = generatedColumnDefs.map((colDef) => `ADD COLUMN IF NOT EXISTS ${colDef}`)
     stmts.push(`ALTER TABLE ${quotedSchema}.${quotedTable}\n  ${addClauses.join(',\n  ')};`)
+  }
+
+  // Defense-in-depth CHECK on _account_id. Re-applied each setup;
+  // NOT VALID skips existing rows. EXCEPTION makes a missing table a no-op.
+  const allowedAccountIds = options.allowed_account_ids
+  if (allowedAccountIds) {
+    const qn = quoteIdent(safeIdentifier(`chk_${tableName}__account_id`))
+    const list = allowedAccountIds.map(quoteLiteral).join(', ')
+    stmts.push(
+      `DO $check$\nBEGIN\n  ALTER TABLE ${quotedSchema}.${quotedTable} DROP CONSTRAINT IF EXISTS ${qn};\n  ALTER TABLE ${quotedSchema}.${quotedTable} ADD CONSTRAINT ${qn} CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN (${list})) NOT VALID;\nEXCEPTION WHEN undefined_table THEN NULL;\nEND;\n$check$;`
+    )
   }
 
   for (const col of options.system_columns ?? []) {
@@ -193,8 +211,14 @@ export function buildCreateTableDDL(
   options: BuildTableOptions = {}
 ): string {
   const stmts = buildCreateTableWithSchema(schema, tableName, jsonSchema, options)
-  const blocks = stmts.map((stmt) => (/^DROP\s/i.test(stmt) ? stmt : wrapAdditive(stmt)))
-  return `DO $ddl$\nBEGIN\n  ${blocks.join('\n  ')}\nEND;\n$ddl$;`
+  const isStandalone = (s: string) => /^DO\s/i.test(s)
+  const blocks = stmts
+    .filter((s) => !isStandalone(s))
+    .map((s) => (/^DROP\s/i.test(s) ? s : wrapAdditive(s)))
+  return [
+    `DO $ddl$\nBEGIN\n  ${blocks.join('\n  ')}\nEND;\n$ddl$;`,
+    ...stmts.filter(isStandalone),
+  ].join('\n')
 }
 
 /**
@@ -318,6 +342,8 @@ export type ApplySchemaFromCatalogConfig = {
   /** Primary key paths (e.g. [['id'], ['_account_id']]). Defaults to [['id']]. */
   primary_key?: string[][]
   apiVersion?: string
+  /** Pipeline-wide allow-list of account IDs. Drives the per-table CHECK on `_account_id`. */
+  allowed_account_ids?: string[]
   /** Progress callback — emitting logs signals liveness to the orchestrator. */
   onLog?: (message: string) => void
 }
@@ -339,12 +365,17 @@ export async function applySchemaFromCatalog(
   const syncSchema = config.syncSchema ?? dataSchema
   const apiVersion = config.apiVersion ?? '2020-08-27'
 
-  // Compute fingerprint of all json_schemas
+  // Compute fingerprint of all json_schemas + allow-list (allow-list change must
+  // re-trigger migration so the CHECK constraint predicate is replaced).
   const schemasPayload = streams
     .filter((s) => s.json_schema)
     .map((s) => ({ name: s.name, json_schema: s.json_schema }))
+  const fingerprintPayload = {
+    schemas: schemasPayload,
+    allowed_account_ids: config.allowed_account_ids ?? [],
+  }
   const fingerprint = createHash('sha256')
-    .update(JSON.stringify(schemasPayload))
+    .update(JSON.stringify(fingerprintPayload))
     .digest('hex')
     .slice(0, 16)
   const marker = `openapi:${dataSchema}:${apiVersion}:${fingerprint}`
@@ -384,6 +415,7 @@ export async function applySchemaFromCatalog(
         buildCreateTableDDL(dataSchema, stream.name, stream.json_schema!, {
           system_columns: config.system_columns,
           primary_key: config.primary_key,
+          allowed_account_ids: config.allowed_account_ids,
         })
       )
       config.onLog?.(

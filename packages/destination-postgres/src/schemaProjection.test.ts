@@ -186,6 +186,37 @@ describe('buildCreateTableWithSchema', () => {
 })
 
 describe('buildCreateTableDDL', () => {
+  it('buildCreateTableDDL emits CHECK as DROP/ADD-NOT-VALID outside $ddl$', () => {
+    const ddl = buildCreateTableDDL(
+      'stripe',
+      'charges',
+      { properties: { id: { type: 'string' }, _account_id: { type: 'string' } } },
+      { primary_key: [['id'], ['_account_id']], allowed_account_ids: ['a1'] }
+    )
+    expect(ddl).toContain(
+      `CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN ('a1'))`
+    )
+    expect(ddl).toContain('DROP CONSTRAINT IF EXISTS')
+    expect(ddl).toContain('NOT VALID')
+    expect(ddl.indexOf('DO $check$')).toBeGreaterThan(ddl.indexOf('$ddl$;'))
+  })
+
+  it('buildCreateTableDDL emits CHECK with IN list for multi-account allow-list', () => {
+    const ddl = buildCreateTableDDL(
+      'stripe',
+      'charges',
+      { properties: { id: { type: 'string' }, _account_id: { type: 'string' } } },
+      { primary_key: [['id'], ['_account_id']], allowed_account_ids: ['a1', 'a2'] }
+    )
+    expect(ddl).toContain(
+      `CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN ('a1', 'a2'))`
+    )
+  })
+
+  it('buildCreateTableDDL omits CHECK when allowed_account_ids is undefined', () => {
+    const ddl = buildCreateTableDDL('stripe', 'charges', SAMPLE_JSON_SCHEMA)
+    expect(ddl).not.toContain('chk_charges__account_id')
+  })
   it('returns a single DO block containing all DDL', () => {
     const ddl = buildCreateTableDDL('mydata', 'repos', SAMPLE_JSON_SCHEMA)
 
