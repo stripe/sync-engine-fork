@@ -9,7 +9,11 @@ import {
   withPgConnectProxy,
   withQueryLogging,
 } from '@stripe/sync-util-postgres'
-import { buildCreateTableDDL } from './schemaProjection.js'
+import {
+  accountIdCheckConstraintName,
+  buildCreateTableDDL,
+  getExistingAccountIdAllowLists,
+} from './schemaProjection.js'
 import defaultSpec from './spec.js'
 import { log } from './logger.js'
 import type { Config } from './spec.js'
@@ -108,6 +112,34 @@ export {
 } from './schemaProjection.js'
 
 // MARK: - Default export
+
+/** Throw if any stream's catalog allow-list disagrees with an existing CHECK (DDR-010). */
+async function assertAllowListsConsistent(
+  pool: pg.Pool,
+  schema: string,
+  streams: ReadonlyArray<{ stream: { name: string; json_schema?: Record<string, unknown> } }>
+): Promise<void> {
+  const existing = await getExistingAccountIdAllowLists(
+    pool,
+    schema,
+    streams.map((s) => s.stream.name)
+  )
+  for (const { stream } of streams) {
+    const existingIds = existing.get(stream.name)
+    if (!existingIds) continue
+    const props = stream.json_schema?.properties as Record<string, unknown> | undefined
+    const newIds = new Set((props?._account_id as { enum?: string[] } | undefined)?.enum ?? [])
+    if (newIds.size === 0) continue
+    if (existingIds.size === newIds.size && [...existingIds].every((v) => newIds.has(v))) continue
+    const c = accountIdCheckConstraintName(stream.name)
+    const fmt = (s: Set<string>) => [...s].sort().join(', ')
+    throw new Error(
+      `Postgres destination: allowed_account_ids changed for "${schema}"."${stream.name}". ` +
+        `Existing CHECK "${c}" allows [${fmt(existingIds)}]; new catalog wants [${fmt(newIds)}]. ` +
+        `Drop manually before re-running setup: ALTER TABLE "${schema}"."${stream.name}" DROP CONSTRAINT "${c}";`
+    )
+  }
+}
 
 /** Check if an error looks transient (connection refused, timeout, etc.). */
 function errorMessage(err: unknown): string {
@@ -231,6 +263,11 @@ const destination = {
       // Backward-compat: drop legacy `set_updated_at()` (CASCADE removes any orphan `handle_updated_at` triggers from older deployments).
       log.debug('dest setup: dropping legacy set_updated_at() function')
       await pool.query(sql`DROP FUNCTION IF EXISTS "${config.schema}".set_updated_at() CASCADE`)
+
+      // The DO $check$ block uses ADD CONSTRAINT + EXCEPTION WHEN duplicate_object,
+      // which silently no-ops on a changed allow-list — surface it loudly instead.
+      await assertAllowListsConsistent(pool, config.schema, catalog.streams)
+
       log.debug({ streamCount: catalog.streams.length }, 'dest setup: creating tables')
       await Promise.all(
         catalog.streams.map(async (cs) => {

@@ -571,7 +571,7 @@ describe('schema-driven CHECK constraints', () => {
     return rows.map((r) => r.def as string)
   }
 
-  it('enforces multi-account allow-list; subsequent setups are idempotent (constraint pinned to first setup)', async () => {
+  it('enforces multi-account allow-list and rejects mismatched re-setups', async () => {
     await drain(
       destination.setup!({
         config: makeConfig(),
@@ -590,17 +590,35 @@ describe('schema-driven CHECK constraints', () => {
       `INSERT INTO "${SCHEMA}".charges (_raw_data) VALUES ('{"id":"a","_account_id":"acct_a"}'::jsonb)`
     )
 
-    // Re-running setup with a narrower allow-list is a no-op: the constraint
-    // is pinned by name, so the second ADD CONSTRAINT silently no-ops via
-    // EXCEPTION WHEN duplicate_object. acct_b stays allowed.
+    // Same allow-list re-runs cleanly (idempotent).
+    await drain(
+      destination.setup!({
+        config: makeConfig(),
+        catalog: catalogWith(['acct_b', 'acct_a']),
+      })
+    )
+
+    // Narrower allow-list rejects: the constraint is pinned by name and
+    // ADD CONSTRAINT would no-op via EXCEPTION WHEN duplicate_object, so
+    // we fail loud instead of silently keeping the old predicate.
+    await expect(
+      drain(destination.setup!({ config: makeConfig(), catalog: catalogWith(['acct_a']) }))
+    ).rejects.toThrow(
+      /allowed_account_ids changed.*charges.*acct_a, acct_b.*acct_a.*DROP CONSTRAINT/s
+    )
+
+    // After dropping the constraint manually, the next setup installs the new one.
+    await pool.query(`ALTER TABLE "${SCHEMA}".charges DROP CONSTRAINT "chk_charges__account_id"`)
     await drain(destination.setup!({ config: makeConfig(), catalog: catalogWith(['acct_a']) }))
     const defs = await constraintDefs()
     expect(defs).toHaveLength(1)
     expect(defs[0]).toContain(`'acct_a'`)
-    expect(defs[0]).toContain(`'acct_b'`)
-    await pool.query(
-      `INSERT INTO "${SCHEMA}".charges (_raw_data) VALUES ('{"id":"b","_account_id":"acct_b"}'::jsonb)`
-    )
+    expect(defs[0]).not.toContain(`'acct_b'`)
+    await expect(
+      pool.query(
+        `INSERT INTO "${SCHEMA}".charges (_raw_data) VALUES ('{"id":"b","_account_id":"acct_b"}'::jsonb)`
+      )
+    ).rejects.toMatchObject({ code: '23514' })
   })
 })
 

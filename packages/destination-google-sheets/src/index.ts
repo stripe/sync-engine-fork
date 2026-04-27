@@ -195,10 +195,30 @@ export function createDestination(
       const streamNames = catalog.streams.map((s) => s.stream.name)
       const metaAfterEnsure = await getSpreadsheetMeta(sheets, spreadsheetId)
 
-      // Extract allowed account IDs from the first stream's JSON Schema enum
+      // Allow-list rides on every stream's `_account_id.enum` (DDR-010);
+      // the source stamps the same enum on every stream, so the first
+      // one is representative.
       const firstSchema = catalog.streams[0]?.stream.json_schema
-      const accountIdProp = (firstSchema?.properties as any)?.['_account_id']
-      const allowedAccountIds = accountIdProp?.enum as string[] | undefined
+      const properties = firstSchema?.properties as Record<string, unknown> | undefined
+      const accountIdProp = properties?.['_account_id'] as { enum?: string[] } | undefined
+      const allowedAccountIds = accountIdProp?.enum
+
+      // Fail loud on a changed allow-list (DDR-010); silent overwrites would mask misconfig.
+      const existing = allowedAccountIds?.length
+        ? await readAllowedValues(sheets, spreadsheetId)
+        : undefined
+      const next = new Set(allowedAccountIds ?? [])
+      if (
+        existing?.size &&
+        (existing.size !== next.size || ![...existing].every((v) => next.has(v)))
+      ) {
+        const fmt = (s: Set<string>) => [...s].sort().join(', ')
+        throw new Error(
+          `Google Sheets destination: allowed_account_ids changed for spreadsheet ${spreadsheetId}. ` +
+            `Existing Overview row allows [${fmt(existing)}]; new catalog wants [${fmt(next)}]. ` +
+            `Edit the __allowed_account_ids__ row in Overview (or remove it) before re-running setup.`
+        )
+      }
 
       await ensureIntroSheet(sheets, spreadsheetId, metaAfterEnsure, streamNames, allowedAccountIds)
 

@@ -42,6 +42,11 @@ function safeIdentifier(name: string): string {
   return `${truncatedBase}${suffix}`
 }
 
+/** Deterministic name of the per-table `_account_id` CHECK constraint. */
+export function accountIdCheckConstraintName(tableName: string): string {
+  return safeIdentifier(`chk_${tableName}__account_id`)
+}
+
 function jsonSchemaTypeToPg(prop: Record<string, unknown>): string {
   const type = prop.type as string | undefined
   const format = prop.format as string | undefined
@@ -181,7 +186,7 @@ export function buildCreateTableWithSchema(
     jsonSchema.properties as { _account_id?: { enum?: string[] } } | undefined
   )?._account_id
   if (Array.isArray(accountIdSchema?.enum) && accountIdSchema.enum.length > 0) {
-    const qn = quoteIdent(safeIdentifier(`chk_${tableName}__account_id`))
+    const qn = quoteIdent(accountIdCheckConstraintName(tableName))
     const list = accountIdSchema.enum.map(quoteAccountIdLiteral).join(', ')
     stmts.push(
       `DO $check$\nBEGIN\n  ALTER TABLE ${quotedSchema}.${quotedTable} ADD CONSTRAINT ${qn} CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN (${list})) NOT VALID;\nEXCEPTION WHEN duplicate_object OR undefined_table THEN NULL;\nEND;\n$check$;`
@@ -225,6 +230,47 @@ export function buildCreateTableDDL(
     `DO $ddl$\nBEGIN\n  ${blocks.join('\n  ')}\nEND;\n$ddl$;`,
     ...stmts.filter(isStandalone),
   ].join('\n')
+}
+
+/**
+ * For each requested table, return the set of `acct_*` values currently
+ * enforced by its `chk_<table>__account_id` CHECK constraint. Tables with
+ * no such constraint are absent from the map.
+ *
+ * Used by destination setup to detect mismatched allow-lists and fail loud
+ * — re-running setup with a different list would otherwise no-op via the
+ * `EXCEPTION WHEN duplicate_object` clause and leave the old predicate.
+ */
+export async function getExistingAccountIdAllowLists(
+  client: PgClient,
+  schema: string,
+  tableNames: string[]
+): Promise<Map<string, Set<string>>> {
+  if (tableNames.length === 0) return new Map()
+  const constraintToTable = new Map<string, string>()
+  for (const t of tableNames) {
+    constraintToTable.set(accountIdCheckConstraintName(t), t)
+  }
+  const result = await client.query(
+    `SELECT c.conname AS conname, pg_get_constraintdef(c.oid) AS def
+     FROM pg_constraint c
+     JOIN pg_class t ON t.oid = c.conrelid
+     JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE n.nspname = $1 AND c.contype = 'c' AND c.conname = ANY($2::text[])`,
+    [schema, [...constraintToTable.keys()]]
+  )
+  const out = new Map<string, Set<string>>()
+  for (const row of result.rows) {
+    const tableName = constraintToTable.get(row.conname as string)
+    if (!tableName) continue
+    const def = row.def as string
+    const ids = new Set<string>()
+    for (const m of def.matchAll(/'(acct_[A-Za-z0-9_]+)'/g)) {
+      ids.add(m[1])
+    }
+    if (ids.size > 0) out.set(tableName, ids)
+  }
+  return out
 }
 
 /**
@@ -369,24 +415,14 @@ export async function applySchemaFromCatalog(
   const syncSchema = config.syncSchema ?? dataSchema
   const apiVersion = config.apiVersion ?? '2020-08-27'
 
-  // Extract allowed_account_ids from the first stream's _account_id enum.
-  // The enum is now embedded in the JSON Schema (JSON Schema enum approach).
-  const firstSchema = streams.find((s) => s.json_schema)?.json_schema
-  const properties = firstSchema?.properties as Record<string, unknown> | undefined
-  const accountIdProp = properties?.['_account_id'] as { enum?: string[] } | undefined
-  const allowedAccountIds = accountIdProp?.enum ?? []
-
-  // Include allow-list in fingerprint so changes trigger re-migration
-  // (the CHECK constraint predicate changes when the enum changes).
+  // The fingerprint is taken over the full json_schema of every stream,
+  // which already includes properties._account_id.enum, so any allow-list
+  // change rolls into the hash naturally — no separate extraction needed.
   const schemasPayload = streams
     .filter((s) => s.json_schema)
     .map((s) => ({ name: s.name, json_schema: s.json_schema }))
-  const fingerprintPayload = {
-    schemas: schemasPayload,
-    allowed_account_ids: allowedAccountIds,
-  }
   const fingerprint = createHash('sha256')
-    .update(JSON.stringify(fingerprintPayload))
+    .update(JSON.stringify(schemasPayload))
     .digest('hex')
     .slice(0, 16)
   const marker = `openapi:${dataSchema}:${apiVersion}:${fingerprint}`
