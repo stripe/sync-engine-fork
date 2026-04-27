@@ -396,7 +396,7 @@ for (const runtime of runtimes) {
     })
 
     it('client disconnect stops the engine from making further API calls', async () => {
-      const pipelineConfig = makePipelineHeader(
+      const pipelineConfig = makePipelineConfig(
         normalizeMockUrlForRuntime(runtime.name, mockApi.url)
       )
       const ac = new AbortController()
@@ -439,7 +439,7 @@ for (const runtime of runtimes) {
     }, 30_000)
 
     it('soft time limit returns eof with cutoff=soft and elapsed_ms', async () => {
-      const pipelineConfig = makePipelineHeader(
+      const pipelineConfig = makePipelineConfig(
         normalizeMockUrlForRuntime(runtime.name, mockApi.url)
       )
 
@@ -494,7 +494,7 @@ for (const runtime of runtimes) {
         port: runtime.name === 'docker' ? 18889 : 0,
       })
       try {
-        const pipelineConfig = makePipelineHeader(
+        const pipelineConfig = makePipelineConfig(
           normalizeMockUrlForRuntime(runtime.name, slowMock.url)
         )
 
