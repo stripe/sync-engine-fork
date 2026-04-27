@@ -18,13 +18,19 @@ const DEFAULT_REDACT_PATHS = ['*.api_key', '*.connection_string', '*.password', 
 const DEFAULT_REDACT_CENSOR = '[redacted]'
 
 export type LoggerContext = {
-  engineRequestId?: string
-  action_id?: string
-  run_id?: string
+  engineRequestId: string | null
+  action_id: string | null
+  run_id: string | null
   onLog?: (entry: RoutedLogEntry) => void
   protocolLogDestinations?: DestinationStream[]
   suppressProtocolStdout?: boolean
   suppressLogCapture?: boolean
+}
+
+const emptyContext: LoggerContext = {
+  engineRequestId: null,
+  action_id: null,
+  run_id: null,
 }
 
 const storage = new AsyncLocalStorage<LoggerContext>()
@@ -33,13 +39,13 @@ export function getLoggerContext(): Readonly<LoggerContext> | undefined {
   return storage.getStore()
 }
 
-export function getEngineRequestId(): string | undefined {
-  return storage.getStore()?.engineRequestId
+export function getEngineRequestId(): string | null {
+  return storage.getStore()?.engineRequestId ?? null
 }
 
 export function runWithLogContext<T>(patch: Partial<LoggerContext>, fn: () => T): T {
-  const current = storage.getStore() ?? {}
-  return storage.run({ ...current, ...patch }, fn)
+  const current = storage.getStore() ?? emptyContext
+  return storage.run({ ...current, ...patch } as LoggerContext, fn)
 }
 
 export function withoutLogCapture<T>(fn: () => T): T {
@@ -50,7 +56,7 @@ export function bindLogContext<T>(
   iterable: AsyncIterable<T>,
   patch: Partial<LoggerContext>
 ): AsyncIterable<T> {
-  const base = storage.getStore() ?? {}
+  const base = storage.getStore() ?? emptyContext
 
   return {
     [Symbol.asyncIterator]() {
