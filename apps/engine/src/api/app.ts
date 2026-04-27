@@ -131,10 +131,6 @@ export async function createApp(resolver: ConnectorResolver) {
 
   const syncRequestBody = z.object({
     pipeline: TypedPipelineConfig,
-    state: SyncState.optional().meta({
-      description:
-        'SyncState ({ source, destination, sync_run }). Falls back to empty state if invalid.',
-    }),
     time_limit: z.number().positive().optional().meta({
       description: 'Stop streaming after N seconds.',
       example: 300,
@@ -157,6 +153,10 @@ export async function createApp(resolver: ConnectorResolver) {
     stdin: z.array(MessageSchema).optional().meta({
       description:
         'Optional array of input messages (push mode). Without stdin, reads from the source connector (backfill mode).',
+    }),
+    state: SyncState.optional().meta({
+      description:
+        'SyncState ({ source, destination, sync_run }). Falls back to empty state if invalid.',
     }),
   })
 
