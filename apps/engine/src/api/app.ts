@@ -585,10 +585,7 @@ export async function createApp(resolver: ConnectorResolver) {
     )
 
     const heartbeat = setInterval(() => {
-      log.info(
-        { ...context, elapsed_ms: Date.now() - startedAt },
-        'pipeline_sync heartbeat'
-      )
+      log.info({ ...context, elapsed_ms: Date.now() - startedAt }, 'pipeline_sync heartbeat')
     }, 1_000)
 
     const cleaned = (async function* () {

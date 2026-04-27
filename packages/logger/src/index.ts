@@ -269,7 +269,7 @@ function extractCapturedData(
   if (loggerName) data.name = loggerName
 
   const context = getLoggerContext()
-  data.engine_request_id = context?.engineRequestId ?? null
+  data.sync_engine_request_id = context?.engineRequestId ?? null
   data.action_id = context?.action_id ?? null
   data.run_id = context?.run_id ?? null
 
@@ -431,7 +431,7 @@ export function createLogger(
         const context = getLoggerContext()
         return {
           ...base,
-          engine_request_id: context?.engineRequestId ?? null,
+          sync_engine_request_id: context?.engineRequestId ?? null,
           action_id: context?.action_id ?? null,
           run_id: context?.run_id ?? null,
         }

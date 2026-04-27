@@ -434,7 +434,7 @@ describe('engine request id header', () => {
     })
     expect((bridgeLog as Extract<Message, { type: 'log' }> | undefined)?.log.data).toEqual(
       expect.objectContaining({
-        engine_request_id: expect.stringMatching(
+        sync_engine_request_id: expect.stringMatching(
           /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
         ),
         action_id: actionId,
@@ -540,7 +540,10 @@ describe('engine request id header', () => {
       }),
     ])
 
-    const [eventsA, eventsB] = await Promise.all([readNdjson<Message>(resA), readNdjson<Message>(resB)])
+    const [eventsA, eventsB] = await Promise.all([
+      readNdjson<Message>(resA),
+      readNdjson<Message>(resB),
+    ])
 
     const actionIdsA = eventsA
       .filter((event): event is Extract<Message, { type: 'log' }> => event.type === 'log')
