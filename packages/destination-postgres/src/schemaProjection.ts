@@ -18,6 +18,19 @@ function quoteIdent(value: string): string {
   return `"${value.replaceAll('"', '""')}"`
 }
 
+// Strict allow-list of values that may be interpolated into a SQL literal.
+// Account IDs are inlined into a `DO` block where parameterized queries
+// aren't available, so we reject anything outside the Stripe `acct_*` shape
+// rather than rely on quote-escaping.
+const ACCOUNT_ID_RE = /^acct_[A-Za-z0-9_]+$/
+
+function quoteAccountIdLiteral(value: string): string {
+  if (!ACCOUNT_ID_RE.test(value)) {
+    throw new Error(`Refusing to interpolate non-account-id value into SQL: ${value}`)
+  }
+  return `'${value}'`
+}
+
 function safeIdentifier(name: string): string {
   if (Buffer.byteLength(name) <= PG_IDENTIFIER_MAX_BYTES) {
     return name
@@ -27,6 +40,11 @@ function safeIdentifier(name: string): string {
   const maxBaseBytes = PG_IDENTIFIER_MAX_BYTES - Buffer.byteLength(suffix)
   const truncatedBase = Buffer.from(name).subarray(0, maxBaseBytes).toString('utf8')
   return `${truncatedBase}${suffix}`
+}
+
+/** Deterministic name of the per-table `_account_id` CHECK constraint. */
+export function accountIdCheckConstraintName(tableName: string): string {
+  return safeIdentifier(`chk_${tableName}__account_id`)
 }
 
 function jsonSchemaTypeToPg(prop: Record<string, unknown>): string {
@@ -164,6 +182,17 @@ export function buildCreateTableWithSchema(
     }
   }
 
+  const accountIdSchema = (
+    jsonSchema.properties as { _account_id?: { enum?: string[] } } | undefined
+  )?._account_id
+  if (Array.isArray(accountIdSchema?.enum) && accountIdSchema.enum.length > 0) {
+    const qn = quoteIdent(accountIdCheckConstraintName(tableName))
+    const list = accountIdSchema.enum.map(quoteAccountIdLiteral).join(', ')
+    stmts.push(
+      `DO $check$\nBEGIN\n  ALTER TABLE ${quotedSchema}.${quotedTable} ADD CONSTRAINT ${qn} CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN (${list})) NOT VALID;\nEXCEPTION WHEN duplicate_object OR undefined_table THEN NULL;\nEND;\n$check$;`
+    )
+  }
+
   // Drop the legacy trigger; `_updated_at` is now written explicitly by upsertMany.
   stmts.push(`DROP TRIGGER IF EXISTS handle_updated_at ON ${quotedSchema}.${quotedTable};`)
 
@@ -193,8 +222,55 @@ export function buildCreateTableDDL(
   options: BuildTableOptions = {}
 ): string {
   const stmts = buildCreateTableWithSchema(schema, tableName, jsonSchema, options)
-  const blocks = stmts.map((stmt) => (/^DROP\s/i.test(stmt) ? stmt : wrapAdditive(stmt)))
-  return `DO $ddl$\nBEGIN\n  ${blocks.join('\n  ')}\nEND;\n$ddl$;`
+  const isStandalone = (s: string) => /^DO\s/i.test(s)
+  const blocks = stmts
+    .filter((s) => !isStandalone(s))
+    .map((s) => (/^DROP\s/i.test(s) ? s : wrapAdditive(s)))
+  return [
+    `DO $ddl$\nBEGIN\n  ${blocks.join('\n  ')}\nEND;\n$ddl$;`,
+    ...stmts.filter(isStandalone),
+  ].join('\n')
+}
+
+/**
+ * For each requested table, return the set of `acct_*` values currently
+ * enforced by its `chk_<table>__account_id` CHECK constraint. Tables with
+ * no such constraint are absent from the map.
+ *
+ * Used by destination setup to detect mismatched allow-lists and fail loud
+ * — re-running setup with a different list would otherwise no-op via the
+ * `EXCEPTION WHEN duplicate_object` clause and leave the old predicate.
+ */
+export async function getExistingAccountIdAllowLists(
+  client: PgClient,
+  schema: string,
+  tableNames: string[]
+): Promise<Map<string, Set<string>>> {
+  if (tableNames.length === 0) return new Map()
+  const constraintToTable = new Map<string, string>()
+  for (const t of tableNames) {
+    constraintToTable.set(accountIdCheckConstraintName(t), t)
+  }
+  const result = await client.query(
+    `SELECT c.conname AS conname, pg_get_constraintdef(c.oid) AS def
+     FROM pg_constraint c
+     JOIN pg_class t ON t.oid = c.conrelid
+     JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE n.nspname = $1 AND c.contype = 'c' AND c.conname = ANY($2::text[])`,
+    [schema, [...constraintToTable.keys()]]
+  )
+  const out = new Map<string, Set<string>>()
+  for (const row of result.rows) {
+    const tableName = constraintToTable.get(row.conname as string)
+    if (!tableName) continue
+    const def = row.def as string
+    const ids = new Set<string>()
+    for (const m of def.matchAll(/'(acct_[A-Za-z0-9_]+)'/g)) {
+      ids.add(m[1])
+    }
+    if (ids.size > 0) out.set(tableName, ids)
+  }
+  return out
 }
 
 /**
@@ -339,7 +415,9 @@ export async function applySchemaFromCatalog(
   const syncSchema = config.syncSchema ?? dataSchema
   const apiVersion = config.apiVersion ?? '2020-08-27'
 
-  // Compute fingerprint of all json_schemas
+  // The fingerprint is taken over the full json_schema of every stream,
+  // which already includes properties._account_id.enum, so any allow-list
+  // change rolls into the hash naturally — no separate extraction needed.
   const schemasPayload = streams
     .filter((s) => s.json_schema)
     .map((s) => ({ name: s.name, json_schema: s.json_schema }))

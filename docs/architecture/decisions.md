@@ -170,3 +170,18 @@ that destinations can rely on without per-resource branching.
 - `_updated_at` is part of the published wire schema. Tools that
   consume the catalog (introspection, OpenAPI generation, custom
   destinations) see the field and can decide their own projection.
+
+## DDR-010: `_account_id` enforcement in destinations
+
+**Decision:** The pipeline-wide allow-list of account IDs rides on every stream's JSON Schema as `properties._account_id.enum`. Destinations translate it into a native write-time constraint. Scoped to `_account_id` only — not a generic `const`/`enum` mechanism.
+
+**Rationale:** Defense-in-depth — a bug must not let one account's `_raw_data` land in another's table. Reusing the JSON Schema channel keeps the existing schema-projection pipeline as the only DDL writer (no parallel "catalog metadata" surface), and `discoverCache` stays account-agnostic since the enum is stamped per call.
+
+**Mapping:**
+
+- **Postgres:** `ADD CONSTRAINT chk_<table>__account_id CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN (…)) NOT VALID`, wrapped in a `DO` block with `EXCEPTION WHEN duplicate_object OR undefined_table`. `NOT VALID` skips the existing-row scan so adopting the constraint never blocks a deploy. Values are restricted to `^acct_[A-Za-z0-9_]+$` before SQL interpolation.
+- **Google Sheets:** `setup()` writes a JSON-encoded `__allowed_account_ids__` row to the Overview sheet; `write()` validates each record's `_account_id` against the read-back set.
+
+**Mismatch is fail-loud.** `ADD CONSTRAINT` would silently no-op via `duplicate_object`, so both destinations diff the catalog enum against the existing constraint / Overview row at the top of `setup()` and throw a guiding error (naming both lists and the manual mitigation) when they differ. Same-list re-runs stay idempotent.
+
+**Source side:** Stripe's `discover()` trusts `config.account_id` when populated (otherwise one `GET /v1/account`) and stamps `[account_id, ...config.additional_allowed_account_ids]` onto every stream via `stampAccountIdEnum`. The cache holds an account-neutral catalog. A stale `config.account_id` silently propagates — orchestrator keeps it in sync with the API key (deliberate latency tradeoff, see PR #339).

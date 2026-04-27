@@ -8,7 +8,13 @@ import {
   ROW_NUMBER_FIELD,
   type Config,
 } from './index.js'
-import { applyBatch, MAX_CELLS_PER_SPREADSHEET, readSheet, type StreamBatchOps } from './writer.js'
+import {
+  applyBatch,
+  MAX_CELLS_PER_SPREADSHEET,
+  readAllowedValues,
+  readSheet,
+  type StreamBatchOps,
+} from './writer.js'
 import { createMemorySheets } from '../__tests__/memory-sheets.js'
 
 /**
@@ -53,7 +59,7 @@ function record(stream: string, data: Record<string, unknown>): DestinationInput
 }
 
 function state(stream: string, data: unknown): DestinationInput {
-  return { type: 'source_state', source_state: { stream, data } }
+  return { type: 'source_state', source_state: { state_type: 'stream', stream, data } }
 }
 
 const catalog = { streams: [] } as never
@@ -308,8 +314,8 @@ describe('destination-google-sheets', () => {
       })),
     }
 
-    for await (const _ of dest.setup({ config: cfg(), catalog: multiCatalog })) {
-      // drain
+    for await (const msg of dest.setup!({ config: cfg(), catalog: multiCatalog })) {
+      void msg
     }
 
     const id = getSpreadsheetIds()[0]
@@ -727,8 +733,10 @@ describe('native upsert', () => {
     const names = [rowsA[1]![1], rowsB[1]![1]].sort()
     expect(names).toEqual(['Alice', 'Bob'])
 
-    const logsA = out1.filter((m) => m.type === 'log' && m.log.level === 'info')
-    const logsB = out2.filter((m) => m.type === 'log' && m.log.level === 'info')
+    const isInfoLog = (m: DestinationOutput): m is Extract<DestinationOutput, { type: 'log' }> =>
+      m.type === 'log' && m.log.level === 'info'
+    const logsA = out1.filter(isInfoLog)
+    const logsB = out2.filter(isInfoLog)
     const ssidA = logsA[0]?.log.message.match(/spreadsheet (.+)/)?.[1]
     const ssidB = logsB[0]?.log.message.match(/spreadsheet (.+)/)?.[1]
     expect(ssidA).not.toBe(ssidB)
@@ -1432,8 +1440,8 @@ describe('makeSheetsClient env var fallback', () => {
 
     await expect(async () => {
       // check() calls makeSheetsClient internally (no injected sheets client)
-      for await (const _msg of dest.check({ config })) {
-        // consume
+      for await (const msg of dest.check({ config })) {
+        void msg
       }
     }).rejects.toThrow('client_id required (provide in config or set GOOGLE_CLIENT_ID)')
   })
@@ -1446,8 +1454,8 @@ describe('makeSheetsClient env var fallback', () => {
     const config = cfg({ client_id: undefined, client_secret: undefined })
 
     await expect(async () => {
-      for await (const _msg of dest.check({ config })) {
-        // consume
+      for await (const msg of dest.check({ config })) {
+        void msg
       }
     }).rejects.toThrow('client_secret required (provide in config or set GOOGLE_CLIENT_SECRET)')
   })
@@ -1843,5 +1851,76 @@ describe('_updated_at column (source-owned, passthrough)', () => {
     const rows = getData(getSpreadsheetIds()[0], 'customers')!
     const updatedAtIdx = (rows[0] as string[]).indexOf('_updated_at')
     expect(String(rows[1][updatedAtIdx])).toBe('1700000010')
+  })
+})
+
+describe('pipeline-wide allowed account IDs', () => {
+  function catalogWith(allowedAccountIds: string[]): ConfiguredCatalog {
+    return {
+      streams: [
+        {
+          stream: {
+            name: 'charges',
+            primary_key: [['id']],
+            newer_than_field: '_updated_at',
+            json_schema: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                _account_id: { type: 'string', enum: allowedAccountIds },
+              },
+            },
+          },
+          sync_mode: 'full_refresh',
+          destination_sync_mode: 'append',
+        },
+      ],
+    }
+  }
+
+  it('setup writes the allow-list to Overview; write rejects mismatches', async () => {
+    const { sheets, getSpreadsheetIds } = createMemorySheets()
+    const dest = createDestination(sheets)
+    const catalog = catalogWith(['acct_123', 'acct_456'])
+    for await (const msg of dest.setup!({ config: cfg(), catalog })) {
+      void msg
+    }
+    const spreadsheetId = getSpreadsheetIds()[0]
+
+    expect(await readSheet(sheets, spreadsheetId, 'Overview')).toContainEqual([
+      'Allowed account IDs',
+      JSON.stringify(['acct_123', 'acct_456']),
+    ])
+
+    const out = await collect(
+      dest.write(
+        { config: cfg({ spreadsheet_id: spreadsheetId }), catalog },
+        toAsyncIter([
+          record('charges', { id: 'ok', _account_id: 'acct_123' }),
+          record('charges', { id: 'bad', _account_id: 'acct_999' }),
+        ])
+      )
+    )
+    const failure = out.find(
+      (m) =>
+        m.type === 'connection_status' &&
+        (m as { connection_status: { status: string } }).connection_status.status === 'failed'
+    )
+    expect(failure).toBeDefined()
+    expect(
+      (failure as { connection_status: { message: string } }).connection_status.message
+    ).toMatch(/_account_id.*acct_999/)
+  })
+
+  it('round-trips allowed values that are not safe comma-separated text', async () => {
+    const { sheets, getSpreadsheetIds } = createMemorySheets()
+    const dest = createDestination(sheets)
+    const catalog = catalogWith(['acct,comma', ' spaced ', ''])
+    for await (const msg of dest.setup!({ config: cfg(), catalog })) {
+      void msg
+    }
+
+    const allowed = await readAllowedValues(sheets, getSpreadsheetIds()[0])
+    expect([...(allowed ?? [])]).toEqual(['acct,comma', ' spaced ', ''])
   })
 })

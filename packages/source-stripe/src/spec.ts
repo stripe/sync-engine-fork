@@ -11,6 +11,10 @@ export const configSchema = z.object({
     .nonnegative()
     .optional()
     .describe('Stripe account creation timestamp in unix seconds (resolved from API if omitted)'),
+  additional_allowed_account_ids: z
+    .array(z.string())
+    .optional()
+    .describe('Extra allowed Stripe account IDs'),
   livemode: z.boolean().optional().describe('Whether this is a live mode sync'),
   api_version: z
     .enum(SUPPORTED_API_VERSIONS)

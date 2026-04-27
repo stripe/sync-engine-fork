@@ -220,6 +220,32 @@ describe('StripeSource', () => {
 
       expect(cat.streams).toHaveLength(2)
       expect(cat.streams.map((s) => s.name)).toEqual(['customers', 'invoices'])
+      expect(
+        (cat.streams[0].json_schema?.properties as Record<string, unknown>)._account_id
+      ).toEqual({ type: 'string', enum: ['acct_test_fake123'] })
+    })
+
+    it('includes additional allowed account IDs in json_schema enum', async () => {
+      const registry: Record<string, ResourceConfig> = {
+        customers: makeConfig({ order: 1, tableName: 'customers' }),
+      }
+
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+      const cat = (
+        await collectFirst(
+          source.discover({
+            config: { ...config, additional_allowed_account_ids: ['acct_other'] },
+          }),
+          'catalog'
+        )
+      ).catalog
+
+      expect(
+        (cat.streams[0].json_schema?.properties as Record<string, unknown>)._account_id
+      ).toEqual({
+        type: 'string',
+        enum: ['acct_test_fake123', 'acct_other'],
+      })
     })
 
     it('excludes resources with sync: false', async () => {

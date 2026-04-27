@@ -30,6 +30,7 @@ import {
   createSpreadsheet,
   findSheetId,
   protectSheets,
+  readAllowedValues,
   readHeaderRow,
   type BatchReadRequest,
   type StreamBatchOps,
@@ -193,7 +194,33 @@ export function createDestination(
 
       const streamNames = catalog.streams.map((s) => s.stream.name)
       const metaAfterEnsure = await getSpreadsheetMeta(sheets, spreadsheetId)
-      await ensureIntroSheet(sheets, spreadsheetId, metaAfterEnsure, streamNames)
+
+      // Allow-list rides on every stream's `_account_id.enum` (DDR-010);
+      // the source stamps the same enum on every stream, so the first
+      // one is representative.
+      const firstSchema = catalog.streams[0]?.stream.json_schema
+      const properties = firstSchema?.properties as Record<string, unknown> | undefined
+      const accountIdProp = properties?.['_account_id'] as { enum?: string[] } | undefined
+      const allowedAccountIds = accountIdProp?.enum
+
+      // Fail loud on a changed allow-list (DDR-010); silent overwrites would mask misconfig.
+      const existing = allowedAccountIds?.length
+        ? await readAllowedValues(sheets, spreadsheetId)
+        : undefined
+      const next = new Set(allowedAccountIds ?? [])
+      if (
+        existing?.size &&
+        (existing.size !== next.size || ![...existing].every((v) => next.has(v)))
+      ) {
+        const fmt = (s: Set<string>) => [...s].sort().join(', ')
+        throw new Error(
+          `Google Sheets destination: allowed_account_ids changed for spreadsheet ${spreadsheetId}. ` +
+            `Existing Overview row allows [${fmt(existing)}]; new catalog wants [${fmt(next)}]. ` +
+            `Edit the __allowed_account_ids__ row in Overview (or remove it) before re-running setup.`
+        )
+      }
+
+      await ensureIntroSheet(sheets, spreadsheetId, metaAfterEnsure, streamNames, allowedAccountIds)
 
       await protectSheets(sheets, spreadsheetId, metaAfterEnsure, sheetIds)
 
@@ -248,6 +275,11 @@ export function createDestination(
       const spreadsheetId = config.spreadsheet_id
         ? config.spreadsheet_id
         : await createSpreadsheet(sheets, config.spreadsheet_title)
+
+      // For Google Sheets we still read the allow-list from the Overview sheet
+      // (it was written during setup). The JSON Schema enum is the source of truth
+      // but we keep the existing read-back validation for defense-in-depth.
+      const allowedAccountIds = await readAllowedValues(sheets, spreadsheetId)
 
       // Per-stream state: column headers plus buffered appends/updates/deletes.
       const streamHeaders = new Map<string, string[]>()
@@ -684,6 +716,20 @@ export function createDestination(
                 `stream "${stream}" record missing newer_than_field "${newerThanField}"; source must stamp this field on every record per DDR-009`
               )
             }
+
+            if (allowedAccountIds) {
+              const value =
+                Object.prototype.hasOwnProperty.call(cleanData, '_account_id') &&
+                cleanData._account_id !== undefined
+                  ? String(cleanData._account_id ?? '')
+                  : undefined
+              if (value === undefined || !allowedAccountIds.has(value)) {
+                throw new Error(
+                  `Sheets rejected ${stream}._account_id=${JSON.stringify(value)} (not in ${[...allowedAccountIds].join(',')})`
+                )
+              }
+            }
+
             const headers = await ensureHeadersForRecord(stream, cleanData)
             const row = headers.map((header) => stringify(cleanData[header]))
             const rowNumber =
