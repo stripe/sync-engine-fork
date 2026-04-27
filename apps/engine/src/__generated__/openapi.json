@@ -1110,14 +1110,6 @@
                   "description": "A named collection of records — analogous to a table or API resource."
                 },
                 "description": "All streams available from this source."
-              },
-              "allowed_account_ids": {
-                "description": "Pipeline-wide allow-list of account IDs the source will produce. When present it must contain at least one account ID. Destinations may use this to enforce write-time tenancy constraints (e.g. Postgres CHECK on `_account_id`).",
-                "minItems": 1,
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
               }
             },
             "required": [

@@ -139,11 +139,10 @@ describe('buildCreateTableWithSchema', () => {
       primary_key: [['id'], ['_account_id']],
     })
 
-    // Both PK columns present as generated columns
+    // Both PK columns present as generated columns.
+    // Since SAMPLE_JSON_SCHEMA has no enum for _account_id, it defaults to text.
     expect(stmts[0]).toContain(`"id" text GENERATED ALWAYS AS ((_raw_data->>'id')::text) STORED`)
-    expect(stmts[0]).toContain(
-      `"_account_id" text GENERATED ALWAYS AS ((_raw_data->>'_account_id')::text) STORED`
-    )
+    expect(stmts[0]).toContain(`"_account_id" text GENERATED ALWAYS AS`)
 
     // Composite PRIMARY KEY
     expect(stmts[0]).toContain('PRIMARY KEY ("id", "_account_id")')
@@ -186,36 +185,39 @@ describe('buildCreateTableWithSchema', () => {
 })
 
 describe('buildCreateTableDDL', () => {
-  it('buildCreateTableDDL emits CHECK as DROP/ADD-NOT-VALID outside $ddl$', () => {
+  it('buildCreateTableDDL emits CHECK with IN list using values from JSON Schema enum', () => {
     const ddl = buildCreateTableDDL(
       'stripe',
       'charges',
-      { properties: { id: { type: 'string' }, _account_id: { type: 'string' } } },
-      { primary_key: [['id'], ['_account_id']], allowed_account_ids: ['a1'] }
+      {
+        properties: {
+          id: { type: 'string' },
+          _account_id: { type: 'string', enum: ['acct_a', 'acct_b'] },
+        },
+      },
+      { primary_key: [['id'], ['_account_id']] }
     )
+
+    // The column should be text
+    expect(ddl).toContain('"id" text GENERATED ALWAYS AS')
+    expect(ddl).toContain('"_account_id" text GENERATED ALWAYS AS')
+    expect(ddl).toContain(`((_raw_data->>'_account_id')::text)`)
+
+    // But it should have a CHECK constraint
     expect(ddl).toContain(
-      `CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN ('a1'))`
+      `CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN ('acct_a', 'acct_b'))`
     )
-    expect(ddl).toContain('DROP CONSTRAINT IF EXISTS')
     expect(ddl).toContain('NOT VALID')
+    expect(ddl).toContain('EXCEPTION WHEN duplicate_object')
     expect(ddl.indexOf('DO $check$')).toBeGreaterThan(ddl.indexOf('$ddl$;'))
   })
 
-  it('buildCreateTableDDL emits CHECK with IN list for multi-account allow-list', () => {
-    const ddl = buildCreateTableDDL(
-      'stripe',
-      'charges',
-      { properties: { id: { type: 'string' }, _account_id: { type: 'string' } } },
-      { primary_key: [['id'], ['_account_id']], allowed_account_ids: ['a1', 'a2'] }
-    )
-    expect(ddl).toContain(
-      `CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN ('a1', 'a2'))`
-    )
-  })
-
-  it('buildCreateTableDDL omits CHECK when allowed_account_ids is undefined', () => {
-    const ddl = buildCreateTableDDL('stripe', 'charges', SAMPLE_JSON_SCHEMA)
-    expect(ddl).not.toContain('chk_charges__account_id')
+  it('buildCreateTableDDL uses text for _account_id when no enum is present in JSON Schema', () => {
+    const ddl = buildCreateTableDDL('stripe', 'charges', SAMPLE_JSON_SCHEMA, {
+      primary_key: [['id'], ['_account_id']],
+    })
+    expect(ddl).toContain('"_account_id" text GENERATED ALWAYS AS')
+    expect(ddl).not.toContain("CHECK ((_raw_data->>'_account_id') IS NOT NULL")
   })
   it('returns a single DO block containing all DDL', () => {
     const ddl = buildCreateTableDDL('mydata', 'repos', SAMPLE_JSON_SCHEMA)
@@ -247,9 +249,8 @@ describe('buildCreateTableDDL', () => {
     expect(ddl).toContain('CREATE INDEX')
     expect(ddl).toContain('"_account_id"')
 
-    // Count exception handlers: CREATE TABLE, ALTER, CREATE INDEX = 3.
-    // (DROP TRIGGER IF EXISTS is unwrapped — no CREATE TRIGGER anymore now
-    // that `_updated_at` is a generated column.)
+    // Exception handlers: CREATE TABLE, ALTER, CREATE INDEX in $ddl$ (3).
+    // No CHECK constraint since SAMPLE_JSON_SCHEMA has no enum on _account_id.
     const exceptionCount = (ddl.match(/EXCEPTION WHEN/g) || []).length
     expect(exceptionCount).toBe(3)
   })

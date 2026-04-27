@@ -292,6 +292,15 @@ function parseUpdatedRows(updatedRange: string): { startRow: number; endRow: num
 
 const ALLOWED_ACCOUNT_IDS_MARKER = '__allowed_account_ids__'
 
+function isSheetNotFound(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const code = (err as { code?: number | string }).code
+  // Sheets API returns 400 + "Unable to parse range" when the tab is missing.
+  // Auth (401/403), quota (429), server (5xx) and network errors must propagate.
+  if (code !== 400) return false
+  return /unable to parse range|sheet (tab )?not found/i.test(err.message)
+}
+
 /**
  * Create or update an "Overview" intro tab at index 0.
  * Lists the synced streams and warns users not to edit data tabs.
@@ -383,9 +392,14 @@ export async function readAllowedValues(
   sheets: sheets_v4.Sheets,
   spreadsheetId: string
 ): Promise<Set<string> | undefined> {
+  // Treat "Overview tab not present yet" as an empty allow-list. Any other
+  // error (auth, network, quota) must propagate so callers can fail loud.
   const res = await sheets.spreadsheets.values
     .get({ spreadsheetId, range: `'Overview'!A:B` })
-    .catch(() => undefined)
+    .catch((err: unknown) => {
+      if (isSheetNotFound(err)) return undefined
+      throw err
+    })
   const values = (res?.data.values ?? []) as unknown[][]
   const markerIdx = values.findIndex((r) => r?.[0] === ALLOWED_ACCOUNT_IDS_MARKER)
   if (markerIdx < 0) return undefined

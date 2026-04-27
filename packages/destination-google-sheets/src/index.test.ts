@@ -43,13 +43,6 @@ async function collect(iter: AsyncIterable<DestinationOutput>): Promise<Destinat
   return out
 }
 
-function findLastIndex<T>(items: T[], predicate: (item: T) => boolean): number {
-  for (let i = items.length - 1; i >= 0; i--) {
-    if (predicate(items[i]!)) return i
-  }
-  return -1
-}
-
 /** Turn an array into an async iterable. */
 async function* toAsyncIter<T>(items: T[]): AsyncIterableIterator<T> {
   for (const item of items) yield item
@@ -149,7 +142,7 @@ describe('destination-google-sheets', () => {
     })
 
     // Ordering: every record passthrough precedes every state in the output.
-    const lastRecordIdx = findLastIndex(output, (m) => m.type === 'record')
+    const lastRecordIdx = output.findLastIndex((m) => m.type === 'record')
     const firstStateIdx = output.findIndex((m) => m.type === 'source_state')
     expect(lastRecordIdx).toBeGreaterThanOrEqual(0)
     expect(firstStateIdx).toBeGreaterThan(lastRecordIdx)
@@ -186,8 +179,7 @@ describe('destination-google-sheets', () => {
     const states = output.filter((m) => m.type === 'source_state')
     expect(states).toHaveLength(1)
     // And every heartbeat precedes the state
-    const lastHeartbeatIdx = findLastIndex(
-      output,
+    const lastHeartbeatIdx = output.findLastIndex(
       (m) => m.type === 'log' && m.log.message.startsWith('flushing to Sheets')
     )
     const stateIdx = output.findIndex((m) => m.type === 'source_state')
@@ -1870,11 +1862,12 @@ describe('pipeline-wide allowed account IDs', () => {
           stream: {
             name: 'charges',
             primary_key: [['id']],
+            newer_than_field: '_updated_at',
             json_schema: {
               type: 'object',
               properties: {
                 id: { type: 'string' },
-                _account_id: { type: 'string' },
+                _account_id: { type: 'string', enum: allowedAccountIds },
               },
             },
           },
@@ -1882,7 +1875,6 @@ describe('pipeline-wide allowed account IDs', () => {
           destination_sync_mode: 'append',
         },
       ],
-      allowed_account_ids: allowedAccountIds,
     }
   }
 

@@ -18,8 +18,17 @@ function quoteIdent(value: string): string {
   return `"${value.replaceAll('"', '""')}"`
 }
 
-function quoteLiteral(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`
+// Strict allow-list of values that may be interpolated into a SQL literal.
+// Account IDs are inlined into a `DO` block where parameterized queries
+// aren't available, so we reject anything outside the Stripe `acct_*` shape
+// rather than rely on quote-escaping.
+const ACCOUNT_ID_RE = /^acct_[A-Za-z0-9_]+$/
+
+function quoteAccountIdLiteral(value: string): string {
+  if (!ACCOUNT_ID_RE.test(value)) {
+    throw new Error(`Refusing to interpolate non-account-id value into SQL: ${value}`)
+  }
+  return `'${value}'`
 }
 
 function safeIdentifier(name: string): string {
@@ -106,8 +115,6 @@ export type BuildTableOptions = {
   system_columns?: SystemColumn[]
   /** Primary key paths from the stream (e.g. [['id'], ['_account_id']]). Defaults to [['id']]. */
   primary_key?: string[][]
-  /** Pipeline-wide allow-list of account IDs. When set, emits a CHECK constraint on `_account_id`. */
-  allowed_account_ids?: string[]
 }
 
 /**
@@ -142,7 +149,6 @@ export function buildCreateTableWithSchema(
     return `${quoteIdent(field)} text GENERATED ALWAYS AS ((_raw_data->>'${escapedField}')::text) STORED`
   })
   // `_updated_at` kept as legacy non-generated timestamptz for BC; upsertMany writes it (DDR-009).
-
   const columnDefs = [
     '"_raw_data" jsonb NOT NULL',
     '"_last_synced_at" timestamptz',
@@ -162,17 +168,6 @@ export function buildCreateTableWithSchema(
     stmts.push(`ALTER TABLE ${quotedSchema}.${quotedTable}\n  ${addClauses.join(',\n  ')};`)
   }
 
-  // Defense-in-depth CHECK on _account_id. Re-applied each setup;
-  // NOT VALID skips existing rows. EXCEPTION makes a missing table a no-op.
-  const allowedAccountIds = options.allowed_account_ids
-  if (allowedAccountIds) {
-    const qn = quoteIdent(safeIdentifier(`chk_${tableName}__account_id`))
-    const list = allowedAccountIds.map(quoteLiteral).join(', ')
-    stmts.push(
-      `DO $check$\nBEGIN\n  ALTER TABLE ${quotedSchema}.${quotedTable} DROP CONSTRAINT IF EXISTS ${qn};\n  ALTER TABLE ${quotedSchema}.${quotedTable} ADD CONSTRAINT ${qn} CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN (${list})) NOT VALID;\nEXCEPTION WHEN undefined_table THEN NULL;\nEND;\n$check$;`
-    )
-  }
-
   for (const col of options.system_columns ?? []) {
     if (col.index) {
       const idxName = safeIdentifier(`idx_${tableName}_${col.name}`)
@@ -180,6 +175,17 @@ export function buildCreateTableWithSchema(
         `CREATE INDEX ${quoteIdent(idxName)} ON ${quotedSchema}.${quotedTable} (${quoteIdent(col.name)});`
       )
     }
+  }
+
+  const accountIdSchema = (
+    jsonSchema.properties as { _account_id?: { enum?: string[] } } | undefined
+  )?._account_id
+  if (Array.isArray(accountIdSchema?.enum) && accountIdSchema.enum.length > 0) {
+    const qn = quoteIdent(safeIdentifier(`chk_${tableName}__account_id`))
+    const list = accountIdSchema.enum.map(quoteAccountIdLiteral).join(', ')
+    stmts.push(
+      `DO $check$\nBEGIN\n  ALTER TABLE ${quotedSchema}.${quotedTable} ADD CONSTRAINT ${qn} CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN (${list})) NOT VALID;\nEXCEPTION WHEN duplicate_object OR undefined_table THEN NULL;\nEND;\n$check$;`
+    )
   }
 
   // Drop the legacy trigger; `_updated_at` is now written explicitly by upsertMany.
@@ -342,8 +348,6 @@ export type ApplySchemaFromCatalogConfig = {
   /** Primary key paths (e.g. [['id'], ['_account_id']]). Defaults to [['id']]. */
   primary_key?: string[][]
   apiVersion?: string
-  /** Pipeline-wide allow-list of account IDs. Drives the per-table CHECK on `_account_id`. */
-  allowed_account_ids?: string[]
   /** Progress callback — emitting logs signals liveness to the orchestrator. */
   onLog?: (message: string) => void
 }
@@ -365,14 +369,21 @@ export async function applySchemaFromCatalog(
   const syncSchema = config.syncSchema ?? dataSchema
   const apiVersion = config.apiVersion ?? '2020-08-27'
 
-  // Compute fingerprint of all json_schemas + allow-list (allow-list change must
-  // re-trigger migration so the CHECK constraint predicate is replaced).
+  // Extract allowed_account_ids from the first stream's _account_id enum.
+  // The enum is now embedded in the JSON Schema (JSON Schema enum approach).
+  const firstSchema = streams.find((s) => s.json_schema)?.json_schema
+  const properties = firstSchema?.properties as Record<string, unknown> | undefined
+  const accountIdProp = properties?.['_account_id'] as { enum?: string[] } | undefined
+  const allowedAccountIds = accountIdProp?.enum ?? []
+
+  // Include allow-list in fingerprint so changes trigger re-migration
+  // (the CHECK constraint predicate changes when the enum changes).
   const schemasPayload = streams
     .filter((s) => s.json_schema)
     .map((s) => ({ name: s.name, json_schema: s.json_schema }))
   const fingerprintPayload = {
     schemas: schemasPayload,
-    allowed_account_ids: config.allowed_account_ids ?? [],
+    allowed_account_ids: allowedAccountIds,
   }
   const fingerprint = createHash('sha256')
     .update(JSON.stringify(fingerprintPayload))
@@ -415,7 +426,6 @@ export async function applySchemaFromCatalog(
         buildCreateTableDDL(dataSchema, stream.name, stream.json_schema!, {
           system_columns: config.system_columns,
           primary_key: config.primary_key,
-          allowed_account_ids: config.allowed_account_ids,
         })
       )
       config.onLog?.(

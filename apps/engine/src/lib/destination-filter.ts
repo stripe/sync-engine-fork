@@ -28,7 +28,6 @@ export function applySelection(catalog: ConfiguredCatalog): ConfiguredCatalog {
         },
       }
     }),
-    allowed_account_ids: catalog.allowed_account_ids,
   }
 }
 

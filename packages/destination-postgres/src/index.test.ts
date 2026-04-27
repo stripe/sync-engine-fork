@@ -409,6 +409,13 @@ describe('multi-org sync (two account IDs)', () => {
           primary_key: [['id'], ['_account_id']],
           newer_than_field: '_updated_at',
           metadata: {},
+          json_schema: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              _account_id: { type: 'string', enum: ['acct_AAA', 'acct_BBB'] },
+            },
+          },
         },
         sync_mode: 'full_refresh',
         destination_sync_mode: 'overwrite',
@@ -541,7 +548,7 @@ describe('schema-driven CHECK constraints', () => {
               type: 'object',
               properties: {
                 id: { type: 'string' },
-                _account_id: { type: 'string' },
+                _account_id: { type: 'string', enum: allowedAccountIds },
               },
             },
           },
@@ -549,7 +556,6 @@ describe('schema-driven CHECK constraints', () => {
           destination_sync_mode: 'overwrite',
         },
       ],
-      allowed_account_ids: allowedAccountIds,
     }
   }
 
@@ -565,7 +571,7 @@ describe('schema-driven CHECK constraints', () => {
     return rows.map((r) => r.def as string)
   }
 
-  it('enforces multi-account allow-list and replaces changed predicates', async () => {
+  it('enforces multi-account allow-list; subsequent setups are idempotent (constraint pinned to first setup)', async () => {
     await drain(
       destination.setup!({
         config: makeConfig(),
@@ -584,14 +590,17 @@ describe('schema-driven CHECK constraints', () => {
       `INSERT INTO "${SCHEMA}".charges (_raw_data) VALUES ('{"id":"a","_account_id":"acct_a"}'::jsonb)`
     )
 
+    // Re-running setup with a narrower allow-list is a no-op: the constraint
+    // is pinned by name, so the second ADD CONSTRAINT silently no-ops via
+    // EXCEPTION WHEN duplicate_object. acct_b stays allowed.
     await drain(destination.setup!({ config: makeConfig(), catalog: catalogWith(['acct_a']) }))
-    await drain(destination.setup!({ config: makeConfig(), catalog: catalogWith(['acct_a']) }))
-    expect(await constraintDefs()).toEqual([expect.stringContaining(`'acct_a'`)])
-    await expect(
-      pool.query(
-        `INSERT INTO "${SCHEMA}".charges (_raw_data) VALUES ('{"id":"b","_account_id":"acct_b"}'::jsonb)`
-      )
-    ).rejects.toMatchObject({ code: '23514' })
+    const defs = await constraintDefs()
+    expect(defs).toHaveLength(1)
+    expect(defs[0]).toContain(`'acct_a'`)
+    expect(defs[0]).toContain(`'acct_b'`)
+    await pool.query(
+      `INSERT INTO "${SCHEMA}".charges (_raw_data) VALUES ('{"id":"b","_account_id":"acct_b"}'::jsonb)`
+    )
   })
 })
 

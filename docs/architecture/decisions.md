@@ -173,12 +173,15 @@ DEFAULT now()` column at the top of every table. This shape is kept
 
 ## DDR-010: `_account_id` enforcement in destinations
 
-**Decision:** `CatalogPayload.allowed_account_ids: string[]` carries a pipeline-wide allow-list of account IDs from the source to destinations. Destinations translate it into native write-time constraints. Scoped to `_account_id` only — not a generic `const`/`enum` mechanism.
+**Decision:** The pipeline-wide allow-list of account IDs travels on each stream's JSON Schema as `properties._account_id.enum`. Destinations translate it into native write-time constraints. Scoped to `_account_id` only — not a generic `const`/`enum` mechanism.
 
-**Rationale:** Defense-in-depth. Stamping `_account_id` on records is not enough — a bug could let one account's `_raw_data` land in another account's table. With a destination-side enforcement, the storage layer itself rejects the insert. Carrying the allow-list as a single top-level field on the catalog avoids the JSON Schema overlay / per-stream duplication / cache-clone complexity that an `enum`-based wire format would have introduced.
+**Rationale:** Defense-in-depth. Stamping `_account_id` on records is not enough — a bug could let one account's `_raw_data` land in another account's table. With a destination-side enforcement, the storage layer itself rejects the insert. Per-stream JSON Schema enums let the existing schema-projection pipeline stay the only writer of DDL — no parallel "catalog metadata" channel — and the source-side cache (`discoverCache`) stays account-agnostic by stamping the enum per call.
 
-**Mapping:** Postgres uses `CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN (…))`; existing tables use `DROP CONSTRAINT IF EXISTS … ADD CONSTRAINT … NOT VALID`. Google Sheets writes a single JSON-encoded `__allowed_account_ids__` row to the Overview sheet during `setup()` and validates `write()` against that read-back set.
+**Mapping:**
 
-**Source side:** Stripe's `discover()` resolves the live account from the API key (verifying that any configured `account_id` matches), then publishes `[account.accountId, ...config.additional_allowed_account_ids]` as `catalog.allowed_account_ids`.
+- **Postgres:** `ALTER TABLE … ADD CONSTRAINT chk_<table>__account_id CHECK ((_raw_data->>'_account_id') IS NOT NULL AND (_raw_data->>'_account_id') IN (…)) NOT VALID`, wrapped in a `DO` block with `EXCEPTION WHEN duplicate_object OR undefined_table` so re-running setup is a no-op. `NOT VALID` is intentional: enforcement applies to new writes only — pre-existing rows are _not_ re-checked, so adopting the constraint never blocks a deploy on backfill scans. Allow-list values are restricted to `^acct_[A-Za-z0-9_]+$` before SQL interpolation.
+- **Google Sheets:** `setup()` writes a single JSON-encoded `__allowed_account_ids__` row to the Overview sheet; `write()` validates each record's `_account_id` against that read-back set.
+
+**Source side:** Stripe's `discover()` uses `config.account_id` when present (populated by `setup()`) and otherwise issues one `GET /v1/account` to resolve it, then stamps `[account_id, ...config.additional_allowed_account_ids]` onto every stream's `_account_id.enum` via `stampAccountIdEnum`. The allow-list is _not_ baked into `discoverCache` — the cache holds an account-neutral catalog and stamping happens on each yield.
 
 See [docs/plans/2026-04-26-schema-const-enum-constraints.md](../plans/2026-04-26-schema-const-enum-constraints.md) for the rollout plan.

@@ -194,13 +194,13 @@ export function createDestination(
 
       const streamNames = catalog.streams.map((s) => s.stream.name)
       const metaAfterEnsure = await getSpreadsheetMeta(sheets, spreadsheetId)
-      await ensureIntroSheet(
-        sheets,
-        spreadsheetId,
-        metaAfterEnsure,
-        streamNames,
-        catalog.allowed_account_ids
-      )
+
+      // Extract allowed account IDs from the first stream's JSON Schema enum
+      const firstSchema = catalog.streams[0]?.stream.json_schema
+      const accountIdProp = (firstSchema?.properties as any)?.['_account_id']
+      const allowedAccountIds = accountIdProp?.enum as string[] | undefined
+
+      await ensureIntroSheet(sheets, spreadsheetId, metaAfterEnsure, streamNames, allowedAccountIds)
 
       await protectSheets(sheets, spreadsheetId, metaAfterEnsure, sheetIds)
 
@@ -256,6 +256,9 @@ export function createDestination(
         ? config.spreadsheet_id
         : await createSpreadsheet(sheets, config.spreadsheet_title)
 
+      // For Google Sheets we still read the allow-list from the Overview sheet
+      // (it was written during setup). The JSON Schema enum is the source of truth
+      // but we keep the existing read-back validation for defense-in-depth.
       const allowedAccountIds = await readAllowedValues(sheets, spreadsheetId)
 
       // Per-stream state: column headers plus buffered appends/updates/deletes.

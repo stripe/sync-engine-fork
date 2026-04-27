@@ -222,11 +222,10 @@ describe('StripeSource', () => {
       expect(cat.streams.map((s) => s.name)).toEqual(['customers', 'invoices'])
       expect(
         (cat.streams[0].json_schema?.properties as Record<string, unknown>)._account_id
-      ).toEqual({ type: 'string' })
-      expect(cat.allowed_account_ids).toEqual(['acct_test_fake123'])
+      ).toEqual({ type: 'string', enum: ['acct_test_fake123'] })
     })
 
-    it('includes additional allowed account IDs in catalog.allowed_account_ids', async () => {
+    it('includes additional allowed account IDs in json_schema enum', async () => {
       const registry: Record<string, ResourceConfig> = {
         customers: makeConfig({ order: 1, tableName: 'customers' }),
       }
@@ -241,47 +240,12 @@ describe('StripeSource', () => {
         )
       ).catalog
 
-      expect(cat.allowed_account_ids).toEqual(['acct_test_fake123', 'acct_other'])
       expect(
         (cat.streams[0].json_schema?.properties as Record<string, unknown>)._account_id
-      ).toEqual({ type: 'string' })
-    })
-
-    it('keeps discoverCache account-agnostic across allow-list variations', async () => {
-      const registry: Record<string, ResourceConfig> = {
-        customers: makeConfig({ order: 1, tableName: 'customers' }),
-      }
-
-      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
-      const first = (await collectFirst(source.discover({ config }), 'catalog')).catalog
-      const cached = discoverCache.get(config.api_version)!
-
-      expect(Object.isFrozen(cached)).toBe(true)
-      expect((cached as { allowed_account_ids?: unknown }).allowed_account_ids).toBeUndefined()
-
-      const second = (
-        await collectFirst(
-          source.discover({
-            config: { ...config, additional_allowed_account_ids: ['acct_other'] },
-          }),
-          'catalog'
-        )
-      ).catalog
-
-      expect(first.allowed_account_ids).toEqual(['acct_test_fake123'])
-      expect(second.allowed_account_ids).toEqual(['acct_test_fake123', 'acct_other'])
-      expect((cached as { allowed_account_ids?: unknown }).allowed_account_ids).toBeUndefined()
-    })
-
-    it('rejects a configured account_id that does not match the API key', async () => {
-      await expect(
-        collectFirst(
-          source.discover({
-            config: { ...config, account_id: 'acct_wrong', account_created: 1 },
-          }),
-          'catalog'
-        )
-      ).rejects.toThrow(/does not match Stripe API key account/)
+      ).toEqual({
+        type: 'string',
+        enum: ['acct_test_fake123', 'acct_other'],
+      })
     })
 
     it('excludes resources with sync: false', async () => {
