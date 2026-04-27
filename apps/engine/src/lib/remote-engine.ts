@@ -115,15 +115,25 @@ export function createRemoteEngine(engineUrl: string): Engine {
       yield* parseNdjsonStream<TeardownOutput>(res.body!)
     },
 
-    pipeline_read(pipeline: PipelineConfig, opts?: SourceReadOptions): AsyncIterable<Message> {
+    pipeline_read(
+      pipeline: PipelineConfig,
+      opts?: SourceReadOptions,
+      input?: AsyncIterable<unknown>
+    ): AsyncIterable<Message> {
       return withAbortOnReturn((signal) =>
         (async function* () {
+          let stdin: unknown[] | undefined
+          if (input) {
+            stdin = []
+            for await (const m of input) stdin.push(m)
+          }
           const res = await post(
             '/pipeline_read',
             {
               pipeline,
               state: opts?.state,
               time_limit: opts?.time_limit,
+              stdin,
             },
             signal
           )
@@ -147,9 +157,18 @@ export function createRemoteEngine(engineUrl: string): Engine {
       )
     },
 
-    pipeline_sync(pipeline: PipelineConfig, opts?: SourceReadOptions): AsyncIterable<SyncOutput> {
+    pipeline_sync(
+      pipeline: PipelineConfig,
+      opts?: SourceReadOptions,
+      input?: AsyncIterable<unknown>
+    ): AsyncIterable<SyncOutput> {
       return withAbortOnReturn((signal) =>
         (async function* () {
+          let stdin: unknown[] | undefined
+          if (input) {
+            stdin = []
+            for await (const m of input) stdin.push(m)
+          }
           const res = await post(
             '/pipeline_sync',
             {
@@ -158,6 +177,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
               time_limit: opts?.time_limit,
               soft_time_limit: opts?.soft_time_limit,
               run_id: opts?.run_id,
+              stdin,
             },
             signal
           )
