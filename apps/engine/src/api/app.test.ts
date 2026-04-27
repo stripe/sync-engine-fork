@@ -623,7 +623,7 @@ describe('POST /read', () => {
 
     const events = await readNdjson<Message>(res)
     const dataEvents = events.filter((event) => event.type !== 'log')
-    // sourceTest echoes $stdin; without input it produces only eof
+    // sourceTest echoes stdin; without input it produces only eof
     expect(dataEvents).toHaveLength(1)
     expect(dataEvents[0]).toMatchObject({ type: 'eof', eof: { has_more: false } })
   })
@@ -655,7 +655,7 @@ describe('POST /write', () => {
       '/pipeline_write',
       jsonBody({
         pipeline: testPipeline,
-        $stdin: messages,
+        stdin: messages,
       })
     )
 
@@ -686,7 +686,7 @@ describe('POST /sync', () => {
     expect(res.headers.get('Content-Type')).toBe('application/x-ndjson')
 
     const events = await readNdjson<Record<string, unknown>>(res)
-    // sourceTest yields nothing without $stdin — only eof
+    // sourceTest yields nothing without stdin — only eof
     const eofEvents = events.filter((e) => e.type === 'eof')
     expect(eofEvents).toHaveLength(1)
     expect(eofEvents[0]).toMatchObject({ type: 'eof', eof: { has_more: false } })
@@ -726,7 +726,7 @@ describe('time_limit and run_id', () => {
     expect(res.status).toBe(200)
     const events = await readNdjson<Message>(res)
     const dataEvents = events.filter((event) => event.type !== 'log')
-    // sourceTest echoes $stdin; without input it produces only eof
+    // sourceTest echoes stdin; without input it produces only eof
     expect(dataEvents).toHaveLength(1)
     expect(dataEvents[0]).toMatchObject({ type: 'eof', eof: { has_more: false } })
   })

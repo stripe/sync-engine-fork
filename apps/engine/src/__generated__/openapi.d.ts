@@ -1008,29 +1008,7 @@ export interface operations {
             content: {
                 "application/json": {
                     pipeline: components["schemas"]["PipelineConfig"];
-                    /**
-                     * @description SyncState ({ source, destination, sync_run }). Falls back to empty state if invalid.
-                     * @default {
-                     *       "source": {
-                     *         "streams": {},
-                     *         "global": {}
-                     *       },
-                     *       "destination": {},
-                     *       "sync_run": {
-                     *         "progress": {
-                     *           "started_at": "1970-01-01T00:00:00.000Z",
-                     *           "elapsed_ms": 0,
-                     *           "global_state_count": 0,
-                     *           "derived": {
-                     *             "status": "started",
-                     *             "records_per_second": 0,
-                     *             "states_per_second": 0
-                     *           },
-                     *           "streams": {}
-                     *         }
-                     *       }
-                     *     }
-                     */
+                    /** @description SyncState ({ source, destination, sync_run }). Falls back to empty state if invalid. */
                     state?: components["schemas"]["SyncState"];
                     /**
                      * @description Stop streaming after N seconds.
@@ -1047,6 +1025,8 @@ export interface operations {
                      * @example run_demo
                      */
                     run_id?: string;
+                    /** @description Optional array of input messages (push mode). Without stdin, reads from the source connector (backfill mode). */
+                    stdin?: components["schemas"]["Message"][];
                 };
             };
         };
@@ -1085,7 +1065,7 @@ export interface operations {
                 "application/json": {
                     pipeline: components["schemas"]["PipelineConfig"];
                     /** @description Array of messages to write to the destination. */
-                    $stdin: components["schemas"]["Message"][];
+                    stdin: components["schemas"]["Message"][];
                 };
             };
         };
@@ -1123,29 +1103,7 @@ export interface operations {
             content: {
                 "application/json": {
                     pipeline: components["schemas"]["PipelineConfig"];
-                    /**
-                     * @description SyncState ({ source, destination, sync_run }). Falls back to empty state if invalid.
-                     * @default {
-                     *       "source": {
-                     *         "streams": {},
-                     *         "global": {}
-                     *       },
-                     *       "destination": {},
-                     *       "sync_run": {
-                     *         "progress": {
-                     *           "started_at": "1970-01-01T00:00:00.000Z",
-                     *           "elapsed_ms": 0,
-                     *           "global_state_count": 0,
-                     *           "derived": {
-                     *             "status": "started",
-                     *             "records_per_second": 0,
-                     *             "states_per_second": 0
-                     *           },
-                     *           "streams": {}
-                     *         }
-                     *       }
-                     *     }
-                     */
+                    /** @description SyncState ({ source, destination, sync_run }). Falls back to empty state if invalid. */
                     state?: components["schemas"]["SyncState"];
                     /**
                      * @description Stop streaming after N seconds.
@@ -1162,6 +1120,8 @@ export interface operations {
                      * @example run_demo
                      */
                     run_id?: string;
+                    /** @description Optional array of input messages (push mode). Without stdin, reads from the source connector (backfill mode). */
+                    stdin?: components["schemas"]["Message"][];
                 };
             };
         };

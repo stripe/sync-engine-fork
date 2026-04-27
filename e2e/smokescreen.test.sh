@@ -165,7 +165,7 @@ ecurl -sf --max-time 30 -X POST "${ENGINE_URL}/pipeline_setup" \
 PG_RECORDS=$(echo "$OUTPUT" | grep -v '^$' | jq -s '.')
 ecurl -sf --max-time 90 -X POST "${ENGINE_URL}/pipeline_write" \
   -H "Content-Type: application/json" \
-  -d "$(jq -n --argjson p "$PG_PARAMS" --argjson m "$PG_RECORDS" '{"pipeline":$p,"\$stdin":$m}')" | head -3 || true
+  -d "$(jq -n --argjson p "$PG_PARAMS" --argjson m "$PG_RECORDS" '{"pipeline":$p,"stdin":$m}')" | head -3 || true
 echo "    dest-pg OK"
 
 echo "==> All smokescreen tests passed"

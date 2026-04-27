@@ -141,7 +141,7 @@ export function createRemoteEngine(engineUrl: string): Engine {
           // Collect messages into array for JSON body
           const msgs: Message[] = []
           for await (const m of messages) msgs.push(m)
-          const res = await post('/pipeline_write', { pipeline, $stdin: msgs }, signal)
+          const res = await post('/pipeline_write', { pipeline, stdin: msgs }, signal)
           yield* parseNdjsonStream<DestinationOutput>(res.body!)
         })()
       )

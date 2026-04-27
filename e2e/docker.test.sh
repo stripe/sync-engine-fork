@@ -93,11 +93,11 @@ if [ -n "${GOOGLE_CLIENT_ID:-}" ]; then
   SHEETS_PARAMS=$(printf '{"source":{"type":"stripe","stripe":{"api_key":"%s"}},"destination":{"type":"google_sheets","google_sheets":{"client_id":"%s","client_secret":"%s","access_token":"unused","refresh_token":"%s","spreadsheet_id":"%s"}}}' \
     "$STRIPE_API_KEY" "$GOOGLE_CLIENT_ID" "$GOOGLE_CLIENT_SECRET" "$GOOGLE_REFRESH_TOKEN" "$GOOGLE_SPREADSHEET_ID")
 
-  # Convert NDJSON output to JSON array for $stdin field
+  # Convert NDJSON output to JSON array for stdin field
   RECORDS_ARRAY=$(echo "$STRIPE_OUTPUT" | grep -v '^$' | jq -s '.')
   SHEETS_OUTPUT=$(curl -s --max-time 60 -X POST "http://localhost:$PORT/pipeline_write" \
     -H "Content-Type: application/json" \
-    -d "$(jq -n --argjson p "$SHEETS_PARAMS" --argjson m "$RECORDS_ARRAY" '{"pipeline":$p,"\$stdin":$m}')")
+    -d "$(jq -n --argjson p "$SHEETS_PARAMS" --argjson m "$RECORDS_ARRAY" '{"pipeline":$p,"stdin":$m}')")
 
   echo "$SHEETS_OUTPUT" | head -3 || true
   echo "    Sheet: https://docs.google.com/spreadsheets/d/$GOOGLE_SPREADSHEET_ID"
@@ -121,7 +121,7 @@ if [ -n "${POSTGRES_URL:-}" ]; then
   PG_RECORDS_ARRAY=$(echo "$STRIPE_OUTPUT" | grep -v '^$' | jq -s '.')
   PG_WRITE_OUTPUT=$(curl -s --max-time 60 -X POST "http://localhost:$PORT/pipeline_write" \
     -H "Content-Type: application/json" \
-    -d "$(jq -n --argjson p "$PG_PARAMS" --argjson m "$PG_RECORDS_ARRAY" '{"pipeline":$p,"\$stdin":$m}')")
+    -d "$(jq -n --argjson p "$PG_PARAMS" --argjson m "$PG_RECORDS_ARRAY" '{"pipeline":$p,"stdin":$m}')")
   echo "$PG_WRITE_OUTPUT" | head -3 || true
   echo "    Database: $POSTGRES_URL schema=stripe_docker_test"
 else

@@ -131,7 +131,7 @@ export async function createApp(resolver: ConnectorResolver) {
 
   const syncRequestBody = z.object({
     pipeline: TypedPipelineConfig,
-    state: SyncState.catch(emptySyncState()).optional().meta({
+    state: SyncState.optional().meta({
       description:
         'SyncState ({ source, destination, sync_run }). Falls back to empty state if invalid.',
     }),
@@ -154,11 +154,15 @@ export async function createApp(resolver: ConnectorResolver) {
       description: 'Optional sync run identifier used to track bounded sync progress.',
       example: 'run_demo',
     }),
+    stdin: z.array(MessageSchema).optional().meta({
+      description:
+        'Optional array of input messages (push mode). Without stdin, reads from the source connector (backfill mode).',
+    }),
   })
 
   const writeRequestBody = z.object({
     pipeline: TypedPipelineConfig,
-    $stdin: z.array(MessageSchema).meta({
+    stdin: z.array(MessageSchema).meta({
       description: 'Array of messages to write to the destination.',
     }),
   })
@@ -355,7 +359,13 @@ export async function createApp(resolver: ConnectorResolver) {
     },
   })
   app.openapi(pipelineReadRoute, async (c) => {
-    const { pipeline, state, time_limit } = c.req.valid('json')
+    const { pipeline, state, time_limit, stdin } = c.req.valid('json')
+
+    const input = stdin
+      ? (async function* () {
+          for (const m of stdin) yield m
+        })()
+      : undefined
 
     const context = { path: '/pipeline_read', ...syncRequestContext(pipeline) }
     const startedAt = Date.now()
@@ -368,7 +378,7 @@ export async function createApp(resolver: ConnectorResolver) {
       )
     const ac = createConnectionAbort(c, onDisconnect)
 
-    const output = engine.pipeline_read(pipeline, { state, time_limit })
+    const output = engine.pipeline_read(pipeline, { state, time_limit }, input)
     return ndjsonResponse(logApiStream('Engine API /pipeline_read', output, context, startedAt), {
       signal: ac.signal,
     })
@@ -395,7 +405,7 @@ export async function createApp(resolver: ConnectorResolver) {
     },
   })
   app.openapi(pipelineWriteRoute, async (c) => {
-    const { pipeline, $stdin: messages } = c.req.valid('json')
+    const { pipeline, stdin: messages } = c.req.valid('json')
 
     const context = { path: '/pipeline_write', ...syncRequestContext(pipeline) }
     const startedAt = Date.now()
@@ -443,7 +453,13 @@ export async function createApp(resolver: ConnectorResolver) {
     },
   })
   app.openapi(pipelineSyncRoute, async (c) => {
-    const { pipeline, state, time_limit, soft_time_limit, run_id } = c.req.valid('json')
+    const { pipeline, state, time_limit, soft_time_limit, run_id, stdin } = c.req.valid('json')
+
+    const input = stdin
+      ? (async function* () {
+          for (const m of stdin) yield m
+        })()
+      : undefined
 
     const context = { path: '/pipeline_sync', ...syncRequestContext(pipeline) }
     const startedAt = Date.now()
@@ -455,7 +471,11 @@ export async function createApp(resolver: ConnectorResolver) {
       )
     const ac = createConnectionAbort(c, onDisconnect)
 
-    const output = engine.pipeline_sync(pipeline, { state, time_limit, soft_time_limit, run_id })
+    const output = engine.pipeline_sync(
+      pipeline,
+      { state, time_limit, soft_time_limit, run_id },
+      input
+    )
 
     const heartbeat = setInterval(() => {
       log.info(
