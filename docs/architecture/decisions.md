@@ -134,7 +134,7 @@ that destinations can rely on without per-resource branching.
    exemption.
 2. **Postgres column shape** (`destination-postgres/src/schemaProjection.ts`):
    `_updated_at` is a hardcoded non-generated `timestamptz NOT NULL
-DEFAULT now()` column at the top of every table. This shape is kept
+   DEFAULT now()` column at the top of every table. This shape is kept
    for backward compat: existing deployments need no column migration.
    `jsonSchemaToColumns` skips `_updated_at` so it's never also emitted
    as a generated column on top of the hardcoded one. The
