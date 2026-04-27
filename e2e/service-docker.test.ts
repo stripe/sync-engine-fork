@@ -132,6 +132,12 @@ describeWithEnv(
             stripe: {
               api_key: STRIPE_API_KEY,
               api_version: BUNDLED_API_VERSION,
+              // Pre-populate stable account_id so discover() and the sync's
+              // resolveAccountMetadata both use the same ID. Otherwise the
+              // CHECK constraint baked by discover() rejects every record.
+              // because stripe-mock return fresh account ID on each /v1/account
+              account_id: 'acct_test_fake123',
+              account_created: 1_700_000_000,
               ...(stripeMockUrl ? { base_url: stripeMockUrl } : {}),
             },
           },
