@@ -613,19 +613,31 @@ describe('POST /check', () => {
 })
 
 describe('POST /read', () => {
-  it('streams NDJSON with eof', async () => {
+  it('streams messages as NDJSON', async () => {
     const app = await createApp(resolver)
 
-    const res = await app.request('/pipeline_read', jsonBody({ pipeline: testPipeline }))
+    const stdin = [
+      {
+        type: 'record',
+        record: {
+          stream: 'customers',
+          data: { id: 'cus_1', name: 'Alice' },
+          emitted_at: new Date().toISOString(),
+        },
+      },
+      { type: 'source_state', source_state: { stream: 'customers', data: { status: 'complete' } } },
+    ]
+    const res = await app.request('/pipeline_read', jsonBody({ pipeline: testPipeline, stdin }))
 
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toBe('application/x-ndjson')
 
     const events = await readNdjson<Message>(res)
     const dataEvents = events.filter((event) => event.type !== 'log')
-    // sourceTest echoes stdin; without input it produces only eof
-    expect(dataEvents).toHaveLength(1)
-    expect(dataEvents[0]).toMatchObject({ type: 'eof', eof: { has_more: false } })
+    expect(dataEvents).toHaveLength(3)
+    expect(dataEvents[0]!.type).toBe('record')
+    expect(dataEvents[1]!.type).toBe('source_state')
+    expect(dataEvents[2]).toMatchObject({ type: 'eof', eof: { has_more: false } })
   })
 })
 
@@ -677,19 +689,30 @@ describe('POST /write', () => {
 })
 
 describe('POST /sync', () => {
-  it('runs full pipeline, streams NDJSON with eof', async () => {
+  it('runs full pipeline, streams NDJSON state', async () => {
     const app = await createApp(resolver)
 
-    const res = await app.request('/pipeline_sync', jsonBody({ pipeline: testPipeline }))
+    const stdin = [
+      {
+        type: 'record',
+        record: {
+          stream: 'customers',
+          data: { id: 'cus_1', name: 'Alice' },
+          emitted_at: new Date().toISOString(),
+        },
+      },
+      { type: 'source_state', source_state: { stream: 'customers', data: { status: 'complete' } } },
+    ]
+    const res = await app.request('/pipeline_sync', jsonBody({ pipeline: testPipeline, stdin }))
 
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toBe('application/x-ndjson')
 
     const events = await readNdjson<Record<string, unknown>>(res)
-    // sourceTest yields nothing without stdin — only eof
-    const eofEvents = events.filter((e) => e.type === 'eof')
-    expect(eofEvents).toHaveLength(1)
-    expect(eofEvents[0]).toMatchObject({ type: 'eof', eof: { has_more: false } })
+    const stateAndEof = events.filter((e) => e.type === 'source_state' || e.type === 'eof')
+    expect(stateAndEof).toHaveLength(2)
+    expect(stateAndEof[0]!.type).toBe('source_state')
+    expect(stateAndEof[1]).toMatchObject({ type: 'eof', eof: { has_more: false } })
   })
 })
 
@@ -701,11 +724,23 @@ describe('time_limit and run_id', () => {
   it('POST /pipeline_sync forwards run_id into the emitted sync state', async () => {
     const app = await createApp(resolver)
 
+    const stdin = [
+      {
+        type: 'record',
+        record: {
+          stream: 'customers',
+          data: { id: 'cus_1' },
+          emitted_at: '2024-01-01T00:00:00.000Z',
+        },
+      },
+      { type: 'source_state', source_state: { stream: 'customers', data: { cursor: '1' } } },
+    ]
     const res = await app.request(
       '/pipeline_sync',
       jsonBody({
         pipeline: testPipeline,
         run_id: 'run_demo',
+        stdin,
       })
     )
 
@@ -718,17 +753,36 @@ describe('time_limit and run_id', () => {
     })
   })
 
-  it('POST /read without limits returns eof:complete', async () => {
+  it('POST /read without limits returns all messages plus eof:complete', async () => {
     const app = await createApp(resolver)
 
-    const res = await app.request('/pipeline_read', jsonBody({ pipeline: testPipeline }))
+    const stdin = [
+      {
+        type: 'record',
+        record: {
+          stream: 'customers',
+          data: { id: 'cus_1' },
+          emitted_at: '2024-01-01T00:00:00.000Z',
+        },
+      },
+      { type: 'source_state', source_state: { stream: 'customers', data: { cursor: '1' } } },
+      {
+        type: 'record',
+        record: {
+          stream: 'customers',
+          data: { id: 'cus_2' },
+          emitted_at: '2024-01-01T00:00:00.000Z',
+        },
+      },
+      { type: 'source_state', source_state: { stream: 'customers', data: { cursor: '2' } } },
+    ]
+    const res = await app.request('/pipeline_read', jsonBody({ pipeline: testPipeline, stdin }))
 
     expect(res.status).toBe(200)
     const events = await readNdjson<Message>(res)
     const dataEvents = events.filter((event) => event.type !== 'log')
-    // sourceTest echoes stdin; without input it produces only eof
-    expect(dataEvents).toHaveLength(1)
-    expect(dataEvents[0]).toMatchObject({ type: 'eof', eof: { has_more: false } })
+    expect(dataEvents).toHaveLength(5)
+    expect(dataEvents[4]).toMatchObject({ type: 'eof', eof: { has_more: false } })
   })
 })
 
