@@ -855,9 +855,11 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Docs — deploy to Vercel (always, so e2e_cdn can test the live CDN)
+  # Disabled: Vercel project deleted. Re-enable by removing `if: false`.
   # ---------------------------------------------------------------------------
   docs:
     name: Deploy Docs
+    if: false
     runs-on: ubuntu-24.04-arm
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
@@ -964,9 +966,11 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # E2E CDN — verify stripe-sync.dev/stripe-api-specs after Vercel deploy
+  # Disabled with `docs` (depends on its deployment_url output).
   # ---------------------------------------------------------------------------
   e2e_cdn:
     name: E2E CDN
+    if: false
     needs: [docs]
     runs-on: ubuntu-24.04-arm
 
