@@ -3,8 +3,26 @@ import { createStripeSource, type Config as StripeSourceConfig } from '@stripe/s
 import destinationPostgres, {
   type Config as PostgresDestConfig,
 } from '@stripe/sync-destination-postgres'
+import destinationSheets, {
+  type Config as SheetsDestConfig,
+} from '@stripe/sync-destination-google-sheets'
+import type { Destination } from '@stripe/sync-protocol'
 import type { ActivitiesContext } from './_shared.js'
 import { log } from '../../logger.js'
+
+type SupportedDestType = 'postgres' | 'google_sheets'
+
+function resolveDestination(
+  type: string
+): { destination: Destination<Record<string, unknown>>; type: SupportedDestType } | undefined {
+  if (type === 'postgres') {
+    return { destination: destinationPostgres as Destination<Record<string, unknown>>, type }
+  }
+  if (type === 'google_sheets') {
+    return { destination: destinationSheets as Destination<Record<string, unknown>>, type }
+  }
+  return undefined
+}
 
 export function createReconcileCleanupActivity(context: ActivitiesContext) {
   return async function reconcileCleanup(
@@ -14,15 +32,22 @@ export function createReconcileCleanupActivity(context: ActivitiesContext) {
     const pipeline = await context.pipelineStore.get(pipelineId)
     const { source, destination, streams } = pipeline
 
-    if (destination.type !== 'postgres' || source.type !== 'stripe') {
-      // Only stripe→postgres is supported today.
+    if (source.type !== 'stripe') {
+      // Only stripe sources support verifyRecords today.
+      return
+    }
+    const resolved = resolveDestination(destination.type)
+    if (!resolved) {
+      // Destination doesn't implement getStaleRecords yet.
       return
     }
 
     // Configs were validated against connector schemas at pipeline create time,
-    // so the runtime shape matches the connector's strict Config type.
+    // so the runtime shape matches each connector's strict Config type.
     const sourceConfig = source[source.type] as unknown as StripeSourceConfig
-    const destConfig = destination[destination.type] as unknown as PostgresDestConfig
+    const destConfig = destination[destination.type] as unknown as
+      | PostgresDestConfig
+      | SheetsDestConfig
 
     const catalog = {
       streams:
@@ -39,20 +64,24 @@ export function createReconcileCleanupActivity(context: ActivitiesContext) {
     const filter = sourceConfig.account_id ? { _account_id: sourceConfig.account_id } : undefined
     if (!filter) {
       log.warn(
-        { pipelineId },
+        { pipelineId, destinationType: resolved.type },
         'reconcile_cleanup: source has no account_id — running unscoped (unsafe in multi-tenant schemas)'
       )
     }
 
     const stripeSource = createStripeSource()
+    const dest = resolved.destination
+    // Guaranteed by `resolveDestination`'s whitelist: every type that resolves
+    // here is a destination that ships a `getStaleRecords` implementation.
+    const getStaleRecords = dest.getStaleRecords!
 
     try {
-      heartbeat({ phase: 'starting', pipelineId })
+      heartbeat({ phase: 'starting', pipelineId, destinationType: resolved.type })
 
       // Wrap the destination's batches so we heartbeat per stream.
       async function* heartbeatedStaleRecords() {
-        const inner = destinationPostgres.getStaleRecords!({
-          config: destConfig,
+        const inner = getStaleRecords({
+          config: destConfig as Record<string, unknown>,
           catalog,
           syncRunStartedAt,
           filter,
@@ -68,8 +97,8 @@ export function createReconcileCleanupActivity(context: ActivitiesContext) {
         heartbeatedStaleRecords()
       )
 
-      const writeOutput = destinationPostgres.write(
-        { config: destConfig, catalog },
+      const writeOutput = dest.write(
+        { config: destConfig as Record<string, unknown>, catalog },
         verificationMessages
       )
 
@@ -83,7 +112,10 @@ export function createReconcileCleanupActivity(context: ActivitiesContext) {
         }
       }
 
-      log.info({ pipelineId, deleteCount, syncRunStartedAt }, 'reconcile_cleanup: completed')
+      log.info(
+        { pipelineId, destinationType: resolved.type, deleteCount, syncRunStartedAt },
+        'reconcile_cleanup: completed'
+      )
     } catch (err) {
       // Cleanup is best-effort — log and swallow so the workflow's reconcile
       // loop keeps running on the next interval.

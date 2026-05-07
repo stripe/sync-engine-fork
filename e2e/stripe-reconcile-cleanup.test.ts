@@ -1,20 +1,17 @@
 /**
  * Verifies the Temporal `reconcileCleanup` activity tombstones rows for
- * records that were hard-deleted in Stripe without the corresponding
- * `*.deleted` event being processed — the "missed delete" path that
- * complements stripe-delete.test.ts (the event-driven path).
- *
- * Seeds destination rows via in-process engine, then runs the production
- * activity through `MockActivityEnvironment` so the composition
- * (`pg.getStaleRecords` → `stripe.verifyRecords` → `pg.write`) is exercised
- * end-to-end with a Temporal Activity Context active (heartbeats become no-ops).
+ * records hard-deleted in Stripe without a `*.deleted` event — the "missed
+ * delete" path complementing stripe-delete.test.ts. Two suites (postgres,
+ * google_sheets) run the production activity via `MockActivityEnvironment`.
  */
 import pg from 'pg'
 import Stripe from 'stripe'
+import { google } from 'googleapis'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { MockActivityEnvironment } from '@temporalio/testing'
 import source from '@stripe/sync-source-stripe'
 import destinationPostgres from '@stripe/sync-destination-postgres'
+import destinationSheets, { readSheet } from '@stripe/sync-destination-google-sheets'
 import { createEngine } from '@stripe/sync-engine'
 import type { ConnectorResolver } from '@stripe/sync-engine'
 import { createActivities } from '@stripe/sync-service'
@@ -129,9 +126,7 @@ describeWithEnv(
       try {
         // Backfill-only sync (no websocket, no event polling) — both rows
         // land in postgres with `_synced_at ≈ T0`.
-        for await (const _msg of engine.pipeline_sync(pipeline)) {
-          void _msg
-        }
+        await drain(engine.pipeline_sync(pipeline))
 
         const seeded = await pool.query<{ id: string }>(
           `SELECT id FROM "${SCHEMA}"."${STREAM}" WHERE id = ANY($1)`,
@@ -175,5 +170,140 @@ describeWithEnv(
         }
       }
     }, 180_000)
+  }
+)
+
+// MARK: - Google Sheets
+
+describeWithEnv(
+  'temporal reconcile-cleanup activity → google sheets (missed delete)',
+  ['STRIPE_API_KEY', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN'],
+  ({ STRIPE_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN }) => {
+    const PIPELINE_ID = `pipe_recon_sheets_${ts}`
+    let stripe: Stripe
+    let sheetsClient: ReturnType<typeof google.sheets>
+    let driveClient: ReturnType<typeof google.drive>
+    let spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID ?? ''
+    let createdSpreadsheetHere = false
+
+    const sourceConfig = { api_key: STRIPE_API_KEY, backfill_limit: BACKFILL_LIMIT }
+
+    const resolver: ConnectorResolver = {
+      resolveSource: async (name) => {
+        if (name !== 'stripe') throw new Error(`Unknown source: ${name}`)
+        return source
+      },
+      resolveDestination: async (name) => {
+        if (name !== 'google_sheets') throw new Error(`Unknown destination: ${name}`)
+        return destinationSheets
+      },
+      sources: () => new Map(),
+      destinations: () => new Map(),
+    }
+
+    function makePipeline() {
+      return {
+        source: { type: 'stripe', stripe: sourceConfig },
+        destination: {
+          type: 'google_sheets',
+          google_sheets: {
+            client_id: GOOGLE_CLIENT_ID,
+            client_secret: GOOGLE_CLIENT_SECRET,
+            refresh_token: GOOGLE_REFRESH_TOKEN,
+            ...(spreadsheetId ? { spreadsheet_id: spreadsheetId } : {}),
+            spreadsheet_title: `e2e-recon-sheets-${ts}`,
+            batch_size: 50,
+          },
+        },
+        streams: [{ name: STREAM }],
+      }
+    }
+
+    beforeAll(async () => {
+      stripe = new Stripe(STRIPE_API_KEY)
+      const auth = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
+      auth.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN })
+      sheetsClient = google.sheets({ version: 'v4', auth })
+      driveClient = google.drive({ version: 'v3', auth })
+    })
+
+    afterAll(async () => {
+      if (createdSpreadsheetHere && spreadsheetId && !process.env.KEEP_TEST_DATA) {
+        try {
+          await driveClient.files.delete({ fileId: spreadsheetId })
+        } catch {}
+      }
+    })
+
+    it('tombstones customers deleted in stripe without a delete event', async () => {
+      const engine = await createEngine(resolver)
+
+      // pipeline_setup creates the spreadsheet if needed and emits the new
+      // id via destination_config — capture so the second pipeline run reuses it.
+      for await (const m of engine.pipeline_setup(makePipeline())) {
+        if (
+          m.type === 'control' &&
+          m.control.control_type === 'destination_config' &&
+          typeof m.control.destination_config.spreadsheet_id === 'string' &&
+          m.control.destination_config.spreadsheet_id !== spreadsheetId
+        ) {
+          spreadsheetId = m.control.destination_config.spreadsheet_id
+          createdSpreadsheetHere = true
+        }
+      }
+      expect(spreadsheetId, 'no spreadsheet_id available (env or destination)').toBeTruthy()
+      console.log(`\n  Sheets:         https://docs.google.com/spreadsheets/d/${spreadsheetId}/`)
+      console.log(`  Pipeline:       ${PIPELINE_ID}`)
+
+      const pipeline = makePipeline()
+      const pipelineStore = memoryPipelineStore()
+      await pipelineStore.set(PIPELINE_ID, { id: PIPELINE_ID, ...pipeline } as Pipeline)
+
+      const survivor = await stripe.customers.create({
+        name: `e2e-recon-sheets-survivor-${Date.now()}`,
+      })
+      const doomed = await stripe.customers.create({
+        name: `e2e-recon-sheets-doomed-${Date.now()}`,
+      })
+      const cleanupIds = new Set<string>([survivor.id, doomed.id])
+
+      try {
+        // Backfill seeds both customers with `_synced_at ≈ T0`.
+        await drain(engine.pipeline_sync(pipeline))
+
+        const seededRows = await readSheet(sheetsClient, spreadsheetId, STREAM)
+        const seededHeader = (seededRows[0] ?? []) as string[]
+        const idIdx = seededHeader.indexOf('id')
+        expect(idIdx, 'id column missing in sheet header').toBeGreaterThanOrEqual(0)
+        const seededIds = new Set(seededRows.slice(1).map((row) => String(row[idIdx] ?? '')))
+        expect(seededIds.has(survivor.id)).toBe(true)
+        expect(seededIds.has(doomed.id)).toBe(true)
+
+        await stripe.customers.del(doomed.id)
+        cleanupIds.delete(doomed.id)
+
+        await new Promise((r) => setTimeout(r, 50))
+        const syncRunStartedAt = new Date().toISOString()
+
+        const activities = createActivities({ engineUrl: 'http://unused', pipelineStore })
+        const env = new MockActivityEnvironment()
+        await env.run(activities.reconcileCleanup, PIPELINE_ID, syncRunStartedAt)
+
+        const afterRows = await readSheet(sheetsClient, spreadsheetId, STREAM)
+        const afterIds = new Set(afterRows.slice(1).map((row) => String(row[idIdx] ?? '')))
+        expect(afterIds.has(survivor.id), `survivor ${survivor.id} was tombstoned`).toBe(true)
+        expect(afterIds.has(doomed.id), `doomed ${doomed.id} was not tombstoned`).toBe(false)
+        console.log(`    Survived:   ${survivor.id}`)
+        console.log(`    Tombstoned: ${doomed.id}`)
+      } finally {
+        if (!process.env.KEEP_TEST_DATA) {
+          for (const id of cleanupIds) {
+            try {
+              await stripe.customers.del(id)
+            } catch {}
+          }
+        }
+      }
+    }, 240_000)
   }
 )

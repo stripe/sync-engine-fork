@@ -667,8 +667,8 @@ export function createDestination(
                 }
 
                 if (deleteRowNumbers.size > 0) {
-                  // Google sheets API omits trailing blank cells, so we add 
-                  // an extra empty cell. 
+                  // Google sheets API omits trailing blank cells, so we add
+                  // an extra empty cell.
                   const blankRow = new Array<string>(headers.length + 1).fill('')
                   const deleteList = [...deleteRowNumbers].sort((a, b) => a - b)
 
@@ -966,6 +966,78 @@ export function createDestination(
             level: 'info' as const,
             message: `Sheets destination: wrote to spreadsheet ${spreadsheetId}`,
           },
+        }
+      }
+    },
+
+    async *getStaleRecords({ config, catalog, syncRunStartedAt, filter }) {
+      if (!config.spreadsheet_id) return
+      const streamNames = catalog.streams.map((cs) => cs.stream.name)
+      if (streamNames.length === 0) return
+
+      const sheets = sheetsClient ?? makeSheetsClient(config)
+      const BATCH_SIZE = 1000
+      const filterEntries = Object.entries(filter ?? {})
+
+      // One `values.batchGet` covers all streams to stay under the read quota.
+      // If any tab is missing the call 400s and cleanup skips this run.
+      let perStream: Map<string, unknown[][]>
+      try {
+        perStream = await batchReadSheets(sheets, config.spreadsheet_id, streamNames)
+      } catch (err) {
+        log.warn(
+          { err, spreadsheetId: config.spreadsheet_id, streams: streamNames.length },
+          'getStaleRecords: batchGet failed — skipping (will retry next interval)'
+        )
+        return
+      }
+
+      for (const streamName of streamNames) {
+        const rows = perStream.get(streamName) ?? []
+        if (rows.length < 2) continue
+
+        const headers = (rows[0] as unknown[]).map((h) => String(h ?? ''))
+        const idIdx = headers.indexOf('id')
+        const syncedAtIdx = headers.indexOf('_synced_at')
+        if (idIdx < 0 || syncedAtIdx < 0) {
+          log.warn(
+            { stream: streamName, headers },
+            'getStaleRecords: missing id or _synced_at column — skipping stream'
+          )
+          continue
+        }
+        const filterIdx = filterEntries.map(([col, value]) => ({
+          idx: headers.indexOf(col),
+          value,
+          col,
+        }))
+        if (filterIdx.some((f) => f.idx < 0)) {
+          log.warn(
+            { stream: streamName, filter: filterEntries.map(([col]) => col) },
+            'getStaleRecords: filter column missing — skipping stream (refusing to run unscoped)'
+          )
+          continue
+        }
+
+        const stale: string[] = []
+        for (let r = 1; r < rows.length; r++) {
+          const row = (rows[r] ?? []) as unknown[]
+          const syncedAt = String(row[syncedAtIdx] ?? '')
+          // ISO 8601 UTC with fixed precision (`new Date().toISOString()`),
+          // so lexicographic compare is equivalent to chronological.
+          if (!syncedAt || syncedAt >= syncRunStartedAt) continue
+          if (filterIdx.some((f) => String(row[f.idx] ?? '') !== f.value)) continue
+          const id = String(row[idIdx] ?? '')
+          if (!id) continue
+          stale.push(id)
+        }
+
+        log.debug(
+          { stream: streamName, spreadsheetId: config.spreadsheet_id, count: stale.length },
+          'getStaleRecords: scan complete'
+        )
+        for (let i = 0; i < stale.length; i += BATCH_SIZE) {
+          yield { stream: streamName, ids: stale.slice(i, i + BATCH_SIZE) }
         }
       }
     },
