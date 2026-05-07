@@ -890,4 +890,4 @@ jobs:
         run: bash scripts/promote-to-dockerhub.sh
         env:
           GHCR_IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}
-          DOCKERHUB_TAGS: ${{ steps.tag.outputs.name }} latest
+          DOCKERHUB_TAGS: ${{ steps.tag.outputs.name }}${{ github.ref_name == 'main' && ' latest' || '' }}
