@@ -19,11 +19,21 @@ import defaultSpec, { configSchema } from './spec.js'
 import type { Config } from './spec.js'
 import {
   applyBatch,
+  applyDataSheetFormatting,
   batchReadSheets,
   buildRowMapFromPkColumns,
   buildRowMapFromRows,
+  displayToField,
+  fieldToDisplay,
+  inferSemType,
+  isTimestampField,
+  unixToIso,
+  isoToUnix,
   type EnumValidationRule,
   ensureIntroSheet,
+  ensureExamplesSheet,
+  buildExampleSections,
+  ensureNamedRanges,
   deleteSpreadsheet,
   ensureSheet,
   ensureSheets,
@@ -37,12 +47,14 @@ import {
   type BatchReadRequest,
   type StreamEnumValidationRules,
   type StreamBatchOps,
+  type StreamFormattingInfo,
 } from './writer.js'
 
 export {
   createSpreadsheet,
   ensureSheet,
   ensureSheets,
+  ensureNamedRanges,
   getSpreadsheetMeta,
   appendRows,
   updateRows,
@@ -50,8 +62,18 @@ export {
   readSheet,
   buildRowMap,
   ensureIntroSheet,
+  ensureExamplesSheet,
+  buildExampleSections,
   protectSheets,
   deleteSpreadsheet,
+  applyDataSheetFormatting,
+  fieldToDisplay,
+  displayToField,
+  inferSemType,
+  isTimestampField,
+  unixToIso,
+  isoToUnix,
+  type StreamFormattingInfo,
 } from './writer.js'
 export {
   GOOGLE_SHEETS_META_LOG_PREFIX,
@@ -91,12 +113,17 @@ function makeDriveClient(config: Config) {
   return google.drive({ version: 'v3', auth: makeOAuth2Client(config) })
 }
 
-/** Stringify a value for a Sheets cell. */
+/** Stringify a value for a Sheets cell. Objects → "k: v | k: v", arrays → "v1, v2". */
 function stringify(value: unknown): string {
   if (value === null || value === undefined) return ''
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  return JSON.stringify(value)
+  if (Array.isArray(value)) return value.map(stringify).join(', ')
+  if (typeof value === 'object')
+    return Object.entries(value as Record<string, unknown>)
+      .map(([k, v]) => `${k}: ${stringify(v)}`)
+      .join(' | ')
+  return String(value)
 }
 
 /** Stale-write check: numeric compare for finite numbers, else lex; empty `existing` always loses. */
@@ -228,6 +255,7 @@ export function createDestination(
       const metaBeforeEnsure = await getSpreadsheetMeta(sheets, spreadsheetId)
       const sheetIdMap = await ensureSheets(sheets, spreadsheetId, metaBeforeEnsure, streamHeaders)
       const sheetIds = catalog.streams.map((s) => sheetIdMap.get(s.stream.name)!)
+      await ensureNamedRanges(sheets, spreadsheetId, sheetIdMap, streamHeaders)
 
       const streamNames = catalog.streams.map((s) => s.stream.name)
       const metaAfterEnsure = await getSpreadsheetMeta(sheets, spreadsheetId)
@@ -265,8 +293,20 @@ export function createDestination(
 
       await setEnumValidations(sheets, spreadsheetId, sheetIdMap, streamHeaders, desiredEnumRules)
       await ensureIntroSheet(sheets, spreadsheetId, metaAfterEnsure, streamNames)
+      await ensureExamplesSheet(sheets, spreadsheetId, metaAfterEnsure, streamHeaders)
 
       await protectSheets(sheets, spreadsheetId, metaAfterEnsure, sheetIds)
+
+      const formattingStreams: StreamFormattingInfo[] = streamHeaders
+        .filter(({ streamName }) => sheetIdMap.has(streamName))
+        .map(({ streamName, headers }) => {
+          const stream = catalog.streams.find((s) => s.stream.name === streamName)
+          const properties = stream?.stream.json_schema?.properties as
+            | Record<string, unknown>
+            | undefined
+          return { streamName, sheetId: sheetIdMap.get(streamName)!, headers, properties }
+        })
+      await applyDataSheetFormatting(sheets, spreadsheetId, formattingStreams)
 
       if (isNew) {
         yield msg.control({
@@ -316,6 +356,19 @@ export function createDestination(
         catalog.streams.map((cs) => [cs.stream.name, cs.stream.newer_than_field])
       )
 
+      // Fields that should be stored as Sheets date serials (unixToSheetDate) instead of raw numbers.
+      const streamTimestampFields = new Map<string, Set<string>>()
+      for (const { stream } of catalog.streams) {
+        const properties = stream.json_schema?.properties as Record<string, unknown> | undefined
+        if (!properties) continue
+        const tsFields = new Set(
+          Object.entries(properties)
+            .filter(([field, prop]) => isTimestampField(field, prop))
+            .map(([field]) => field)
+        )
+        if (tsFields.size > 0) streamTimestampFields.set(stream.name, tsFields)
+      }
+
       const spreadsheetId = config.spreadsheet_id
         ? config.spreadsheet_id
         : await createSpreadsheet(sheets, config.spreadsheet_title)
@@ -352,7 +405,7 @@ export function createDestination(
 
         if (!headers) {
           try {
-            headers = await readHeaderRow(sheets, spreadsheetId, streamName)
+            headers = (await readHeaderRow(sheets, spreadsheetId, streamName)).map(displayToField)
           } catch (error) {
             const code =
               error instanceof Error && 'code' in error
@@ -794,7 +847,14 @@ export function createDestination(
             }
 
             const headers = await ensureHeadersForRecord(stream, cleanData)
-            const row = headers.map((header) => stringify(cleanData[header]))
+            const tsFields = streamTimestampFields.get(stream)
+            const row = headers.map((header) => {
+              const value = cleanData[header]
+              if (tsFields?.has(header) && typeof value === 'number') {
+                return unixToIso(value)
+              }
+              return stringify(value)
+            })
             const rowNumber =
               typeof data[ROW_NUMBER_FIELD] === 'number' ? data[ROW_NUMBER_FIELD] : undefined
             const primaryKey = primaryKeys.get(stream)
