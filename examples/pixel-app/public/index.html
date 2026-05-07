@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PixelDraw — Metronome + Redis</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    :root{--bg:#0a0a0f;--sf:#12121a;--sf2:#1a1a25;--bd:#1e1e2e;--tx:#e0e0e8;--dm:#6e6e82;--ac:#6366f1;--gn:#22c55e;--rd:#ef4444}
+    body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--tx);height:100vh;display:flex}
+    .sidebar{width:260px;border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow-y:auto}
+    .sb{padding:14px;border-bottom:1px solid var(--bd)}
+    .sb h1{font-size:18px}.sb h2{font-size:11px;color:var(--dm);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+    .sb .sub{font-size:11px;color:var(--dm);margin-top:2px}
+    .credits-bar{height:8px;background:var(--sf2);border-radius:4px;margin-top:8px;overflow:hidden}
+    .credits-fill{height:100%;background:var(--gn);border-radius:4px;transition:width .5s}
+    .credits-fill.low{background:var(--rd)}
+    .credits-num{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
+    .credits-label{font-size:12px;color:var(--dm)}
+    .colors{display:flex;flex-direction:column;gap:4px}
+    .co{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;border:2px solid transparent;font-size:13px}
+    .co:hover{background:rgba(255,255,255,.03)}.co.act{border-color:var(--tx);background:rgba(255,255,255,.05)}
+    .sw{width:20px;height:20px;border-radius:4px}.co .nm{font-weight:600}
+    .blocked-banner{display:none;background:var(--rd);color:#fff;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;text-align:center}
+    .blocked-banner.show{display:block}
+    .canvas-area{flex:1;display:flex;align-items:center;justify-content:center;position:relative}
+    #canvas{cursor:crosshair;image-rendering:pixelated;border:1px solid var(--bd);border-radius:4px}
+    .status{position:absolute;bottom:12px;right:12px;font-size:11px;color:var(--dm);font-variant-numeric:tabular-nums}
+    .btn{padding:8px 14px;background:var(--sf2);border:1px solid var(--bd);color:var(--tx);border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit;width:100%}
+    .btn:hover{background:var(--bd)}
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sb">
+      <h1>PixelDraw</h1>
+      <div class="sub">Metronome + Redis entitlements</div>
+    </div>
+    <div class="sb">
+      <h2>Credits</h2>
+      <div class="credits-num" id="balance">—</div>
+      <div class="credits-label">remaining credits</div>
+      <div class="credits-bar"><div class="credits-fill" id="bar"></div></div>
+    </div>
+    <div class="sb">
+      <div class="blocked-banner" id="blocked">Out of credits! Drawing disabled.</div>
+    </div>
+    <div class="sb">
+      <h2>Colors</h2>
+      <div class="colors" id="colors"></div>
+    </div>
+    <div class="sb">
+      <button class="btn" onclick="clearCanvas()">Clear Canvas</button>
+      <button class="btn" onclick="refreshCredits()" style="margin-top:6px">Refresh Credits</button>
+    </div>
+  </div>
+  <div class="canvas-area">
+    <canvas id="canvas"></canvas>
+    <div class="status" id="status">Ready</div>
+  </div>
+
+<script>
+const G = 48;
+const INITIAL_CREDITS = 10000;
+const COLORS = [
+  { id: 'red',    hex: '#ef4444', name: 'Red' },
+  { id: 'green',  hex: '#22c55e', name: 'Green' },
+  { id: 'blue',   hex: '#3b82f6', name: 'Blue' },
+  { id: 'gold',   hex: '#eab308', name: 'Gold' },
+  { id: 'purple', hex: '#a855f7', name: 'Purple' },
+  { id: 'white',  hex: '#e0e0e8', name: 'Eraser' },
+];
+
+let grid = new Array(G * G).fill(null);
+let sel = COLORS[0];
+let balance = null;
+let PX;
+let drawCount = 0;
+
+const $ = id => document.getElementById(id);
+
+// ---- Canvas ----
+
+function initCanvas() {
+  PX = Math.min(Math.floor((innerHeight - 40) / G), Math.floor((innerWidth - 300) / G));
+  const cv = $('canvas');
+  cv.width = G * PX;
+  cv.height = G * PX;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = '#12121a';
+  cx.fillRect(0, 0, cv.width, cv.height);
+  drawGrid(cx);
+
+  let drawing = false;
+  cv.onmousedown = e => { drawing = true; paint(e, cx); };
+  cv.onmousemove = e => { if (drawing) paint(e, cx); };
+  cv.onmouseup = () => { drawing = false; };
+  cv.onmouseleave = () => { drawing = false; };
+}
+
+function drawGrid(cx) {
+  cx.strokeStyle = 'rgba(255,255,255,0.03)';
+  cx.lineWidth = 1;
+  for (let i = 0; i <= G; i++) {
+    cx.beginPath(); cx.moveTo(i * PX, 0); cx.lineTo(i * PX, G * PX); cx.stroke();
+    cx.beginPath(); cx.moveTo(0, i * PX); cx.lineTo(G * PX, i * PX); cx.stroke();
+  }
+}
+
+async function paint(e, cx) {
+  const r = $('canvas').getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) / PX);
+  const y = Math.floor((e.clientY - r.top) / PX);
+  if (x < 0 || x >= G || y < 0 || y >= G) return;
+  if (grid[y * G + x] === sel.id) return;
+
+  // Check credits locally first (fast)
+  if (balance !== null && balance <= 0) {
+    $('status').textContent = 'Blocked — out of credits';
+    return;
+  }
+
+  // Draw immediately (optimistic)
+  cx.fillStyle = sel.hex;
+  cx.fillRect(x * PX + 1, y * PX + 1, PX - 1, PX - 1);
+  grid[y * G + x] = sel.id;
+  drawCount++;
+
+  // Call server — checks Redis + sends Metronome usage
+  try {
+    const res = await fetch('/api/draw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ color: sel.id, x, y }),
+    });
+    const data = await res.json();
+
+    if (!data.allowed) {
+      // Blocked! Update UI
+      balance = 0;
+      updateCreditsUI();
+      $('status').textContent = `Blocked after ${drawCount} pixels — out of credits`;
+      return;
+    }
+
+    balance = data.balance;
+    updateCreditsUI();
+    $('status').textContent = `Pixel ${drawCount} drawn (${sel.name}) — ${balance} credits left`;
+  } catch (err) {
+    $('status').textContent = `Error: ${err.message}`;
+  }
+}
+
+function clearCanvas() {
+  grid = new Array(G * G).fill(null);
+  const cx = $('canvas').getContext('2d');
+  cx.fillStyle = '#12121a';
+  cx.fillRect(0, 0, $('canvas').width, $('canvas').height);
+  drawGrid(cx);
+  drawCount = 0;
+  $('status').textContent = 'Canvas cleared';
+}
+
+// ---- Credits UI ----
+
+function updateCreditsUI() {
+  $('balance').textContent = balance != null ? balance.toLocaleString() : '—';
+  const pct = balance != null ? Math.max(0, Math.min(100, (balance / INITIAL_CREDITS) * 100)) : 100;
+  const bar = $('bar');
+  bar.style.width = pct + '%';
+  bar.className = 'credits-fill' + (pct < 20 ? ' low' : '');
+
+  const blocked = $('blocked');
+  if (balance != null && balance <= 0) {
+    blocked.classList.add('show');
+  } else {
+    blocked.classList.remove('show');
+  }
+}
+
+async function refreshCredits() {
+  try {
+    const res = await fetch('/api/credits');
+    const data = await res.json();
+    balance = data.balance;
+    updateCreditsUI();
+    $('status').textContent = `Credits refreshed: ${balance}`;
+  } catch (err) {
+    $('status').textContent = `Refresh failed: ${err.message}`;
+  }
+}
+
+// ---- Color picker ----
+
+function renderColors() {
+  $('colors').innerHTML = COLORS.map(c =>
+    `<div class="co ${sel.id === c.id ? 'act' : ''}" onclick="selectColor('${c.id}')">
+      <div class="sw" style="background:${c.hex}"></div>
+      <div class="nm">${c.name}</div>
+    </div>`
+  ).join('');
+}
+
+function selectColor(id) {
+  sel = COLORS.find(c => c.id === id) || COLORS[0];
+  renderColors();
+}
+
+// ---- Init ----
+
+initCanvas();
+renderColors();
+refreshCredits();
+</script>
+</body>
+</html>
