@@ -41,9 +41,9 @@ describe('buildExampleSections', () => {
     expect(s.rows).toHaveLength(6) // last 6 months
     // Formulas should reference customers.created (column C = index 2)
     expect(s.rows[0][1]).toContain("'customers'!C2:C")
-    // Formula should use EDATE for Unix timestamp conversion
+    // Formula should use EDATE for month boundaries and DATEVALUE for ISO string parsing
     expect(s.rows[0][1]).toContain('EDATE')
-    expect(s.rows[0][1]).toContain('DATE(1970,1,1)')
+    expect(s.rows[0][1]).toContain('DATEVALUE')
   })
 
   it('includes payment volume section when payment_intents has status and amount', () => {
