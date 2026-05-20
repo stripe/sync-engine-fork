@@ -29,17 +29,15 @@ describe('subdivideRanges', () => {
   it('splits older remainder into N equal segments', () => {
     const remaining: Range[] = [{ gte: iso(0), lt: iso(1000), cursor: 'cur_1' }]
     const segments = subdivideRanges(remaining, new Map([[remaining[0], 900]]), N)
-    // N segments of [0, 900)
-    expect(segments[segments.length - 1]).toEqual({ gte: iso(450), lt: iso(901), cursor: 'cur_1' })
+    expect(segments[segments.length - 1]).toEqual({ gte: iso(450), lt: iso(901), cursor: null })
     expect(segments).toHaveLength(DEFAULT_SUBDIVISION_FACTOR)
-    // All segments are contiguous and cover [0, 900)
     expect(toUnixSeconds(segments[0].gte)).toBe(0)
     expect(toUnixSeconds(segments[segments.length - 1].lt)).toBe(901)
     for (let i = 1; i < segments.length; i++) {
       expect(segments[i].gte).toBe(segments[i - 1].lt)
     }
-    for (let i = 0; i < segments.length - 1; i++) {
-      expect(segments[i].cursor).toBeNull()
+    for (const seg of segments) {
+      expect(seg.cursor).toBeNull()
     }
   })
 
@@ -58,7 +56,7 @@ describe('subdivideRanges', () => {
     expect(out[0]).toEqual(a)
     expect(out[1]).toEqual(b)
     expect(out[2]).toEqual({ gte: iso(60), lt: iso(90), cursor: null })
-    expect(out[3]).toEqual({ gte: iso(90), lt: iso(121), cursor: 'cur_c' })
+    expect(out[3]).toEqual({ gte: iso(90), lt: iso(121), cursor: null })
   })
 
   it('passes through a range with cursor but no lastObserved entry', () => {
@@ -66,7 +64,7 @@ describe('subdivideRanges', () => {
     expect(subdivideRanges([range], new Map(), N)).toEqual([range])
   })
 
-  it('emits single segment when older remainder is 30 second', () => {
+  it('passes through small remainders so the existing cursor paginates them', () => {
     const remaining: Range[] = [{ gte: iso(1000), lt: iso(1002), cursor: 'cur_tail' }]
     const out = subdivideRanges(remaining, new Map([[remaining[0], 1001]]), N)
     expect(out).toEqual([{ gte: iso(1000), lt: iso(1002), cursor: 'cur_tail' }])
@@ -75,21 +73,20 @@ describe('subdivideRanges', () => {
   it('N segments for a splittable range', () => {
     const remaining: Range[] = [{ gte: iso(0), lt: iso(1000), cursor: 'cur_dense' }]
     const out = subdivideRanges(remaining, new Map([[remaining[0], 900]]), N)
-    expect(out).toHaveLength(DEFAULT_SUBDIVISION_FACTOR) // boundary + N segments
+    expect(out).toHaveLength(DEFAULT_SUBDIVISION_FACTOR)
     expect(out[0]).toEqual({ gte: iso(0), lt: iso(450), cursor: null })
-    expect(out[1]).toEqual({ gte: iso(450), lt: iso(901), cursor: 'cur_dense' })
+    expect(out[1]).toEqual({ gte: iso(450), lt: iso(901), cursor: null })
 
-    // Segments cover [0, 900) contiguously
     for (let i = 2; i < out.length; i++) {
       expect(out[i].gte).toBe(out[i - 1].lt)
     }
   })
 
-  it('keeps the entire last observed second in the cursor-backed boundary range', () => {
+  it('extends final segment past the boundary second to catch records the cursor missed', () => {
     const remaining: Range[] = [{ gte: iso(1000), lt: iso(2000), cursor: 'cur_same_second' }]
     const out = subdivideRanges(remaining, new Map([[remaining[0], 1900]]), N)
     expect(out[0]).toEqual({ gte: iso(1000), lt: iso(1450), cursor: null })
-    expect(out[1]).toEqual({ gte: iso(1450), lt: iso(1901), cursor: 'cur_same_second' })
+    expect(out[1]).toEqual({ gte: iso(1450), lt: iso(1901), cursor: null })
   })
 })
 
@@ -120,13 +117,12 @@ function simulateRound(ranges: Range[], density: (ts: number) => number, pageSiz
 }
 
 describe('binary subdivision: data distribution scenarios', () => {
-  it('uniform density: splits into boundary + N segments', () => {
+  it('uniform density: splits into N segments with fresh cursors', () => {
     const ranges: Range[] = [{ gte: iso(0), lt: iso(61000), cursor: null }]
     const round1 = simulateRound(ranges, () => 1)
-    expect(round1.length).toBe(DEFAULT_SUBDIVISION_FACTOR) // segments
-    expect(round1[round1.length - 1].cursor).not.toBeNull() // boundary is part of the last segment
-    for (let i = 0; i < round1.length - 1; i++) {
-      expect(round1[i].cursor).toBeNull() // all except last segment start fresh
+    expect(round1.length).toBe(DEFAULT_SUBDIVISION_FACTOR)
+    for (const r of round1) {
+      expect(r.cursor).toBeNull()
     }
   })
 

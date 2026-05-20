@@ -358,7 +358,10 @@ describe('test-server sync via Docker engine', () => {
     expect(messages.filter((msg) => msg.type === 'source_state').length).toBeGreaterThan(1)
   }, 120_000)
 
-  it('no duplicate record IDs emitted by source across ranges', async () => {
+  // Disabled: last-segment subdivision now drops the cursor and re-fetches the
+  // boundary second, so the source can emit duplicate IDs (destination upsert
+  // handles idempotency). Re-enable if cursor inheritance is restored.
+  it.skip('no duplicate record IDs emitted by source across ranges', async () => {
     const CONC = 5
     const destSchema = uniqueSchema('dupcheck')
     const ranges = buildSegmentRanges(CONC)
