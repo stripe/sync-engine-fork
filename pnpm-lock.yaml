@@ -106,7 +106,7 @@ importers:
     devDependencies:
       '@hono/node-server':
         specifier: ^1
-        version: 1.19.11(hono@4.12.8)
+        version: 1.19.11(hono@4.12.18)
       '@playwright/test':
         specifier: ^1
         version: 1.59.1
@@ -154,10 +154,10 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: ^1
-        version: 1.19.11(hono@4.12.8)
+        version: 1.19.11(hono@4.12.18)
       '@scalar/hono-api-reference':
         specifier: ^0.6
-        version: 0.6.0(hono@4.12.8)
+        version: 0.6.0(hono@4.12.18)
       '@stripe/sync-destination-google-sheets':
         specifier: workspace:*
         version: link:../../packages/destination-google-sheets
@@ -193,7 +193,7 @@ importers:
         version: 148.0.0
       hono:
         specifier: ^4
-        version: 4.12.8
+        version: 4.12.18
       ink:
         specifier: ^7.0.1
         version: 7.0.1(@types/react@19.2.14)(react@19.2.5)
@@ -239,10 +239,10 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: ^1
-        version: 1.19.11(hono@4.12.8)
+        version: 1.19.11(hono@4.12.18)
       '@scalar/hono-api-reference':
         specifier: ^0.6
-        version: 0.6.0(hono@4.12.8)
+        version: 0.6.0(hono@4.12.18)
       '@stripe/sync-destination-google-sheets':
         specifier: workspace:*
         version: link:../../packages/destination-google-sheets
@@ -290,7 +290,7 @@ importers:
         version: 16.6.1
       hono:
         specifier: ^4
-        version: 4.12.8
+        version: 4.12.18
       ink:
         specifier: ^7.0.1
         version: 7.0.1(@types/react@19.2.14)(react@19.2.5)
@@ -423,7 +423,7 @@ importers:
     devDependencies:
       '@hono/node-server':
         specifier: ^1
-        version: 1.19.11(hono@4.12.8)
+        version: 1.19.11(hono@4.12.18)
       '@stripe/sync-destination-google-sheets':
         specifier: workspace:*
         version: link:../packages/destination-google-sheets
@@ -465,7 +465,7 @@ importers:
         version: 144.0.0
       hono:
         specifier: ^4
-        version: 4.12.8
+        version: 4.12.18
       pg:
         specifier: ^8.16.0
         version: 8.16.3
@@ -533,10 +533,10 @@ importers:
     dependencies:
       '@hono/zod-validator':
         specifier: ^0.7.6
-        version: 0.7.6(hono@4.12.8)(zod@4.3.6)
+        version: 0.7.6(hono@4.12.18)(zod@4.3.6)
       hono:
         specifier: ^4
-        version: 4.12.8
+        version: 4.12.18
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -674,7 +674,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: ^1.19.11
-        version: 1.19.11(hono@4.12.8)
+        version: 1.19.11(hono@4.12.18)
       '@stripe/sync-destination-postgres':
         specifier: workspace:*
         version: link:../destination-postgres
@@ -682,8 +682,8 @@ importers:
         specifier: workspace:*
         version: link:../openapi
       hono:
-        specifier: ^4.12.8
-        version: 4.12.8
+        specifier: ^4.12.18
+        version: 4.12.18
       pg:
         specifier: ^8.16.3
         version: 8.16.3
@@ -1253,6 +1253,9 @@ packages:
 
   '@hyperjump/uri@1.3.3':
     resolution: {integrity: sha512-rUqeUdL2aW7lzvSnCL6yUetXYzqxhsBEw9Z7Y1bEhgiRzcfO3kjY0UdD6c4H/bzxe0fXIjYuocjWQzinio8JTQ==}
+
+  '@hyperjump/uri@1.3.4':
+    resolution: {integrity: sha512-aUVWwu2GtC/cU4DwdTM+b+5jjboM6wft6vNg1+7pUTk/nNRNaBYcYhaEnCir9eRLBbkcGPkiEO7XRUlcDkxj4Q==}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -3517,8 +3520,8 @@ packages:
     resolution: {integrity: sha512-EQfezRg0NCZGNlhlDR3Evrw1FVL2G3LhU7EgPoxufQKruNBSYA8MiRPHeWbU+36o+Fhel0wMwM+sLEiBAlNLJA==}
     engines: {node: '>=10.0.0'}
 
-  hono@4.12.8:
-    resolution: {integrity: sha512-VJCEvtrezO1IAR+kqEYnxUOoStaQPGrCmX3j4wDTNOcD1uRPFpGlwQUIW8niPuvHXaTUxeOUl5MMDGrl+tmO9A==}
+  hono@4.12.18:
+    resolution: {integrity: sha512-RWzP96k/yv0PQfyXnWjs6zot20TqfpfsNXhOnev8d1InAxubW93L11/oNUc3tQqn2G0bSdAOBpX+2uDFHV7kdQ==}
     engines: {node: '>=16.9.0'}
 
   hookable@5.5.3:
@@ -4661,6 +4664,7 @@ packages:
 
   uuid@9.0.1:
     resolution: {integrity: sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   vite-node@3.2.4:
@@ -5696,13 +5700,13 @@ snapshots:
       protobufjs: 7.5.4
       yargs: 17.7.2
 
-  '@hono/node-server@1.19.11(hono@4.12.8)':
+  '@hono/node-server@1.19.11(hono@4.12.18)':
     dependencies:
-      hono: 4.12.8
+      hono: 4.12.18
 
-  '@hono/zod-validator@0.7.6(hono@4.12.8)(zod@4.3.6)':
+  '@hono/zod-validator@0.7.6(hono@4.12.18)(zod@4.3.6)':
     dependencies:
-      hono: 4.12.8
+      hono: 4.12.18
       zod: 4.3.6
 
   '@humanfs/core@0.19.1': {}
@@ -5719,7 +5723,7 @@ snapshots:
   '@hyperjump/browser@1.3.1':
     dependencies:
       '@hyperjump/json-pointer': 1.1.2
-      '@hyperjump/uri': 1.3.3
+      '@hyperjump/uri': 1.3.4
       content-type: 1.0.5
       just-curry-it: 5.3.0
 
@@ -5745,6 +5749,8 @@ snapshots:
   '@hyperjump/pact@1.4.0': {}
 
   '@hyperjump/uri@1.3.3': {}
+
+  '@hyperjump/uri@1.3.4': {}
 
   '@img/colour@1.1.0':
     optional: true
@@ -6541,10 +6547,10 @@ snapshots:
     dependencies:
       '@scalar/types': 0.1.0
 
-  '@scalar/hono-api-reference@0.6.0(hono@4.12.8)':
+  '@scalar/hono-api-reference@0.6.0(hono@4.12.18)':
     dependencies:
       '@scalar/core': 0.1.3
-      hono: 4.12.8
+      hono: 4.12.18
 
   '@scalar/openapi-types@0.1.9': {}
 
@@ -8139,7 +8145,7 @@ snapshots:
 
   heap-js@2.7.1: {}
 
-  hono@4.12.8: {}
+  hono@4.12.18: {}
 
   hookable@5.5.3: {}
 
