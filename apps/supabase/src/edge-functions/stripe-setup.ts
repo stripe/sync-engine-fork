@@ -68,6 +68,23 @@ const MGMT_API_BASE = MGMT_API_BASE_RAW.match(/^https?:\/\//)
   ? MGMT_API_BASE_RAW
   : `https://${MGMT_API_BASE_RAW}`
 
+// Helper to validate accessToken against Management API
+async function validateAccessToken(projectRef: string, accessToken: string): Promise<boolean> {
+  // Try to fetch project details using the access token
+  // This validates that the token is valid for the management API
+  const url = `${MGMT_API_BASE}/v1/projects/${projectRef}`
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  })
+
+  // If we can successfully get the project, the token is valid
+  return response.ok
+}
+
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -161,6 +178,11 @@ async function handleSetupPost(req: Request): Promise<Response> {
   const ctx = extractAuthContext(req)
   if (ctx instanceof Response) return ctx
   const { supabaseUrl, projectRef, accessToken } = ctx
+
+  const isValid = await validateAccessToken(projectRef, accessToken)
+  if (!isValid) {
+    return new Response('Forbidden: Invalid access token for this project', { status: 403 })
+  }
 
   let pool: pg.Pool | null = null
   try {
@@ -275,6 +297,15 @@ async function handleSetupPost(req: Request): Promise<Response> {
 // ---------------------------------------------------------------------------
 
 async function handleSetupGet(_req: Request): Promise<Response> {
+  const ctx = extractAuthContext(req)
+  if (ctx instanceof Response) return ctx
+  const { projectRef, accessToken } = ctx
+
+  const isValid = await validateAccessToken(projectRef, accessToken)
+  if (!isValid) {
+    return new Response('Forbidden: Invalid access token for this project', { status: 403 })
+  }
+
   const dbUrl = Deno.env.get('SUPABASE_DB_URL')
   if (!dbUrl) {
     return jsonResponse({ error: 'SUPABASE_DB_URL not set' }, 500)
@@ -352,6 +383,11 @@ async function handleSetupDelete(req: Request): Promise<Response> {
   const ctx = extractAuthContext(req)
   if (ctx instanceof Response) return ctx
   const { projectRef, accessToken } = ctx
+
+  const isValid = await validateAccessToken(projectRef, accessToken)
+  if (!isValid) {
+    return new Response('Forbidden: Invalid access token for this project', { status: 403 })
+  }
 
   let pool: pg.Pool | null = null
   try {
