@@ -68,6 +68,95 @@ const MGMT_API_BASE = MGMT_API_BASE_RAW.match(/^https?:\/\//)
   ? MGMT_API_BASE_RAW
   : `https://${MGMT_API_BASE_RAW}`
 
+// Returns true if the projectRef passed is a non-branch project, false otherwise
+async function canAccessProject(projectRef: string, accessToken: string): Promise<boolean> {
+  const url = `${MGMT_API_BASE}/v1/projects/${projectRef}`
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  })
+  return response.ok
+}
+
+// Returns all projects refs
+async function getAllProjects(accessToken: string): Promise<string[]> {
+  const url = `${MGMT_API_BASE}/v1/projects`
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  })
+  if (response.ok) {
+    const projects = (await response.json()) as Array<{ ref?: string }>
+    return Array.isArray(projects)
+      ? projects
+          .map((project) => project.ref)
+          .filter((projectRef): projectRef is string => Boolean(projectRef))
+      : []
+  } else {
+    return []
+  }
+}
+
+// Returns all branch project refs of a give projectRef
+async function getAllBranches(projectRef: string, accessToken: string): Promise<string[]> {
+  const url = `${MGMT_API_BASE}/v1/projects/${projectRef}/branches`
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  })
+  if (response.ok) {
+    const branches = (await response.json()) as Array<{ project_ref?: string }>
+    return Array.isArray(branches)
+      ? branches
+          .map((branch) => branch.project_ref)
+          .filter((projectRef): projectRef is string => Boolean(projectRef))
+      : []
+  } else {
+    return []
+  }
+}
+
+// Authenticates with Supabase management API. Returns null if the accessToken has
+// access to the projectRef project, other returns an error string
+async function authenticateWithSupabase(
+  projectRef: string,
+  accessToken: string | null
+): Promise<string | null> {
+  if (!accessToken) {
+    return 'Unauthorized: Invalid credentials'
+  }
+
+  // First we check if the token can return the project directly
+  // If it does then the token is valid for this project and
+  // we authenticate the request
+  const tokenCanAccesProject = await canAccessProject(projectRef, accessToken)
+  if (tokenCanAccesProject) {
+    return null
+  }
+
+  // If the token does not return a project then projectRef could be a branch
+  // project, in which case we enumerate branch projects of all projects
+  const allProjectRefs = await getAllProjects(accessToken)
+  for (const ref of allProjectRefs) {
+    const branches = await getAllBranches(ref, accessToken)
+    if (branches.includes(projectRef)) {
+      return null
+    }
+  }
+
+  // It's not even a branch project
+  return 'Unauthorized: Invalid credentials'
+}
+
 // Helper to validate accessToken against Management API
 async function validateAccessToken(projectRef: string, accessToken: string): Promise<boolean> {
   // Try to fetch project details using the access token
@@ -179,9 +268,9 @@ async function handleSetupPost(req: Request): Promise<Response> {
   if (ctx instanceof Response) return ctx
   const { supabaseUrl, projectRef, accessToken } = ctx
 
-  const isValid = await validateAccessToken(projectRef, accessToken)
-  if (!isValid) {
-    return new Response('Forbidden: Invalid access token for this project', { status: 403 })
+  const supabaseAuthError = await authenticateWithSupabase(projectRef, accessToken)
+  if (supabaseAuthError) {
+    return new Response(supabaseAuthError, { status: 401 })
   }
 
   let pool: pg.Pool | null = null
@@ -301,9 +390,9 @@ async function handleSetupGet(_req: Request): Promise<Response> {
   if (ctx instanceof Response) return ctx
   const { projectRef, accessToken } = ctx
 
-  const isValid = await validateAccessToken(projectRef, accessToken)
-  if (!isValid) {
-    return new Response('Forbidden: Invalid access token for this project', { status: 403 })
+  const supabaseAuthError = await authenticateWithSupabase(projectRef, accessToken)
+  if (supabaseAuthError) {
+    return new Response(supabaseAuthError, { status: 401 })
   }
 
   const dbUrl = Deno.env.get('SUPABASE_DB_URL')
