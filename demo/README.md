@@ -141,6 +141,21 @@ outbound WebSocket connection.
 | `stripe-to-postgres.sh`      | Stripe → Postgres via the engine                     | `STRIPE_API_KEY`, `DATABASE_URL` |
 | `stripe-to-google-sheets.sh` | Stripe → Google Sheets via the engine                | `STRIPE_API_KEY`, `GOOGLE_*`     |
 | `stripe-to-postgres-live.sh` | Stripe → Postgres with live WebSocket streaming      | `STRIPE_API_KEY`, `DATABASE_URL` |
+| `stripe-to-dsql.ts`          | Stripe → AWS DSQL via the engine                     | `STRIPE_API_KEY`, `AWS_*`        |
+
+### Stripe → AWS DSQL
+
+Sync Stripe data to [Aurora DSQL](https://aws.amazon.com/rds/aurora/dsql/) (serverless distributed SQL):
+
+```sh
+# One-time: provision the DSQL cluster
+cd terraform && terraform init && terraform apply && cd ..
+
+# Sync (auto-reads endpoint from terraform output)
+node --import tsx demo/stripe-to-dsql.ts
+```
+
+Or with explicit env vars: `DSQL_ENDPOINT=<id>.dsql.<region>.on.aws node --import tsx demo/stripe-to-dsql.ts`
 
 ### TypeScript API
 
