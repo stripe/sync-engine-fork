@@ -5,6 +5,10 @@ import { embeddedMigrations } from '../../database/migrations-embedded.ts'
 import { parseSchemaComment } from '../schemaComment.ts'
 import postgres from 'postgres'
 
+// Name of the vault secret used to authenticate callers of this function.
+// Generated per-install and stored in vault, mirroring the stripe-worker secret.
+const SETUP_SECRET_NAME = 'stripe_setup_secret'
+
 // Get management API base URL from environment variable (for testing against localhost/staging)
 // Caller should provide full URL with protocol (e.g., http://localhost:54323 or https://api.supabase.com)
 const MGMT_API_BASE_RAW = Deno.env.get('MANAGEMENT_API_URL') || 'https://api.supabase.com'
@@ -66,13 +70,58 @@ Deno.serve(async (req) => {
   }
   const projectRef = new URL(supabaseUrl).hostname.split('.')[0]
 
-  // Validate access token for all requests
+  // Authenticate the caller against the per-install secret stored in vault.
+  // The Authorization bearer token must match `stripe_setup_secret`. An attacker
+  // cannot read the vault to learn this value, and because the destructive
+  // branches below only run after this check passes, a forged token is rejected
+  // before any cleanup occurs. This mirrors how the stripe-worker function
+  // authenticates against its own vault secret.
   const authHeader = req.headers.get('Authorization')
   if (!authHeader?.startsWith('Bearer ')) {
     return new Response('Unauthorized', { status: 401 })
   }
+  const callerSecret = authHeader.substring(7) // Remove 'Bearer '
 
-  const accessToken = authHeader.substring(7) // Remove 'Bearer '
+  // The Management API access token used for the function's own Management API
+  // operations (deleting secrets and edge functions during uninstall). It is
+  // supplied out-of-band from the authenticating secret so that this function
+  // never has to trust the bearer token for privileged Management operations.
+  const accessToken = req.headers.get('x-management-api-token') ?? ''
+
+  {
+    const dbUrl = Deno.env.get('SUPABASE_DB_URL')
+    if (!dbUrl) {
+      return new Response(JSON.stringify({ error: 'SUPABASE_DB_URL not set' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    let authSql: ReturnType<typeof postgres> | undefined
+    try {
+      authSql = postgres(dbUrl, { max: 1, prepare: false })
+      const secretResult = await authSql`
+        SELECT decrypted_secret
+        FROM vault.decrypted_secrets
+        WHERE name = ${SETUP_SECRET_NAME}
+      `
+      if (secretResult.length === 0) {
+        return new Response('Setup secret not configured in vault', { status: 500 })
+      }
+      if (callerSecret !== secretResult[0].decrypted_secret) {
+        return new Response('Forbidden: Invalid setup secret', { status: 403 })
+      }
+    } catch (error: unknown) {
+      const err = error as Error
+      console.error('Setup secret validation error:', error)
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    } finally {
+      if (authSql) await authSql.end()
+    }
+  }
 
   // Handle GET requests for status
   if (req.method === 'GET') {
@@ -216,7 +265,7 @@ Deno.serve(async (req) => {
       try {
         await stripeSync.postgresClient.query(`
           DELETE FROM vault.secrets
-          WHERE name IN ('stripe_sync_worker_secret', 'stripe_sigma_worker_secret')
+          WHERE name IN ('stripe_sync_worker_secret', 'stripe_sigma_worker_secret', 'stripe_setup_secret')
         `)
       } catch (err) {
         console.warn('Could not delete vault secret:', err)

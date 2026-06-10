@@ -28,6 +28,7 @@ export class SupabaseSetupClient {
   private supabaseManagementUrl?: string
   private accessToken: string
   private workerSecret: string
+  private setupSecret: string
 
   constructor(options: DeployClientOptions) {
     this.api = new SupabaseManagementAPI({
@@ -39,6 +40,35 @@ export class SupabaseSetupClient {
     this.supabaseManagementUrl = options.supabaseManagementUrl
     this.accessToken = options.accessToken
     this.workerSecret = crypto.randomUUID()
+    this.setupSecret = crypto.randomUUID()
+  }
+
+  /**
+   * Store the per-install setup secret in vault. The stripe-setup edge function
+   * authenticates callers against this value, so it must exist before the
+   * function is invoked.
+   */
+  private async storeSetupSecret(): Promise<void> {
+    const escapedSetupSecret = this.setupSecret.replace(/'/g, "''")
+    await this.runSQL(`
+      DELETE FROM vault.secrets WHERE name = 'stripe_setup_secret';
+      SELECT vault.create_secret('${escapedSetupSecret}', 'stripe_setup_secret');
+    `)
+  }
+
+  /**
+   * Read the per-install setup secret from vault. Used during uninstall to
+   * authenticate the call to the stripe-setup edge function.
+   */
+  private async getSetupSecret(): Promise<string | null> {
+    try {
+      const result = (await this.runSQL(
+        `SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'stripe_setup_secret'`
+      )) as { decrypted_secret: string }[]
+      return result[0]?.decrypted_secret ?? null
+    } catch {
+      return null
+    }
   }
 
   /**
@@ -271,15 +301,23 @@ export class SupabaseSetupClient {
   async invokeFunction(
     slug: string,
     method: string,
-    bearerToken: string
+    bearerToken: string,
+    managementApiToken?: string
   ): Promise<{ success: boolean; error?: string }> {
     const url = `https://${this.projectRef}.${this.projectBaseUrl}/functions/v1/${slug}`
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${bearerToken}`,
+      'Content-Type': 'application/json',
+    }
+    // The stripe-setup function authenticates the caller via the bearer secret,
+    // but performs its own Management API operations using a separate token
+    // passed out-of-band in this header.
+    if (managementApiToken) {
+      headers['x-management-api-token'] = managementApiToken
+    }
     const response = await fetch(url, {
       method,
-      headers: {
-        Authorization: `Bearer ${bearerToken}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
     })
 
     if (!response.ok) {
@@ -450,9 +488,22 @@ export class SupabaseSetupClient {
         await this.updateComment({ status: 'uninstalling', startTime })
       }
 
+      // Read the setup secret stored in vault at install time to authenticate
+      // the uninstall call. The Management API token (this.accessToken) authorizes
+      // reading the secret here, and is also forwarded for the function's own
+      // Management API cleanup operations.
+      const setupSecret = await this.getSetupSecret()
+      if (!setupSecret) {
+        throw new Error('Setup secret not found in vault; cannot authenticate uninstall')
+      }
+
       // Invoke the DELETE endpoint on stripe-setup function
-      // Use accessToken in Authorization header for Management API validation
-      const setupResult = await this.invokeFunction('stripe-setup', 'DELETE', this.accessToken)
+      const setupResult = await this.invokeFunction(
+        'stripe-setup',
+        'DELETE',
+        setupSecret,
+        this.accessToken
+      )
 
       if (!setupResult.success) {
         throw new Error(`Uninstall failed: ${setupResult.error}`)
@@ -523,9 +574,19 @@ export class SupabaseSetupClient {
       const versionedSetup = this.injectPackageVersion(setupFunctionCode, version)
       await this.deployFunction('stripe-setup', versionedSetup, false)
 
+      // Store the setup secret in vault before invoking the function, since the
+      // function authenticates the caller against this value.
+      await this.storeSetupSecret()
+
       // Run setup (migrations + webhook creation)
-      // Use accessToken for Management API validation
-      const setupResult = await this.invokeFunction('stripe-setup', 'POST', this.accessToken)
+      // Authenticate with the setup secret; pass the Management token separately
+      // for the function's own Management API operations.
+      const setupResult = await this.invokeFunction(
+        'stripe-setup',
+        'POST',
+        this.setupSecret,
+        this.accessToken
+      )
 
       if (!setupResult.success) {
         throw new Error(`Setup failed: ${setupResult.error}`)
