@@ -59,6 +59,45 @@ async function deleteSecret(
   }
 }
 
+// Thrown when setup-secret validation fails; carries the HTTP status for the response.
+class SetupAuthError extends Error {
+  constructor(
+    readonly status: number,
+    message: string
+  ) {
+    super(message)
+  }
+}
+
+// Validates the caller's bearer secret against the per-install setup secret in vault.
+// Returns only on a strict match with a non-empty stored secret; throws on every other case.
+async function validateSetupSecret(callerSecret: string): Promise<void> {
+  const dbUrl = Deno.env.get('SUPABASE_DB_URL')
+  if (!dbUrl) {
+    throw new SetupAuthError(500, 'SUPABASE_DB_URL not set')
+  }
+
+  let authSql: ReturnType<typeof postgres> | undefined
+  try {
+    authSql = postgres(dbUrl, { max: 1, prepare: false })
+    const secretResult = await authSql`
+      SELECT decrypted_secret
+      FROM vault.decrypted_secrets
+      WHERE name = ${SETUP_SECRET_NAME}
+    `
+    const storedSecret: unknown = secretResult[0]?.decrypted_secret
+    if (typeof storedSecret !== 'string' || storedSecret.length === 0) {
+      throw new SetupAuthError(500, 'Setup secret not configured in vault')
+    }
+    if (callerSecret === storedSecret) {
+      return
+    }
+    throw new SetupAuthError(403, 'Forbidden: Invalid setup secret')
+  } finally {
+    if (authSql) await authSql.end()
+  }
+}
+
 Deno.serve(async (req) => {
   // Extract project ref from SUPABASE_URL (format: https://{projectRef}.{base})
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
@@ -88,39 +127,17 @@ Deno.serve(async (req) => {
   // never has to trust the bearer token for privileged Management operations.
   const accessToken = req.headers.get('x-management-api-token') ?? ''
 
-  {
-    const dbUrl = Deno.env.get('SUPABASE_DB_URL')
-    if (!dbUrl) {
-      return new Response(JSON.stringify({ error: 'SUPABASE_DB_URL not set' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      })
+  try {
+    await validateSetupSecret(callerSecret)
+  } catch (error: unknown) {
+    if (error instanceof SetupAuthError) {
+      return new Response(error.message, { status: error.status })
     }
-
-    let authSql: ReturnType<typeof postgres> | undefined
-    try {
-      authSql = postgres(dbUrl, { max: 1, prepare: false })
-      const secretResult = await authSql`
-        SELECT decrypted_secret
-        FROM vault.decrypted_secrets
-        WHERE name = ${SETUP_SECRET_NAME}
-      `
-      if (secretResult.length === 0) {
-        return new Response('Setup secret not configured in vault', { status: 500 })
-      }
-      if (callerSecret !== secretResult[0].decrypted_secret) {
-        return new Response('Forbidden: Invalid setup secret', { status: 403 })
-      }
-    } catch (error: unknown) {
-      const err = error as Error
-      console.error('Setup secret validation error:', error)
-      return new Response(JSON.stringify({ error: err.message }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    } finally {
-      if (authSql) await authSql.end()
-    }
+    console.error('Setup secret validation error:', error)
+    return new Response(JSON.stringify({ error: (error as Error).message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    })
   }
 
   // Handle GET requests for status
