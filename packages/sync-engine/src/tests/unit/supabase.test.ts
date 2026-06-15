@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
 import { SupabaseSetupClient } from '../../supabase/supabase'
 
 describe('SupabaseDeployClient', () => {
@@ -655,9 +656,6 @@ describe('SupabaseDeployClient', () => {
       })
 
       // Mock only what we need to test
-      client.validateProject = vi
-        .fn()
-        .mockResolvedValue({ id: mockProjectRef, name: 'test', region: 'us-east-1' })
       client.runSQL = vi.fn().mockResolvedValue(null)
       client.deployFunction = vi.fn().mockResolvedValue(null)
       client.setSecrets = mockSetSecrets
@@ -683,9 +681,6 @@ describe('SupabaseDeployClient', () => {
       })
 
       // Mock only what we need to test
-      client.validateProject = vi
-        .fn()
-        .mockResolvedValue({ id: mockProjectRef, name: 'test', region: 'us-east-1' })
       client.runSQL = vi.fn().mockResolvedValue(null)
       client.deployFunction = vi.fn().mockResolvedValue(null)
       client.setSecrets = mockSetSecrets
@@ -699,6 +694,136 @@ describe('SupabaseDeployClient', () => {
       expect(mockSetSecrets).toHaveBeenCalledWith([
         { name: 'STRIPE_SECRET_KEY', value: 'sk_test_key' },
       ])
+    })
+  })
+
+  describe('Setup secret authentication', () => {
+    it('passes the setup secret as bearer and the management token as x-management-api-token', async () => {
+      const client = new SupabaseSetupClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+        projectBaseUrl: 'test-domain.com',
+      })
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true }),
+      })
+      global.fetch = mockFetch
+
+      await client.invokeFunction('stripe-setup', 'DELETE', 'the-setup-secret', mockAccessToken)
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `https://${mockProjectRef}.test-domain.com/functions/v1/stripe-setup`,
+        expect.objectContaining({
+          method: 'DELETE',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer the-setup-secret',
+            'x-management-api-token': mockAccessToken,
+          }),
+        })
+      )
+
+      vi.restoreAllMocks()
+    })
+
+    it('does not set x-management-api-token when no management token is provided', async () => {
+      const client = new SupabaseSetupClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true }),
+      })
+      global.fetch = mockFetch
+
+      await client.invokeFunction('stripe-worker', 'POST', 'worker-secret')
+
+      const headers = mockFetch.mock.calls[0][1].headers
+      expect(headers).not.toHaveProperty('x-management-api-token')
+
+      vi.restoreAllMocks()
+    })
+
+    it('stores the setup secret in vault before invoking stripe-setup during install', async () => {
+      const runSqlCalls: string[] = []
+      const client = new SupabaseSetupClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      client.runSQL = vi.fn().mockImplementation(async (sql: string) => {
+        runSqlCalls.push(sql)
+        return null
+      })
+      client.deployFunction = vi.fn().mockResolvedValue(null)
+      client.setSecrets = vi.fn().mockResolvedValue(null)
+      client.setupPgCronJob = vi.fn().mockResolvedValue(null)
+      client.setupSigmaPgCronJob = vi.fn().mockResolvedValue(null)
+
+      let setupSecretStoredBeforeInvoke = false
+      client.invokeFunction = vi.fn().mockImplementation(async (slug: string) => {
+        if (slug === 'stripe-setup') {
+          setupSecretStoredBeforeInvoke = runSqlCalls.some((q) =>
+            q.includes("'stripe_setup_secret'")
+          )
+        }
+        return { success: true }
+      })
+
+      await client.install('sk_test_key')
+
+      expect(setupSecretStoredBeforeInvoke).toBe(true)
+    })
+
+    it('authenticates stripe-setup with the secret read from vault, not the access token', async () => {
+      const storedSecret = 'stored-setup-secret'
+      const client = new SupabaseSetupClient({
+        accessToken: mockAccessToken,
+        projectRef: mockProjectRef,
+      })
+
+      client.runSQL = vi.fn().mockImplementation(async (sql: string) => {
+        if (sql.includes('stripe_setup_secret')) {
+          return [{ decrypted_secret: storedSecret }]
+        }
+        if (sql.includes('schema_exists')) {
+          return [{ schema_exists: true }]
+        }
+        return [{ comment: null }]
+      })
+
+      const invokeSpy = vi.fn().mockResolvedValue({ success: true })
+      client.invokeFunction = invokeSpy
+      client.updateComment = vi.fn().mockResolvedValue(undefined)
+
+      await client.uninstall()
+
+      expect(invokeSpy).toHaveBeenCalledWith(
+        'stripe-setup',
+        'DELETE',
+        storedSecret,
+        mockAccessToken
+      )
+    })
+
+    it('fails uninstall without invoking stripe-setup when the setup secret cannot be read', async () => {
+      const client = new SupabaseSetupClient({
+        accessToken: 'attacker-controlled-token',
+        projectRef: mockProjectRef,
+      })
+
+      // Simulate the Management API rejecting an unauthorized token: every
+      // runSQL (including the vault read) throws.
+      client.runSQL = vi.fn().mockRejectedValue(new Error('401 Unauthorized'))
+
+      const invokeSpy = vi.fn().mockResolvedValue({ success: true })
+      client.invokeFunction = invokeSpy
+
+      await expect(client.uninstall()).rejects.toThrow(/Setup secret not found in vault/)
+      expect(invokeSpy).not.toHaveBeenCalled()
     })
   })
 })
