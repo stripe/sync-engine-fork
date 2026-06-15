@@ -71,7 +71,7 @@ class SetupAuthError extends Error {
 
 // Validates the caller's bearer secret against the per-install setup secret in vault.
 // Returns only on a strict match with a non-empty stored secret; throws on every other case.
-async function validateSetupSecret(callerSecret: string): Promise<void> {
+async function authenticateCaller(callerSecret: string): Promise<void> {
   const dbUrl = Deno.env.get('SUPABASE_DB_URL')
   if (!dbUrl) {
     throw new SetupAuthError(500, 'SUPABASE_DB_URL not set')
@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
   const accessToken = req.headers.get('x-management-api-token') ?? ''
 
   try {
-    await validateSetupSecret(callerSecret)
+    await authenticateCaller(callerSecret)
   } catch (error: unknown) {
     if (error instanceof SetupAuthError) {
       return new Response(error.message, { status: error.status })
