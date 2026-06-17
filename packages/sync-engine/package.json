@@ -1,8 +1,8 @@
 {
-  "name": "stripe-experiment-sync",
+  "name": "@stripe/sync-engine",
   "version": "1.0.32",
   "private": false,
-  "description": "DEPRECATED - This package has moved to https://github.com/stripe/sync-engine",
+  "description": "Sync Stripe data to Postgres",
   "type": "module",
   "main": "./dist/index.cjs",
   "types": "./dist/index.d.ts",
