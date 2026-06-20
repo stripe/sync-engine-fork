@@ -7,7 +7,7 @@ settings:
 overrides:
   '@types/react': 19.2.14
   '@types/react-dom': 19.2.3
-  esbuild: ^0.28.1
+  esbuild: ^0.28.0
   react: 19.2.5
   react-dom: 19.2.5
 
@@ -351,7 +351,7 @@ importers:
         specifier: ^24.10.1
         version: 24.10.1
       esbuild:
-        specifier: ^0.28.1
+        specifier: ^0.28.0
         version: 0.28.1
       stripe:
         specifier: ^18.1.0
@@ -623,8 +623,8 @@ importers:
         specifier: ^7.0.6
         version: 7.0.6(supports-color@10.2.2)
       undici:
-        specifier: ^7.16.0
-        version: 7.24.6
+        specifier: ^7.28.0
+        version: 7.28.0
       ws:
         specifier: ^8.20.1
         version: 8.20.1
@@ -4685,8 +4685,8 @@ packages:
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
 
-  undici@7.24.6:
-    resolution: {integrity: sha512-Xi4agocCbRzt0yYMZGMA6ApD7gvtUFaxm4ZmeacWI4cZxaF6C+8I8QfofC20NAePiB/IcvZmzkJ7XPa471AEtA==}
+  undici@7.28.0:
+    resolution: {integrity: sha512-cRZYrTDwWznlnRiPjggAGxZXanty6M8RV1ff8Wm4LWXBp7/IG8v5DnOm74DtUBp9OONpK75YlPnIjQqX0dBDtA==}
     engines: {node: '>=20.18.1'}
 
   unionfs@4.6.0:
@@ -9279,7 +9279,7 @@ snapshots:
 
   undici-types@7.18.2: {}
 
-  undici@7.24.6: {}
+  undici@7.28.0: {}
 
   unionfs@4.6.0:
     dependencies:
