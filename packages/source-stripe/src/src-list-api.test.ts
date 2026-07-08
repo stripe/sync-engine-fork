@@ -136,6 +136,11 @@ describe('isSkippableError', () => {
       'This account is not eligible for Climate Orders. [GET /v1/climate/orders (400)]',
       true,
     ],
+    [
+      'v2_core_accounts (preview version required)',
+      'Please explicitly specify the latest .preview Stripe-Version in your request header to use this API. If you would like to alternatively onboard onto Connect, please visit https://dashboard.stripe.com/acct_1TbCdmRs6pBtHlT8/settings/connect/platform-setup. [GET /v2/core/accounts (400)] {request-id=req_VSiqhLV5F7tjB2}',
+      true,
+    ],
     ['unrecognized error', 'Something went wrong', false],
     ['non-StripeApiRequestError', null, false],
   ])('%s', (_label, message, expected) => {

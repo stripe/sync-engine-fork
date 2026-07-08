@@ -141,6 +141,12 @@ const SKIPPABLE_ERROR_MESSAGES = [
   // "Accounts v2 isn't available in test mode. Switch to a sandbox to test.
   //  [GET /v2/core/accounts (400)] {request-id=..., stripe-should-retry=false}"
   "isn't available in test mode",
+  // Variant 3 (preview version required):
+  // "Please explicitly specify the latest .preview Stripe-Version in your request header to use
+  //  this API. If you would like to alternatively onboard onto Connect, please visit
+  //  https://dashboard.stripe.com/acct_.../settings/connect/platform-setup.
+  //  [GET /v2/core/accounts (400)] {request-id=...}"
+  'explicitly specify the latest .preview Stripe-Version',
 
   // sigma_scheduled_query_runs (test mode)
   // "This API surface is not enabled for testmode usage. [GET /v1/sigma/scheduled_query_runs (400)] ..."
