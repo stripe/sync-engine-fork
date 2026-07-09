@@ -67,6 +67,15 @@ export const sourceTest = {
       if (msg.type === 'record') recordCount++
     }
   },
+
+  async *handle_events(
+    _params: { config: SourceTestConfig },
+    events: AsyncIterable<unknown>
+  ): AsyncIterable<CoreMessage> {
+    for await (const msg of events as AsyncIterable<CoreMessage>) {
+      yield msg
+    }
+  },
 } satisfies Source<SourceTestConfig>
 
 export default sourceTest

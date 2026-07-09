@@ -1,6 +1,7 @@
 import type { ConfiguredCatalog, Message } from '@stripe/sync-protocol'
 import http from 'node:http'
 import type { StripeEvent } from './spec.js'
+import { stripeEventSchema } from './spec.js'
 import type { Config, WebhookInput } from './index.js'
 import type { ResourceConfig } from './types.js'
 import { processStripeEvent } from './process-event.js'
@@ -29,6 +30,39 @@ export async function* processWebhookInput(
   const event = verifyWebhookSignature(input.body, signature, config.webhook_secret)
   log.info({ eventId: event.id, eventType: event.type }, 'webhook signature verified')
   yield* processStripeEvent(event, config, catalog, registry, streamNames, accountId)
+}
+
+// MARK: - processEventInput
+
+/**
+ * Dispatch a single event input to the right processor based on its shape:
+ * raw `WebhookInput` (`{ body, headers }`) → signature-verify → process,
+ * anything else → parse as `StripeEvent` → process.
+ *
+ * Used by both `read()`'s event-driven branches and `handle_events()` so
+ * the dispatch logic lives in exactly one place.
+ */
+export async function* processEventInput(
+  input: WebhookInput | StripeEvent | unknown,
+  config: Config,
+  catalog: ConfiguredCatalog,
+  registry: Record<string, ResourceConfig>,
+  streamNames: Set<string>,
+  accountId?: string
+): AsyncGenerator<Message> {
+  if (input != null && typeof input === 'object' && 'body' in input) {
+    yield* processWebhookInput(
+      input as WebhookInput,
+      config,
+      catalog,
+      registry,
+      streamNames,
+      accountId
+    )
+  } else {
+    const event = stripeEventSchema.parse(input)
+    yield* processStripeEvent(event, config, catalog, registry, streamNames, accountId)
+  }
 }
 
 // MARK: - LiveInput queue

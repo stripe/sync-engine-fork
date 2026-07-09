@@ -149,6 +149,24 @@ export function createRemoteEngine(engineUrl: string): Engine {
       )
     },
 
+    pipeline_handle_events(
+      pipeline: PipelineConfig,
+      events: AsyncIterable<unknown>
+    ): AsyncIterable<Message> {
+      return withAbortOnReturn((signal) =>
+        (async function* () {
+          const eventBatch: unknown[] = []
+          for await (const event of events) eventBatch.push(event)
+          const res = await post(
+            '/pipeline_handle_events',
+            { pipeline, events: { [pipeline.source.type]: eventBatch } },
+            signal
+          )
+          yield* parseNdjsonStream<Message>(res.body!)
+        })()
+      )
+    },
+
     pipeline_write(
       pipeline: PipelineConfig,
       messages: AsyncIterable<Message>

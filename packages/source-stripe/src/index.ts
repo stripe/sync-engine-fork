@@ -14,8 +14,7 @@ import type { StripeEvent } from './spec.js'
 import { buildResourceRegistry, EXCLUDED_TABLES } from './resourceRegistry.js'
 import { catalogFromOpenApi, stampAccountIdEnum } from './catalog.js'
 import { BUNDLED_API_VERSION, resolveOpenApiSpec, SpecParser } from '@stripe/sync-openapi'
-import { processStripeEvent } from './process-event.js'
-import { processWebhookInput, createInputQueue, startWebhookServer } from './src-webhook.js'
+import { processEventInput, createInputQueue, startWebhookServer } from './src-webhook.js'
 import { listApiBackfill, errorToConnectionStatus } from './src-list-api.js'
 import { pollEvents } from './src-events-api.js'
 import type { StripeWebSocketClient, StripeWebhookEvent } from './src-websocket.js'
@@ -311,19 +310,7 @@ export function createStripeSource(
           // Event-driven mode: iterate over incoming webhook inputs
           if ($stdin) {
             for await (const input of $stdin) {
-              if ('body' in (input as object)) {
-                yield* processWebhookInput(
-                  input as WebhookInput,
-                  config,
-                  catalog,
-                  registry,
-                  streamNames,
-                  accountId
-                )
-              } else {
-                const event = stripeEventSchema.parse(input)
-                yield* processStripeEvent(event, config, catalog, registry, streamNames, accountId)
-              }
+              yield* processEventInput(input, config, catalog, registry, streamNames, accountId)
             }
             return
           }
@@ -390,25 +377,14 @@ export function createStripeSource(
               while (wsClient || httpServer) {
                 const queued = await inputQueue.wait(signal)
                 try {
-                  if ('body' in queued.data) {
-                    yield* processWebhookInput(
-                      queued.data,
-                      config,
-                      catalog,
-                      registry,
-                      streamNames,
-                      accountId
-                    )
-                  } else {
-                    yield* processStripeEvent(
-                      queued.data,
-                      config,
-                      catalog,
-                      registry,
-                      streamNames,
-                      accountId
-                    )
-                  }
+                  yield* processEventInput(
+                    queued.data,
+                    config,
+                    catalog,
+                    registry,
+                    streamNames,
+                    accountId
+                  )
                   queued.resolve?.()
                 } catch (err) {
                   queued.reject?.(err instanceof Error ? err : new Error(String(err)))
@@ -424,6 +400,37 @@ export function createStripeSource(
               httpServer.close()
               httpServer = null
             }
+          }
+        })()
+      )
+    },
+
+    handle_events({ config, catalog }, events) {
+      return withAbortOnReturn((signal) =>
+        (async function* () {
+          const apiVersion = config.api_version ?? BUNDLED_API_VERSION
+          const client = makeClient({ ...config, api_version: apiVersion }, undefined, signal)
+          const resolved = await resolveOpenApiSpec({ apiVersion }, makeApiFetch(signal))
+          const streamNames = new Set(catalog.streams.map((s) => s.stream.name))
+          const registry = buildResourceRegistry(
+            resolved.spec,
+            config.api_key,
+            resolved.apiVersion,
+            config.base_url,
+            streamNames,
+            signal
+          )
+
+          let accountId: string
+          try {
+            accountId = (await resolveAccountMetadata(config, client)).accountId
+          } catch (err) {
+            yield errorToConnectionStatus(err)
+            return
+          }
+
+          for await (const event of events) {
+            yield* processEventInput(event, config, catalog, registry, streamNames, accountId)
           }
         })()
       )

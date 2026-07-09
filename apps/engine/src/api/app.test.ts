@@ -677,6 +677,41 @@ describe('POST /read', () => {
   })
 })
 
+describe('POST /pipeline_handle_events', () => {
+  it('streams messages emitted by the source handle_events hook', async () => {
+    const app = await createApp(resolver)
+
+    const events = {
+      test: [
+        {
+          type: 'record',
+          record: {
+            stream: 'customer',
+            data: { id: 'cus_evt' },
+            emitted_at: new Date().toISOString(),
+          },
+        },
+      ],
+    }
+
+    const res = await app.request(
+      '/pipeline_handle_events',
+      jsonBody({ pipeline: testPipeline, events })
+    )
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toBe('application/x-ndjson')
+
+    const messages = (await readNdjson<Message>(res)).filter((e) => e.type !== 'log')
+    expect(messages.some((e) => e.type === 'record' && e.record.data.id === 'cus_evt')).toBe(true)
+  })
+
+  it('returns 400 when body is missing', async () => {
+    const app = await createApp(resolver)
+    const res = await app.request('/pipeline_handle_events', { method: 'POST' })
+    expect(res.status).toBe(400)
+  })
+})
+
 describe('POST /write', () => {
   it('accepts messages array, streams NDJSON state back', async () => {
     const app = await createApp(resolver)

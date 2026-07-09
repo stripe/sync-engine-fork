@@ -744,6 +744,21 @@ export interface Source<
     $stdin?: AsyncIterable<TInput>
   ): AsyncIterable<Message>
 
+  /**
+   * Process a stream of externally-delivered events (webhooks, push payloads,
+   * Kafka messages, etc.) and emit derived messages (record, log, trace).
+   *
+   * Decoupled from `read()`: backfill/polling lives in `read`, while
+   * `handle_events` is a pure event-driven entry point with no checkpoint
+   * state. Idempotent processing is the source's responsibility.
+   *
+   * Optional — only event-driven sources implement this.
+   */
+  handle_events?(
+    params: { config: TConfig; catalog: ConfiguredCatalog },
+    events: AsyncIterable<TInput>
+  ): AsyncIterable<Message>
+
   /** Provision external resources (webhook endpoints, replication slots, etc.). */
   setup?(params: { config: TConfig; catalog: ConfiguredCatalog }): AsyncIterable<SetupOutput>
 

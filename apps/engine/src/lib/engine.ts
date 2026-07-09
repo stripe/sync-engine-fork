@@ -155,6 +155,18 @@ export interface Engine {
   ): AsyncIterable<Message>
 
   /**
+   * Hand a stream of externally-delivered events (webhooks, push payloads, etc.)
+   * to the source's `handle_events` hook and stream the derived {@link Message}
+   * objects back. Stateless — no checkpointing, no time limits.
+   *
+   * Throws if the source connector does not implement `handle_events`.
+   */
+  pipeline_handle_events(
+    pipeline: PipelineConfig,
+    events: AsyncIterable<unknown>
+  ): AsyncIterable<Message>
+
+  /**
    * Write a stream of messages to the destination.
    * Filters for record and state messages, enforces the configured catalog,
    * and yields {@link DestinationOutput} messages (states, logs) from the destination.
@@ -576,6 +588,28 @@ export async function createEngine(resolver: ConnectorResolver): Promise<Engine>
               request_progress: createInitialProgress(),
             }) as unknown as Message
             throw error
+          }
+        })()
+      )
+    },
+
+    pipeline_handle_events(pipeline, events) {
+      return withAbortOnReturn(() =>
+        (async function* (): AsyncGenerator<Message> {
+          const srcConnector = await resolver.resolveSource(pipeline.source.type)
+          if (!srcConnector.handle_events) {
+            throw new Error(
+              `Source connector "${pipeline.source.type}" does not implement handle_events()`
+            )
+          }
+          const srcSpec = await getSpec(srcConnector, configPayload(pipeline.source))
+          const { filteredCatalog } = await discoverCatalog(engine, pipeline)
+          const raw = srcConnector.handle_events(
+            { config: srcSpec.config, catalog: filteredCatalog },
+            events
+          )
+          for await (const msg of raw) {
+            yield Message.parse(msg)
           }
         })()
       )

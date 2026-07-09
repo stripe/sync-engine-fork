@@ -1772,6 +1772,72 @@ describe('StripeSource', () => {
     })
   })
 
+  describe('handle_events()', () => {
+    const registry: Record<string, ResourceConfig> = {
+      customer: makeConfig({ order: 1, tableName: 'customer' }),
+    }
+
+    beforeEach(() => {
+      vi.mocked(buildResourceRegistry).mockReturnValue(registry as any)
+    })
+
+    it('processes a stripe event and yields record + state, never paginating', async () => {
+      const event = makeEvent({
+        id: 'evt_he_1',
+        type: 'customer.updated',
+        created: 1700000001,
+        dataObject: { id: 'cus_he_1', object: 'customer', name: 'Handled' },
+      })
+
+      const messages = await collect(
+        source.handle_events!(
+          { config, catalog: catalog({ name: 'customer', primary_key: [['id']] }) },
+          toIter(event)
+        )
+      )
+
+      expect(messages).toHaveLength(2)
+      expect(messages[0]).toMatchObject({
+        type: 'record',
+        record: { stream: 'customer', data: { id: 'cus_he_1', name: 'Handled' } },
+      })
+      expect(messages[1]).toMatchObject({
+        type: 'source_state',
+        source_state: { stream: 'customer', data: { eventId: 'evt_he_1' } },
+      })
+    })
+
+    it('filters events for streams not in catalog', async () => {
+      const event = makeEvent({
+        id: 'evt_he_other',
+        type: 'invoice.paid',
+        dataObject: { id: 'inv_he_1', object: 'invoice', amount: 100 },
+      })
+
+      const messages = await collect(
+        source.handle_events!(
+          { config, catalog: catalog({ name: 'customer', primary_key: [['id']] }) },
+          toIter(event)
+        )
+      )
+
+      expect(messages).toHaveLength(0)
+    })
+
+    it('throws when raw webhook input is provided without webhook_secret', async () => {
+      const rawInput = { body: '{"id":"evt_1"}', headers: {} }
+
+      await expect(
+        collect(
+          source.handle_events!(
+            { config, catalog: catalog({ name: 'customer' }) },
+            toIter(rawInput)
+          )
+        )
+      ).rejects.toThrow('webhook_secret is required for raw webhook signature verification')
+    })
+  })
+
   describe('read() — WebSocket streaming', () => {
     const registry: Record<string, ResourceConfig> = {
       customers: makeConfig({

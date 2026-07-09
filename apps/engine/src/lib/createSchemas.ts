@@ -94,9 +94,10 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
     .filter(([, r]) => r.rawInputJsonSchema != null)
     .map(([name, r]) => {
       const base = z.fromJSONSchema(r.rawInputJsonSchema!)
-      return (base instanceof z.ZodObject ? base : z.object({})).meta({
+      const input = (base instanceof z.ZodObject ? base : z.object({})).meta({
         id: connectorInputSchemaName(name),
       })
+      return { name, input, variant: z.object({ [name]: z.array(input) }) }
     })
 
   const SourceInputMessage =
@@ -104,10 +105,15 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
       ? z
           .object({
             type: z.literal('source_input'),
-            source_input: configUnion(inputSchemas),
+            source_input: configUnion(inputSchemas.map((s) => s.input)),
           })
           .meta({ id: 'TypedSourceInputMessage' })
       : undefined
+
+  const SourceEvents =
+    inputSchemas.length > 0
+      ? configUnion(inputSchemas.map((s) => s.variant)).meta({ id: 'SourceEvents' })
+      : z.record(z.string(), z.array(z.unknown())).meta({ id: 'SourceEvents' })
 
   const PipelineConfig = z
     .object({
@@ -127,6 +133,7 @@ export function createConnectorSchemas(resolver: ConnectorResolver) {
     SourceConfig,
     DestinationConfig,
     SourceInputMessage,
+    SourceEvents,
     PipelineConfig,
     sourceConfigNames,
     destConfigNames,
