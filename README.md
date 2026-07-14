@@ -1,5 +1,13 @@
 # Stripe Sync Engine Monorepo
 
+> [!WARNING]
+> This code is under active development. Use at your own risk. This service lacks tight access controls and should only be deployed internally.
+>
+> Bug reports are welcome but bug bounties will not be considered at this time.
+>
+> For the original Supabase Stripe Sync Engine, see the [`og` branch](https://github.com/stripe/sync-engine/tree/og).
+
+
 ![GitHub License](https://img.shields.io/github/license/stripe-experiments/sync-engine)
 ![NPM Version](https://img.shields.io/npm/v/@stripe%2Fsync-engine)
 
