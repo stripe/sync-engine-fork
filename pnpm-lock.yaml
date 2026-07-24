@@ -105,8 +105,8 @@ importers:
         version: 3.5.0
     devDependencies:
       '@hono/node-server':
-        specifier: ^1
-        version: 1.19.11(hono@4.12.21)
+        specifier: ^2
+        version: 2.0.10(hono@4.12.21)
       '@playwright/test':
         specifier: ^1
         version: 1.59.1
@@ -153,8 +153,8 @@ importers:
   apps/engine:
     dependencies:
       '@hono/node-server':
-        specifier: ^1
-        version: 1.19.11(hono@4.12.21)
+        specifier: ^2
+        version: 2.0.10(hono@4.12.21)
       '@scalar/hono-api-reference':
         specifier: ^0.6
         version: 0.6.0(hono@4.12.21)
@@ -238,8 +238,8 @@ importers:
   apps/service:
     dependencies:
       '@hono/node-server':
-        specifier: ^1
-        version: 1.19.11(hono@4.12.21)
+        specifier: ^2
+        version: 2.0.10(hono@4.12.21)
       '@scalar/hono-api-reference':
         specifier: ^0.6
         version: 0.6.0(hono@4.12.21)
@@ -422,8 +422,8 @@ importers:
         version: 0.17.0
     devDependencies:
       '@hono/node-server':
-        specifier: ^1
-        version: 1.19.11(hono@4.12.21)
+        specifier: ^2
+        version: 2.0.10(hono@4.12.21)
       '@stripe/sync-destination-google-sheets':
         specifier: workspace:*
         version: link:../packages/destination-google-sheets
@@ -673,8 +673,8 @@ importers:
   packages/test-utils:
     dependencies:
       '@hono/node-server':
-        specifier: ^1.19.11
-        version: 1.19.11(hono@4.12.21)
+        specifier: ^2.0.10
+        version: 2.0.10(hono@4.12.21)
       '@stripe/sync-destination-postgres':
         specifier: workspace:*
         version: link:../destination-postgres
@@ -1205,9 +1205,9 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
-  '@hono/node-server@1.19.11':
-    resolution: {integrity: sha512-dr8/3zEaB+p0D2n/IUrlPF1HZm586qgJNXK1a9fhg/PzdtkK7Ksd5l312tJX2yBuALqDYBlG20QEbayqPyxn+g==}
-    engines: {node: '>=18.14.1'}
+  '@hono/node-server@2.0.10':
+    resolution: {integrity: sha512-ZcnNVhKTmyDJeg0UlnZjvM73JBsTAuhrH/J4fjwGOw59PwOW51r4J+p6CsKZWXdKSme4MFqU62CZMOsdDrU4CA==}
+    engines: {node: '>=20'}
     peerDependencies:
       hono: ^4
 
@@ -5757,7 +5757,7 @@ snapshots:
       protobufjs: 7.5.4
       yargs: 17.7.2
 
-  '@hono/node-server@1.19.11(hono@4.12.21)':
+  '@hono/node-server@2.0.10(hono@4.12.21)':
     dependencies:
       hono: 4.12.21
 

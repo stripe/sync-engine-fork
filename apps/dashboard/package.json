@@ -25,7 +25,7 @@
     "tailwind-merge": "^3"
   },
   "devDependencies": {
-    "@hono/node-server": "^1",
+    "@hono/node-server": "^2",
     "@playwright/test": "^1",
     "@stripe/sync-destination-google-sheets": "workspace:*",
     "@stripe/sync-destination-postgres": "workspace:*",
